@@ -54,3 +54,17 @@ pub(crate) fn mouse_window_info_populate(
     info.changed_position = info.changed_x || info.changed_y;
     info.changed_size = info.changed_width || info.changed_height;
 }
+
+#[cfg(test)]
+pub(crate) fn mouse_drag_state_without_a_drag() -> MouseDragState {
+    MouseDragState {
+        current_action: MouseMode::None,
+        down_location: CGPoint { x: 0.0, y: 0.0 },
+        last_moved_time: 0,
+        window_id: None,
+        window_frame: CGRect::default(),
+        ffm_window_id: WindowId(0),
+        direction: 0,
+        feedback_node: None,
+    }
+}

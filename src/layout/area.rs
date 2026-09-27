@@ -1,5 +1,8 @@
 use crate::ffi::core_foundation::{CGPoint, CGRect, CGSize};
-use crate::layout::tree::{WindowNodeChild, WindowNodeSplit};
+use crate::layout::tree::{
+    WindowNodeChild, WindowNodeSplit,
+    window_node_split_and_child_placing_a_window_inserted_in_direction,
+};
 use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, STACK};
 
 #[derive(Clone, Copy, Default)]
@@ -78,14 +81,11 @@ pub(crate) fn area_a_window_inserted_in_direction_takes_from_node_area(
     ratio: f32,
     gap: i32,
 ) -> Option<Area> {
-    let (split, child_of_the_inserted_window) = match insert_direction {
-        DIR_NORTH => (WindowNodeSplit::X, WindowNodeChild::First),
-        DIR_EAST => (WindowNodeSplit::Y, WindowNodeChild::Second),
-        DIR_SOUTH => (WindowNodeSplit::X, WindowNodeChild::Second),
-        DIR_WEST => (WindowNodeSplit::Y, WindowNodeChild::First),
-        STACK => return Some(node_area),
-        _ => return None,
-    };
+    if insert_direction == STACK {
+        return Some(node_area);
+    }
+    let (split, child_of_the_inserted_window) =
+        window_node_split_and_child_placing_a_window_inserted_in_direction(insert_direction)?;
 
     let (first_child_area, second_child_area) = area_make_pair(split, gap, ratio, node_area);
     if child_of_the_inserted_window == WindowNodeChild::Second {
@@ -191,11 +191,12 @@ pub(crate) fn ax_diff(first: f64, second: f64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        Area, area_distance_in_direction, area_is_in_direction, area_make_pair, area_max_point,
+        Area, area_a_window_inserted_in_direction_takes_from_node_area, area_distance_in_direction,
+        area_from_cgrect, area_is_in_direction, area_make_pair, area_max_point, cgrect_from_area,
     };
-    use crate::ffi::core_foundation::CGPoint;
+    use crate::ffi::core_foundation::{CGPoint, CGRect, CGSize};
     use crate::layout::tree::WindowNodeSplit;
-    use crate::support::direction::{DIR_EAST, DIR_WEST};
+    use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, STACK};
 
     struct TestArea {
         area: Area,
@@ -481,5 +482,199 @@ mod tests {
                 x_y_width_height(area)
             );
         }
+    }
+
+    fn area_a_window_inserted_takes(
+        insert_direction: i32,
+        node_area: Area,
+        ratio: f32,
+        gap: i32,
+    ) -> Option<(f32, f32, f32, f32)> {
+        area_a_window_inserted_in_direction_takes_from_node_area(
+            insert_direction,
+            node_area,
+            ratio,
+            gap,
+        )
+        .map(x_y_width_height)
+    }
+
+    fn assert_each_direction_inserts_into(
+        node_area: Area,
+        ratio: f32,
+        gap: i32,
+        expected_area_for_north_east_south_and_west: [(f32, f32, f32, f32); 4],
+    ) {
+        for (insert_direction, expected_area) in [DIR_NORTH, DIR_EAST, DIR_SOUTH, DIR_WEST]
+            .into_iter()
+            .zip(expected_area_for_north_east_south_and_west)
+        {
+            assert_eq!(
+                area_a_window_inserted_takes(insert_direction, node_area, ratio, gap),
+                Some(expected_area),
+                "direction {insert_direction} node {:?} ratio {ratio} gap {gap}",
+                x_y_width_height(node_area)
+            );
+        }
+    }
+
+    #[test]
+    fn a_window_inserted_north_or_south_takes_the_top_or_bottom_of_the_node_and_west_or_east_its_left_or_right()
+     {
+        assert_each_direction_inserts_into(
+            area_at(100.0, 60.0, 1001.0, 701.0),
+            0.5,
+            10,
+            [
+                (100.0, 60.0, 1001.0, 345.0),
+                (606.0, 60.0, 495.0, 701.0),
+                (100.0, 416.0, 1001.0, 345.0),
+                (100.0, 60.0, 495.0, 701.0),
+            ],
+        );
+    }
+
+    #[test]
+    fn an_odd_node_with_a_gap_is_divided_with_the_truncation_and_rounding_of_the_c_split() {
+        assert_each_direction_inserts_into(
+            area_at(-1728.0, 38.0, 1727.0, 1079.0),
+            0.37,
+            7,
+            [
+                (-1728.0, 38.0, 1727.0, 396.0),
+                (-1085.0, 38.0, 1083.0, 1079.0),
+                (-1728.0, 442.0, 1727.0, 675.0),
+                (-1728.0, 38.0, 636.0, 1079.0),
+            ],
+        );
+        assert_each_direction_inserts_into(
+            area_at(0.5, 25.25, 333.0, 211.0),
+            0.62,
+            13,
+            [
+                (0.5, 25.25, 333.0, 122.0),
+                (211.5, 25.25, 121.0, 211.0),
+                (0.5, 161.25, 333.0, 75.0),
+                (0.5, 25.25, 198.0, 211.0),
+            ],
+        );
+        assert_each_direction_inserts_into(
+            area_at(0.0, 0.0, 3.0, 5.0),
+            0.5,
+            0,
+            [
+                (0.0, 0.0, 3.0, 2.0),
+                (2.0, 0.0, 1.0, 5.0),
+                (0.0, 3.0, 3.0, 2.0),
+                (0.0, 0.0, 1.0, 5.0),
+            ],
+        );
+    }
+
+    #[test]
+    fn a_window_inserted_as_a_stack_takes_the_whole_node() {
+        let node_area = area_at(-1728.0, 38.5, 1727.0, 1079.0);
+
+        assert_eq!(
+            area_a_window_inserted_takes(STACK, node_area, 0.37, 7),
+            Some(x_y_width_height(node_area))
+        );
+    }
+
+    #[test]
+    fn an_insert_direction_that_is_neither_a_compass_direction_nor_a_stack_predicts_no_area() {
+        for insert_direction in [0, 1, 45, 91, 179, 269, 359, 361, -90, i32::MIN, i32::MAX] {
+            assert_eq!(
+                area_a_window_inserted_takes(
+                    insert_direction,
+                    area_at(0.0, 0.0, 1000.0, 800.0),
+                    0.5,
+                    10
+                ),
+                None,
+                "direction {insert_direction}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_area_survives_a_round_trip_through_a_cgrect_bit_for_bit() {
+        for area in [
+            area_at(0.0, 0.0, 0.0, 0.0),
+            area_at(-1728.0, 38.5, 1727.0, 1079.0),
+            area_at(0.1, -0.3, 16777217.0, 1e-7),
+            area_at(f32::MIN_POSITIVE, -f32::MAX, f32::MAX, 3.4028235e38),
+        ] {
+            let round_tripped_area = area_from_cgrect(cgrect_from_area(area));
+
+            assert_eq!(
+                [
+                    round_tripped_area.x.to_bits(),
+                    round_tripped_area.y.to_bits(),
+                    round_tripped_area.width.to_bits(),
+                    round_tripped_area.height.to_bits(),
+                ],
+                [
+                    area.x.to_bits(),
+                    area.y.to_bits(),
+                    area.width.to_bits(),
+                    area.height.to_bits(),
+                ],
+                "area {:?}",
+                x_y_width_height(area)
+            );
+        }
+    }
+
+    #[test]
+    fn a_cgrect_of_values_an_f32_holds_survives_a_round_trip_through_an_area() {
+        let rect = CGRect {
+            origin: CGPoint {
+                x: -1728.0,
+                y: 38.5,
+            },
+            size: CGSize {
+                width: 1727.25,
+                height: 0.1f32 as f64,
+            },
+        };
+
+        let round_tripped_rect = cgrect_from_area(area_from_cgrect(rect));
+
+        assert_eq!(
+            [
+                round_tripped_rect.origin.x,
+                round_tripped_rect.origin.y,
+                round_tripped_rect.size.width,
+                round_tripped_rect.size.height,
+            ],
+            [
+                rect.origin.x,
+                rect.origin.y,
+                rect.size.width,
+                rect.size.height
+            ]
+        );
+    }
+
+    #[test]
+    fn a_cgrect_value_an_f32_cannot_hold_is_rounded_to_the_nearest_f32() {
+        let rect = CGRect {
+            origin: CGPoint {
+                x: 0.1,
+                y: 16777217.0,
+            },
+            size: CGSize {
+                width: 1.0 / 3.0,
+                height: 2.5,
+            },
+        };
+
+        let area = area_from_cgrect(rect);
+
+        assert_eq!(
+            x_y_width_height(area),
+            (0.1f32, 16777216.0f32, 1.0f32 / 3.0f32, 2.5f32)
+        );
     }
 }

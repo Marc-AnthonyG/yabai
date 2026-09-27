@@ -335,3 +335,39 @@ pub(crate) fn window_manager_init(window_manager: &mut WindowManager) {
     window_manager.window_animator = Arc::new(WindowAnimator::new());
     window_manager.insert_feedback = Table::new(150, hash_wm_window_id);
 }
+
+#[cfg(test)]
+pub(crate) fn window_manager_tracking_nothing_with_its_initial_settings() -> WindowManager {
+    WindowManager {
+        system_element: core::ptr::null(),
+        application: Table::new(150, hash_wm_process_id),
+        window: Table::new(150, hash_wm_window_id),
+        managed_window: Table::new(150, hash_wm_window_id),
+        window_lost_focused_event: Table::new(150, hash_wm_window_id),
+        application_lost_front_switched_event: Table::new(150, hash_wm_process_id),
+        window_animator: Arc::new(WindowAnimator::new()),
+        insert_feedback: Table::new(150, hash_wm_window_id),
+        rules: Vec::new(),
+        applications_to_refresh: Vec::new(),
+        focused_window_id: WindowId(0),
+        focused_window_process_serial_number: ProcessSerialNumber {
+            high_long_of_psn: 0,
+            low_long_of_psn: 0,
+        },
+        last_window_id: WindowId(0),
+        enable_mff: false,
+        ffm_mode: FfmMode::Disabled,
+        purify_mode: PurifyMode::Disabled,
+        window_origin_mode: WindowOriginMode::Default,
+        enable_window_opacity: false,
+        menubar_opacity: 1.0f32,
+        active_window_opacity: 1.0f32,
+        normal_window_opacity: 1.0f32,
+        window_opacity_duration: 0.0f32,
+        window_animation_duration: 0.0f32,
+        window_animation_easing: AnimationEasingType::EaseOutCirc,
+        insert_feedback_color: rgba_color_from_hex(0xffd75f5f),
+        insert_feedback_color_follows_the_system_accent_color: true,
+        scratchpad_window: Vec::new(),
+    }
+}

@@ -10,7 +10,8 @@ use crate::layout::tree::{
     NODE_MAX_WINDOW_COUNT, WindowNodeChild, WindowNodeSplit,
     view_add_window_node_with_insertion_point, view_find_window_node, view_remove_window_node,
     view_stack_window_node, window_node_capture_windows, window_node_contains_window,
-    window_node_is_left_child, window_node_swap_window_list,
+    window_node_is_left_child, window_node_split_and_child_placing_a_window_inserted_in_direction,
+    window_node_swap_window_list,
 };
 use crate::mouse::drag::MouseDragState;
 use crate::process::manager::ProcessManager;
@@ -21,7 +22,6 @@ use crate::space::moving_windows::space_manager_move_window_to_space;
 use crate::space::tiling::{
     space_manager_tile_window_on_space_with_insertion_point, space_manager_untile_window,
 };
-use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST};
 use crate::support::handles::WindowId;
 use crate::support::layer::LAYER_BELOW;
 use crate::window::animation::{
@@ -108,18 +108,11 @@ pub(crate) fn window_manager_set_window_insertion(
         return WindowOpError::InvalidSrcNode;
     };
 
-    if direction == DIR_NORTH {
-        node.split = WindowNodeSplit::X;
-        node.child = WindowNodeChild::First;
-    } else if direction == DIR_EAST {
-        node.split = WindowNodeSplit::Y;
-        node.child = WindowNodeChild::Second;
-    } else if direction == DIR_SOUTH {
-        node.split = WindowNodeSplit::X;
-        node.child = WindowNodeChild::Second;
-    } else if direction == DIR_WEST {
-        node.split = WindowNodeSplit::Y;
-        node.child = WindowNodeChild::First;
+    if let Some((split, child)) =
+        window_node_split_and_child_placing_a_window_inserted_in_direction(direction)
+    {
+        node.split = split;
+        node.child = child;
     }
 
     node.insert_direction = direction;

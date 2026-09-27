@@ -1404,3 +1404,130 @@ pub(crate) fn handle_domain_config(
         command = message_cursor.get_token();
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::Read;
+    use std::os::unix::net::UnixStream;
+
+    use super::handle_domain_config;
+    use crate::display::manager::DisplayManager;
+    use crate::event::handlers::system::event_handler_system_accent_color_changed;
+    use crate::message::token::MessageCursor;
+    use crate::mouse::drag::mouse_drag_state_without_a_drag;
+    use crate::space::manager::space_manager_without_any_view_with_its_initial_settings;
+    use crate::support::color::rgba_color_from_hex;
+    use crate::support::response::Response;
+    use crate::window::manager::{
+        WindowManager, window_manager_tracking_nothing_with_its_initial_settings,
+    };
+
+    fn config_message(arguments: &[&str]) -> Vec<u8> {
+        let mut message = Vec::new();
+        for argument in std::iter::once(&"config").chain(arguments) {
+            message.extend_from_slice(argument.as_bytes());
+            message.push(0);
+        }
+        message.push(0);
+        message
+    }
+
+    fn handle_config_message_and_read_the_response(
+        arguments: &[&str],
+        window_manager: &mut WindowManager,
+    ) -> String {
+        let mut message = config_message(arguments);
+        let (mut client_end, daemon_end) = UnixStream::pair().unwrap();
+        {
+            let mut response = Response::to_client(daemon_end);
+            let mut message_cursor = MessageCursor::new(&mut message);
+            let domain = message_cursor.get_token();
+            handle_domain_config(
+                &mut response,
+                domain,
+                &mut message_cursor,
+                &mut DisplayManager::default(),
+                window_manager,
+                &mut space_manager_without_any_view_with_its_initial_settings(),
+                &mut mouse_drag_state_without_a_drag(),
+            );
+        }
+
+        let mut response_text = String::new();
+        client_end.read_to_string(&mut response_text).unwrap();
+        response_text
+    }
+
+    #[test]
+    fn querying_insert_feedback_color_prints_the_packed_colour_as_lowercase_hexadecimal() {
+        let mut window_manager = window_manager_tracking_nothing_with_its_initial_settings();
+        window_manager.insert_feedback_color = rgba_color_from_hex(0xff0a7aff);
+
+        let response_text = handle_config_message_and_read_the_response(
+            &["insert_feedback_color"],
+            &mut window_manager,
+        );
+
+        assert_eq!(response_text, "0xff0a7aff\n");
+    }
+
+    #[test]
+    fn setting_insert_feedback_color_stores_it_and_the_accent_colour_no_longer_replaces_it() {
+        let mut window_manager = window_manager_tracking_nothing_with_its_initial_settings();
+
+        let response_text = handle_config_message_and_read_the_response(
+            &["insert_feedback_color", "0xAA336699"],
+            &mut window_manager,
+        );
+        event_handler_system_accent_color_changed(
+            rgba_color_from_hex(0xff007aff),
+            &mut window_manager,
+        );
+
+        assert_eq!(response_text, "");
+        assert_eq!(window_manager.insert_feedback_color.packed, 0xaa336699);
+        assert_eq!(
+            window_manager.insert_feedback_color.red,
+            rgba_color_from_hex(0xaa336699).red
+        );
+        assert!(!window_manager.insert_feedback_color_follows_the_system_accent_color);
+    }
+
+    #[test]
+    fn until_a_client_sets_insert_feedback_color_the_accent_colour_replaces_it() {
+        let mut window_manager = window_manager_tracking_nothing_with_its_initial_settings();
+
+        event_handler_system_accent_color_changed(
+            rgba_color_from_hex(0xff007aff),
+            &mut window_manager,
+        );
+
+        assert_eq!(window_manager.insert_feedback_color.packed, 0xff007aff);
+        assert!(window_manager.insert_feedback_color_follows_the_system_accent_color);
+    }
+
+    #[test]
+    fn an_insert_feedback_color_of_zero_or_in_decimal_is_refused_and_changes_nothing() {
+        for refused_value in ["0x0", "0x00000000", "4278190335", "red"] {
+            let mut window_manager = window_manager_tracking_nothing_with_its_initial_settings();
+            let packed_colour_before = window_manager.insert_feedback_color.packed;
+
+            let response_text = handle_config_message_and_read_the_response(
+                &["insert_feedback_color", refused_value],
+                &mut window_manager,
+            );
+
+            assert_eq!(
+                response_text,
+                format!(
+                    "\x07unknown value '{refused_value}' given to command 'insert_feedback_color' for domain 'config'\n"
+                )
+            );
+            assert_eq!(
+                window_manager.insert_feedback_color.packed,
+                packed_colour_before
+            );
+            assert!(window_manager.insert_feedback_color_follows_the_system_accent_color);
+        }
+    }
+}

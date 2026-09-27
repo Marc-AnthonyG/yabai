@@ -53,6 +53,18 @@ pub(crate) enum WindowNodeSplit {
 
 pub(crate) static WINDOW_NODE_SPLIT_STR: [&str; 4] = ["none", "vertical", "horizontal", "auto"];
 
+pub(crate) fn window_node_split_and_child_placing_a_window_inserted_in_direction(
+    insert_direction: i32,
+) -> Option<(WindowNodeSplit, WindowNodeChild)> {
+    match insert_direction {
+        DIR_NORTH => Some((WindowNodeSplit::X, WindowNodeChild::First)),
+        DIR_EAST => Some((WindowNodeSplit::Y, WindowNodeChild::Second)),
+        DIR_SOUTH => Some((WindowNodeSplit::X, WindowNodeChild::Second)),
+        DIR_WEST => Some((WindowNodeSplit::Y, WindowNodeChild::First)),
+        _ => None,
+    }
+}
+
 pub(crate) const NODE_MAX_WINDOW_COUNT: usize = 32;
 
 #[derive(Default)]

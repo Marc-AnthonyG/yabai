@@ -116,6 +116,7 @@ pub(crate) fn start_the_daemon_and_enter_the_main_run_loop() {
             auto_balance: 0,
             labels: Vec::new(),
             skip_window_focus_animation: false,
+            insert_feedback_fade_in_step_is_scheduled: false,
         },
         signal_storage: Vec::new(),
         mouse_drag_state: MouseDragState {

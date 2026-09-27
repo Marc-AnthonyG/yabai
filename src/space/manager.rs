@@ -34,6 +34,7 @@ pub(crate) struct SpaceManager {
     pub(crate) auto_balance: u32,
     pub(crate) labels: Vec<SpaceLabel>,
     pub(crate) skip_window_focus_animation: bool,
+    pub(crate) insert_feedback_fade_in_step_is_scheduled: bool,
 }
 
 pub(crate) fn hash_view_key(key: &SpaceId) -> u64 {
@@ -270,4 +271,29 @@ pub(crate) fn space_manager_begin(
     space_manager.current_space_id = space_manager_active_space(window_manager);
     space_manager.last_space_id = space_manager.current_space_id;
     space_manager.did_begin = true;
+}
+
+#[cfg(test)]
+pub(crate) fn space_manager_without_any_view_with_its_initial_settings() -> SpaceManager {
+    SpaceManager {
+        view: Table::new(23, hash_view_key),
+        current_space_id: SpaceId(0),
+        last_space_id: SpaceId(0),
+        did_begin: false,
+        layout: ViewType::Float,
+        top_padding: 0,
+        bottom_padding: 0,
+        left_padding: 0,
+        right_padding: 0,
+        window_gap: 0,
+        split_ratio: 0.5f32,
+        split_type: WindowNodeSplit::Auto,
+        window_placement: WindowNodeChild::Second,
+        window_insertion_point: WindowInsertionPoint::Focused,
+        window_zoom_persist: true,
+        auto_balance: WindowNodeSplit::None as u32,
+        labels: Vec::new(),
+        skip_window_focus_animation: false,
+        insert_feedback_fade_in_step_is_scheduled: false,
+    }
 }

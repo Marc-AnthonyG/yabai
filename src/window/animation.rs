@@ -123,3 +123,41 @@ pub(crate) fn window_manager_animate_window(
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{WindowCapture, window_manager_animate_window, window_manager_animate_window_list};
+    use crate::support::handles::WindowId;
+    use crate::window::animator::window_animator_started_resources;
+    use crate::window::manager::window_manager_tracking_nothing_with_its_initial_settings;
+
+    fn capture_of_a_window_yabai_does_not_track() -> WindowCapture {
+        WindowCapture {
+            window_id: WindowId(424242),
+            x: 10.0,
+            y: 20.0,
+            width: 640.0,
+            height: 480.0,
+        }
+    }
+
+    #[test]
+    fn with_a_zero_animation_duration_frames_are_set_at_once_without_starting_the_animator() {
+        let mut window_manager = window_manager_tracking_nothing_with_its_initial_settings();
+        window_manager.window_animation_duration = 0.0;
+
+        window_manager_animate_window_list(
+            &[
+                capture_of_a_window_yabai_does_not_track(),
+                capture_of_a_window_yabai_does_not_track(),
+            ],
+            &mut window_manager,
+        );
+        window_manager_animate_window(
+            capture_of_a_window_yabai_does_not_track(),
+            &mut window_manager,
+        );
+
+        assert!(window_animator_started_resources(&window_manager.window_animator).is_none());
+    }
+}

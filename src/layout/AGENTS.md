@@ -30,7 +30,8 @@ preview, a SkyLight overlay window drawn as a ghost of that frame.
 - The overlay covers only that frame and is drawn at a 2.0 resolution so it stays sharp on Retina
   displays. It fades in through steps posted to the event loop from the main queue; a step only
   touches overlay windows a node still owns, so a released overlay is never touched, and a step is
-  scheduled only while some overlay is still fading in.
+  scheduled only while some overlay is still fading in and no other step is pending, so replacing
+  one overlay with another never starts a second chain of steps.
 - The preview colour is the window manager's insert feedback colour. It follows the accent colour
   the workspace observer reads and posts, until `insert_feedback_color` is set by a client.
 - A pending insertion point is cleared when a window yabai tracks gains focus and is not that

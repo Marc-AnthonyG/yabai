@@ -3,5 +3,5 @@
 pub use objc2_core_video::{
     CVDisplayLink, CVDisplayLinkCreateWithActiveCGDisplays, CVDisplayLinkSetOutputCallback,
     CVDisplayLinkStart, CVDisplayLinkStop, CVGetHostClockFrequency, CVOptionFlags, CVReturn,
-    CVTimeStamp, kCVReturnSuccess,
+    CVTimeStamp, kCVReturnDisplayLinkAlreadyRunning, kCVReturnSuccess,
 };

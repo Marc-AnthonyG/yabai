@@ -203,18 +203,7 @@ unsafe extern "C" {
         unknown2: c_int,
         transform: CGAffineTransform,
     ) -> CGError;
-    pub fn SLSTransactionOrderWindowGroup(
-        transaction: *const CFType,
-        window_id: u32,
-        order: c_int,
-        relative_window_id: u32,
-    ) -> CGError;
     pub fn SLSTransactionSetWindowAlpha(
-        transaction: *const CFType,
-        window_id: u32,
-        alpha: f32,
-    ) -> CGError;
-    pub fn SLSTransactionSetWindowSystemAlpha(
         transaction: *const CFType,
         window_id: u32,
         alpha: f32,

@@ -1,6 +1,6 @@
 #![allow(deprecated)]
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::application::model::Application;
 use crate::ffi::accessibility::{
@@ -14,7 +14,7 @@ use crate::support::color::{RgbaColor, rgba_color_from_hex};
 use crate::support::easing::AnimationEasingType;
 use crate::support::handles::{NodeId, ProcessId, SpaceId, WindowId};
 use crate::support::table::Table;
-use crate::window::animation::AnimationContext;
+use crate::window::animator::WindowAnimator;
 use crate::window::model::{
     Window, WindowFlag, WindowRuleFlag, window_can_move, window_check_flag, window_check_rule_flag,
     window_is_real, window_is_standard, window_is_sticky, window_level_is_standard,
@@ -75,7 +75,7 @@ pub(crate) struct WindowManager {
     pub(crate) managed_window: Table<WindowId, SpaceId>,
     pub(crate) window_lost_focused_event: Table<WindowId, ()>,
     pub(crate) application_lost_front_switched_event: Table<ProcessId, ()>,
-    pub(crate) window_animations_table: Arc<Mutex<Table<WindowId, (Arc<AnimationContext>, usize)>>>,
+    pub(crate) window_animator: Arc<WindowAnimator>,
     pub(crate) insert_feedback: Table<WindowId, (SpaceId, NodeId)>,
     pub(crate) rules: Vec<Rule>,
     pub(crate) applications_to_refresh: Vec<ProcessId>,
@@ -330,7 +330,6 @@ pub(crate) fn window_manager_init(window_manager: &mut WindowManager) {
     window_manager.managed_window = Table::new(150, hash_wm_window_id);
     window_manager.window_lost_focused_event = Table::new(150, hash_wm_window_id);
     window_manager.application_lost_front_switched_event = Table::new(150, hash_wm_process_id);
-    window_manager.window_animations_table =
-        Arc::new(Mutex::new(Table::new(150, hash_wm_window_id)));
+    window_manager.window_animator = Arc::new(WindowAnimator::new());
     window_manager.insert_feedback = Table::new(150, hash_wm_window_id);
 }

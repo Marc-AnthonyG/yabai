@@ -1,11 +1,9 @@
 #![allow(deprecated)]
 
 use core::ptr::NonNull;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicI32, AtomicU32, AtomicU64, Ordering};
 
 use crate::ffi::core_foundation::{
-    CFRetained, CFType, CGPoint, CGRect, CGSize, cfarray_borrow_value_at_index,
+    CFRetained, CFType, CGPoint, CGRect, SendCFRetained, cfarray_borrow_value_at_index,
     sls_window_disable_shadow, take_create_rule_result,
 };
 use crate::ffi::core_graphics::{
@@ -17,76 +15,44 @@ use crate::ffi::skylight::{
     SLSNewWindowWithOpaqueShapeAndContext, SLSReleaseWindow, SLSSetWindowAlpha, SLSSetWindowLevel,
     SLSSetWindowOpacity, SLSSetWindowResolution, SLSSetWindowSubLevel, SLWindowContextCreate,
 };
+use crate::support::handles::WindowId;
 use crate::support::image::cgimage_restore_alpha;
-use crate::window::animation::WindowAnimation;
 use crate::window::model::{window_level, window_sub_level};
+use crate::window::proxy_pairing::WindowProxyPairing;
 
 pub(crate) struct WindowProxy {
-    pub(crate) id: AtomicU32,
-    pub(crate) core_graphics_objects: Mutex<WindowProxyCoreGraphicsObjects>,
-    pub(crate) target_x: AtomicU32,
-    pub(crate) target_y: AtomicU32,
-    pub(crate) target_width: AtomicU32,
-    pub(crate) target_height: AtomicU32,
-    pub(crate) frame_origin_x: AtomicU64,
-    pub(crate) frame_origin_y: AtomicU64,
-    pub(crate) frame_size_width: AtomicU64,
-    pub(crate) frame_size_height: AtomicU64,
-    pub(crate) level: AtomicI32,
-    pub(crate) sub_level: AtomicI32,
-}
-
-pub(crate) struct WindowProxyCoreGraphicsObjects {
-    pub(crate) context: Option<CFRetained<CGContext>>,
+    pub(crate) real_window_id: WindowId,
+    pub(crate) id: u32,
+    pub(crate) frame: CGRect,
+    pub(crate) level: i32,
+    pub(crate) sub_level: i32,
+    pub(crate) context: Option<SendCFRetained<CGContext>>,
     pub(crate) image: Option<CFRetained<CGImage>>,
 }
 
-pub(crate) fn load_window_proxy_frame(proxy: &WindowProxy) -> CGRect {
-    CGRect::new(
-        CGPoint::new(
-            f64::from_bits(proxy.frame_origin_x.load(Ordering::Relaxed)),
-            f64::from_bits(proxy.frame_origin_y.load(Ordering::Relaxed)),
-        ),
-        CGSize::new(
-            f64::from_bits(proxy.frame_size_width.load(Ordering::Relaxed)),
-            f64::from_bits(proxy.frame_size_height.load(Ordering::Relaxed)),
-        ),
-    )
-}
-
-pub(crate) fn store_window_proxy_frame(proxy: &WindowProxy, frame: CGRect) {
-    proxy
-        .frame_origin_x
-        .store(frame.origin.x.to_bits(), Ordering::Relaxed);
-    proxy
-        .frame_origin_y
-        .store(frame.origin.y.to_bits(), Ordering::Relaxed);
-    proxy
-        .frame_size_width
-        .store(frame.size.width.to_bits(), Ordering::Relaxed);
-    proxy
-        .frame_size_height
-        .store(frame.size.height.to_bits(), Ordering::Relaxed);
+impl WindowProxy {
+    pub(crate) fn pairing(&self) -> WindowProxyPairing {
+        WindowProxyPairing {
+            real_window_id: self.real_window_id,
+            proxy_window_id: self.id,
+        }
+    }
 }
 
 pub(crate) fn window_manager_create_window_proxy(
     animation_connection: i32,
     alpha: f32,
-    proxy: &WindowProxy,
+    proxy: &mut WindowProxy,
 ) {
-    let mut core_graphics_objects_guard = proxy.core_graphics_objects.lock().unwrap();
-    let core_graphics_objects = &mut *core_graphics_objects_guard;
-    let Some(image) = core_graphics_objects.image.as_deref() else {
+    let Some(image) = proxy.image.as_deref() else {
         return;
     };
 
-    let mut proxy_frame = load_window_proxy_frame(proxy);
     let mut frame_region: *mut CFType = core::ptr::null_mut();
-    unsafe { CGSNewRegionWithRect(&mut proxy_frame, &mut frame_region) };
+    unsafe { CGSNewRegionWithRect(&mut proxy.frame, &mut frame_region) };
     let empty_region = unsafe { CGRegionCreateEmptyRegion() };
 
     let mut tags: u64 = 1u64 << 46;
-    let mut proxy_window_id = proxy.id.load(Ordering::Relaxed);
     unsafe {
         SLSNewWindowWithOpaqueShapeAndContext(
             animation_connection,
@@ -98,117 +64,80 @@ pub(crate) fn window_manager_create_window_proxy(
             0.0,
             0.0,
             64,
-            &mut proxy_window_id,
+            &mut proxy.id,
             core::ptr::null_mut(),
         )
     };
-    proxy.id.store(proxy_window_id, Ordering::Relaxed);
-    sls_window_disable_shadow(proxy_window_id);
+    sls_window_disable_shadow(proxy.id);
     unsafe {
-        SLSSetWindowOpacity(animation_connection, proxy_window_id, false);
-        SLSSetWindowResolution(animation_connection, proxy_window_id, 2.0f32 as f64);
-        SLSSetWindowAlpha(animation_connection, proxy_window_id, alpha);
-        SLSSetWindowLevel(
-            animation_connection,
-            proxy_window_id,
-            proxy.level.load(Ordering::Relaxed),
-        );
-        SLSSetWindowSubLevel(
-            animation_connection,
-            proxy_window_id,
-            proxy.sub_level.load(Ordering::Relaxed),
-        );
+        SLSSetWindowOpacity(animation_connection, proxy.id, false);
+        SLSSetWindowResolution(animation_connection, proxy.id, 2.0f32 as f64);
+        SLSSetWindowAlpha(animation_connection, proxy.id, alpha);
+        SLSSetWindowLevel(animation_connection, proxy.id, proxy.level);
+        SLSSetWindowSubLevel(animation_connection, proxy.id, proxy.sub_level);
     }
-    core_graphics_objects.context = unsafe {
+    let context = unsafe {
         take_create_rule_result(SLWindowContextCreate(
             animation_connection,
-            proxy_window_id,
+            proxy.id,
             core::ptr::null(),
         ))
     };
 
-    let frame = CGRect::new(CGPoint::new(0.0, 0.0), proxy_frame.size);
-    CGContextClearRect(core_graphics_objects.context.as_deref(), frame);
-    CGContextDrawImage(core_graphics_objects.context.as_deref(), frame, Some(image));
-    CGContextFlush(core_graphics_objects.context.as_deref());
+    let frame = CGRect::new(CGPoint::new(0.0, 0.0), proxy.frame.size);
+    CGContextClearRect(context.as_deref(), frame);
+    CGContextDrawImage(context.as_deref(), frame, Some(image));
+    CGContextFlush(context.as_deref());
+    proxy.context = context.map(SendCFRetained);
     drop(unsafe { take_create_rule_result(frame_region) });
     drop(unsafe { take_create_rule_result(empty_region) });
 }
 
-pub(crate) fn window_manager_destroy_window_proxy(animation_connection: i32, proxy: &WindowProxy) {
-    let mut core_graphics_objects = proxy.core_graphics_objects.lock().unwrap();
+pub(crate) fn window_manager_destroy_window_proxy(animation_connection: i32, proxy: WindowProxy) {
+    let mut proxy = proxy;
 
-    if let Some(image) = core_graphics_objects.image.take() {
+    if let Some(image) = proxy.image.take() {
         drop(image);
     }
 
-    if let Some(context) = core_graphics_objects.context.take() {
+    if let Some(context) = proxy.context.take() {
         drop(context);
     }
 
-    drop(core_graphics_objects);
-
-    let proxy_window_id = proxy.id.load(Ordering::Relaxed);
-    if proxy_window_id != 0 {
-        unsafe { SLSReleaseWindow(animation_connection, proxy_window_id) };
-        proxy.id.store(0, Ordering::Relaxed);
+    if proxy.id != 0 {
+        unsafe { SLSReleaseWindow(animation_connection, proxy.id) };
+        proxy.id = 0;
     }
 }
 
-pub(crate) fn window_manager_build_window_proxy_thread_proc(window_animation: &WindowAnimation) {
+pub(crate) fn window_manager_build_window_proxy_thread_proc(
+    animation_connection: i32,
+    window_id: WindowId,
+) -> Option<WindowProxy> {
     let mut alpha = 1.0f32;
-    unsafe {
-        SLSGetWindowAlpha(
-            window_animation.connection_id,
-            window_animation.window_id.0,
-            &mut alpha,
-        )
+    unsafe { SLSGetWindowAlpha(animation_connection, window_id.0, &mut alpha) };
+    let mut proxy = WindowProxy {
+        real_window_id: window_id,
+        id: 0,
+        frame: CGRect::default(),
+        level: window_level(window_id),
+        sub_level: window_sub_level(window_id),
+        context: None,
+        image: None,
     };
-    window_animation
-        .proxy
-        .level
-        .store(window_level(window_animation.window_id), Ordering::Relaxed);
-    window_animation.proxy.sub_level.store(
-        window_sub_level(window_animation.window_id),
-        Ordering::Relaxed,
-    );
-    let mut proxy_frame = load_window_proxy_frame(&window_animation.proxy);
-    unsafe {
-        SLSGetWindowBounds(
-            window_animation.connection_id,
-            window_animation.window_id.0,
-            &mut proxy_frame,
-        )
-    };
-    store_window_proxy_frame(&window_animation.proxy, proxy_frame);
-    window_animation
-        .proxy
-        .target_x
-        .store((proxy_frame.origin.x as f32).to_bits(), Ordering::Relaxed);
-    window_animation
-        .proxy
-        .target_y
-        .store((proxy_frame.origin.y as f32).to_bits(), Ordering::Relaxed);
-    window_animation
-        .proxy
-        .target_width
-        .store((proxy_frame.size.width as f32).to_bits(), Ordering::Relaxed);
-    window_animation.proxy.target_height.store(
-        (proxy_frame.size.height as f32).to_bits(),
-        Ordering::Relaxed,
-    );
+    unsafe { SLSGetWindowBounds(animation_connection, window_id.0, &mut proxy.frame) };
 
-    let mut window_id = window_animation.window_id.0;
+    let mut capture_window_id = window_id.0;
     let image_array = unsafe {
         take_create_rule_result(SLSHWCaptureWindowList(
-            window_animation.connection_id,
-            &mut window_id,
+            animation_connection,
+            &mut capture_window_id,
             1,
             (1 << 11) | (1 << 8),
         ))
     };
     if let Some(image_array) = image_array {
-        let image = match unsafe { cfarray_borrow_value_at_index::<CGImage>(&image_array, 0) } {
+        proxy.image = match unsafe { cfarray_borrow_value_at_index::<CGImage>(&image_array, 0) } {
             Some(image) => {
                 if alpha == 1.0f32 {
                     Some(unsafe { CFRetained::retain(NonNull::from(image)) })
@@ -218,25 +147,15 @@ pub(crate) fn window_manager_build_window_proxy_thread_proc(window_animation: &W
             }
             None => None,
         };
-        window_animation
-            .proxy
-            .core_graphics_objects
-            .lock()
-            .unwrap()
-            .image = image;
         drop(image_array);
     } else {
-        window_animation
-            .proxy
-            .core_graphics_objects
-            .lock()
-            .unwrap()
-            .image = None;
+        proxy.image = None;
     }
 
-    window_manager_create_window_proxy(
-        window_animation.connection_id,
-        alpha,
-        &window_animation.proxy,
-    );
+    window_manager_create_window_proxy(animation_connection, alpha, &mut proxy);
+    if proxy.id == 0 {
+        window_manager_destroy_window_proxy(animation_connection, proxy);
+        return None;
+    }
+    Some(proxy)
 }

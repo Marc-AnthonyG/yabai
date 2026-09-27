@@ -11,9 +11,9 @@ it and how it is installed, loaded and validated, and the socket protocol yabai 
 - A frame is a fixed 4096-byte buffer: an `i16` length that excludes itself, the opcode byte,
   then native-endian fields. A field that would overflow fails the whole request (decision 34).
   The payload parses these bytes, so no layout detail may drift.
-- Requests are sent from the event-loop thread and, for the proxy swap out, from the
-  CVDisplayLink callback thread. They share nothing but the socket path, which is set once
-  before either thread runs.
+- Requests are sent from the event-loop thread and, for the proxy swap out, from the window
+  animation completion thread. They share nothing but the socket path, which is set once before
+  either thread runs.
 - Install, uninstall and load run on the command-line path as root. They shell out through
   `system` and `popen` and build their paths as a C `snprintf` into a 512-byte buffer would
   (decision 34). The bundle layout under `/Library/ScriptingAdditions/yabai.osax` and both plist

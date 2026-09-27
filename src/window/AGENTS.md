@@ -16,10 +16,40 @@ new frames through proxy windows.
 - The liveness cell is shared between a window and its AX refcon (decision 21). Claiming a
   window for destruction is a compare-exchange from alive to dead; every other probe is a load of
   the same cell. An event for a window that is dead or no longer tracked is dropped.
-- The animation context is an `Arc` shared with the CVDisplayLink callback thread (decisions 24,
-  46), and proxy images are captured on scoped builder threads. The proxies' target and frame
-  atomics hold `f32` and `f64` bits, not integers, and the animations table is locked for exactly
-  the C lock scope.
+- One animator drives every window animation (decision 55), shared through an `Arc` by four
+  kinds of thread. The event-loop thread takes each request: it retargets windows already moving,
+  captures and builds proxies for the others on scoped builder threads it joins, swaps them in,
+  sets the real frames through AX and sets the request in motion. The CVDisplayLink thread moves
+  every proxy once per frame. One long-lived completion thread notifies JankyBorders, waits its
+  20 ms, swaps finished proxies out and releases them, merging every job already queued into one
+  batch. The SkyLight connection and the completion thread start with the first animation and
+  last as long as the animator; a display link exists only while some window is moving.
+- One mutex guards every window's animation phase and the current display link. It is never held
+  across anything that can block or call back: no socket, sleep, AX call, SkyLight commit or
+  CoreVideo call. The tick holds it only to compute the displayed frames and collect the windows
+  that came to rest, then commits one transaction and hands work to the completion thread after
+  releasing it. CoreVideo is kept out of the lock because stopping a link from another thread
+  waits for its running callback, and that callback may be waiting for the mutex.
+- A window is moving (it owns its proxy and its layers), awaiting its proxy swap-out, or absent.
+  Only the event loop adds one; only a tick, or a display link that failed to start, turns a moving
+  window into one awaiting swap-out, handing its proxy to a completion job; only the completion
+  thread removes it, after the swap-out has returned. All of it happens under the mutex, so a
+  request either finds the window moving and adds a layer, or finds it absent and builds a new
+  proxy: a proxy has exactly one owner and is never animated and swapped out at once. A request
+  holds the layers it adds until all its windows are in motion, so a retargeted window cannot come
+  to rest in between. A request for a window awaiting swap-out waits on the condition variable
+  until the swap-out returns, so its swap-in and JankyBorders notification always follow the old
+  ones.
+- The tick retires the display link, under the mutex, when no window is left moving, and a
+  request starts a new one when it admits a moving window and none exists; a tick from a link that
+  is not the current one does nothing. The link's callback reads the animator through a raw `Arc`
+  the link owns. A retired link is released on the completion thread, whose stop waits for the
+  last callback, so that `Arc` is never dropped under a running callback. That is why the link
+  handle is `Send`; a proxy crosses threads because its CoreGraphics context is created and drawn
+  on one builder thread and afterwards only released, on the completion thread.
+- A proxy takes its real window's alpha when it is built and refreshes it at most every 1/30 s
+  while it moves, so an opacity fade that runs during the animation still ends right without a
+  window-server query per window per frame.
 - Rule matching and reapplication take the rules they work on out of the window manager and put
   them back afterwards; code reached in between sees an empty rule list, or a default rule in the
   slot of the rule being reapplied.

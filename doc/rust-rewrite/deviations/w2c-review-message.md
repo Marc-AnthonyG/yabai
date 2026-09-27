@@ -1,6 +1,0 @@
-# Deviations — `w2c-review-message` (review of `src/message.rs`, `src/main.rs`, `src/mouse_handler.rs`)
-
-One line each: C location | what C did | what Rust does.
-
-`src/yabai.c:261` | the process entered `main` with the `SIGPIPE` disposition it inherited from its parent, normally `SIG_DFL`, so the client (`--message`), `--help`, `--version` and the `--*-sa` / `--*-service` paths were killed by `SIGPIPE` on a closed pipe and the programs they spawn inherited `SIG_DFL` | the Rust runtime sets `SIGPIPE` to `SIG_IGN` before `main` runs, so `main` stores `SIG_DFL` right after installing the panic hook; this reproduces the C under every parent that does not itself ignore `SIGPIPE` (where the C inherited `SIG_IGN`, the Rust now has `SIG_DFL`), and the daemon still switches to `SIG_IGN` at `src/yabai.c:152`
-`src/yabai.c:261` | a process started with descriptor 0, 1 or 2 closed kept it closed, so `fprintf(stdout|stderr, …)` failed with `EBADF` and the next `open` (the lock file at `:164`, a socket) could land on that number | the Rust runtime opens `/dev/null` on any of the three that is closed before `main` runs; stable Rust offers no way to opt out, so this is kept and recorded, not reproduced

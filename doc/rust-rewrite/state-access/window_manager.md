@@ -281,7 +281,7 @@ fix them; what matters here is the handle/owned shape of the non-manager argumen
 | `space_manager_focus_space` | `space_manager.c` | `(space_id: SpaceId, window_manager, ..)` |
 | `space_manager_mark_view_invalid`, `space_manager_refresh_view` | `space_manager.c` | `(space_manager, space_id: SpaceId, ..)` |
 | `space_manager_refresh_application_windows` | `space_manager.c` | `(space_manager, window_manager, process_manager, display_manager, mouse_drag_state)` |
-| `space_window_list`, `space_window_list_for_connection` | `space.c` | `(space_id: SpaceId, ..) -> Vec<WindowId>` / `(space_list: &[SpaceId], connection_id: i32, .., window_manager) -> Vec<WindowId>`; the out-parameter count is gone |
+| `space_window_list`, `space_window_list_for_connection` | `space.c` | `(space_id: SpaceId, ..) -> Option<Vec<WindowId>>` / `(space_list: &[SpaceId], connection_id: i32, .., window_manager) -> Option<Vec<WindowId>>`; the out-parameter count is gone, `None` where the C returns NULL |
 | `space_is_visible`, `space_is_user`, `space_is_fullscreen` | `space.c` | `(space_id: SpaceId) -> bool` |
 | `view_find_window_node`, `view_find_window_node_in_direction`, `view_add_window_node`, `view_add_window_node_with_insertion_point`, `view_remove_window_node`, `view_stack_window_node` | `view.c` | `(space_manager, space_id: SpaceId, .. ) -> Option<NodeId>` — a node crossing a `View` boundary is the pair `(SpaceId, NodeId)` |
 | `view_find_window_list` | `view.c` | `(space_manager, space_id: SpaceId) -> Vec<WindowId>` — out-parameter count gone |

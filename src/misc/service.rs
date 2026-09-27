@@ -4,7 +4,6 @@ use std::os::unix::fs::DirBuilderExt;
 
 const _PATH_LAUNCHCTL: &str = "/bin/launchctl";
 const _NAME_YABAI_PLIST: &str = "com.asmvik.yabai";
-const _PATH_YABAI_PLIST: &str = "{0}/Library/LaunchAgents/com.asmvik.yabai.plist";
 
 macro_rules! yabai_plist_template {
     () => {
@@ -56,8 +55,8 @@ macro_rules! yabai_plist_template {
 //          4. Running (Start / Stop)
 //
 
-fn safe_exec(argv: &[&str], suppress_output: bool) -> i32 {
-    let argument_strings: Vec<std::ffi::CString> = argv
+fn safe_exec(arguments: &[&str], suppress_output: bool) -> i32 {
+    let argument_strings: Vec<std::ffi::CString> = arguments
         .iter()
         .map(|argument| std::ffi::CString::new(*argument).unwrap())
         .collect();

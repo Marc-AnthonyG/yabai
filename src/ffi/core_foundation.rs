@@ -1,5 +1,4 @@
 #![allow(deprecated)]
-#![allow(unused_imports)]
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
 
@@ -8,11 +7,9 @@ use core::ptr::NonNull;
 use std::sync::OnceLock;
 
 pub use objc2_core_foundation::{
-    CFAllocator, CFArray, CFArrayCallBacks, CFBoolean, CFComparatorFunction, CFComparisonResult,
-    CFData, CFDictionary, CFDictionaryKeyCallBacks, CFDictionaryValueCallBacks, CFIndex, CFMachPort,
-    CFMutableArray, CFMutableData, CFNumber, CFNumberType, CFRange, CFRetained, CFRunLoop,
-    CFRunLoopMode, CFRunLoopSource, CFString, CFStringEncoding, CFTimeInterval, CFType, CFUUID,
-    CGAffineTransform, CGFloat, CGPoint, CGRect, CGSize, Type,
+    CFArray, CFBoolean, CFComparisonResult, CFData, CFDictionary, CFIndex, CFMachPort,
+    CFMutableData, CFNumber, CFNumberType, CFRange, CFRetained, CFRunLoopSource, CFString,
+    CFStringEncoding, CFType, CGFloat, CGPoint, CGRect, CGSize, Type,
 };
 
 pub use objc2_core_foundation::{
@@ -21,11 +18,10 @@ pub use objc2_core_foundation::{
     CFDataIncreaseLength, CFDictionaryCreate, CFDictionaryGetValue, CFEqual,
     CFMachPortCreateRunLoopSource, CFMachPortInvalidate, CFNumberCreate, CFNumberGetType,
     CFNumberGetValue, CFRunLoopAddSource, CFRunLoopGetMain, CFRunLoopRemoveSource,
-    CFRunLoopSourceInvalidate, CFStringCreateWithCString, CFStringGetCString, CFStringGetLength,
+    CFRunLoopSourceInvalidate, CFStringGetCString, CFStringGetLength,
     CFStringGetMaximumSizeForEncoding, CFUUIDCreateFromString, CFUUIDCreateString,
-    kCFAllocatorDefault, kCFCopyStringDictionaryKeyCallBacks, kCFRunLoopCommonModes,
-    kCFRunLoopDefaultMode, kCFTypeArrayCallBacks, kCFTypeDictionaryKeyCallBacks,
-    kCFTypeDictionaryValueCallBacks,
+    kCFCopyStringDictionaryKeyCallBacks, kCFRunLoopCommonModes, kCFRunLoopDefaultMode,
+    kCFTypeArrayCallBacks, kCFTypeDictionaryKeyCallBacks, kCFTypeDictionaryValueCallBacks,
 };
 
 use crate::ffi::skylight::SLSWindowSetShadowProperties;
@@ -34,7 +30,6 @@ pub const kCFNumberSInt32Type: CFNumberType = CFNumberType::SInt32Type;
 pub const kCFNumberSInt64Type: CFNumberType = CFNumberType::SInt64Type;
 
 pub const K_CF_STRING_ENCODING_UTF8: CFStringEncoding = 0x0800_0100;
-pub const K_CF_STRING_ENCODING_MAC_ROMAN: CFStringEncoding = 0;
 
 pub struct SendCFRetained<T: ?Sized>(pub CFRetained<T>);
 
@@ -163,10 +158,6 @@ pub fn cfstring_to_string(string: &CFString) -> Option<String> {
         .unwrap_or(buffer.len());
     buffer.truncate(nul_position);
     Some(String::from_utf8_lossy(&buffer).into_owned())
-}
-
-pub fn cfstring_from_str(text: &str) -> CFRetained<CFString> {
-    CFString::from_str(text)
 }
 
 pub fn as_cftype<T>(object: &T) -> &CFType {

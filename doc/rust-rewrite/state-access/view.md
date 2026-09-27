@@ -333,7 +333,7 @@ a fixed-point error, not something to patch here.
 
 | callee | module | call sites in `view.c` | shape `crate::view` passes |
 | --- | --- | --- | --- |
-| `update_window_notifications` | `crate::event_loop` | `:45`, `:111` | `(window_manager: &mut `WindowManager`)` — `static` in the C (`event_loop.c:16`) and reachable only through the unity build; it must become a real `pub(crate)` item |
+| `update_window_notifications` | `crate::event_loop` | `:45`, `:111` | `(window_manager: &mut `WindowManager`, space_manager: &`SpaceManager`)` — `static` in the C (`event_loop.c:16`) and reachable only through the unity build; it must become a real `pub(crate)` item |
 | `window_manager_remove_managed_window` | `crate::window_manager` | `:341`, `:1024` | `(window_manager: &mut `WindowManager`, window_id: WindowId)` |
 | `window_manager_find_window` | `crate::window_manager` | `:362` | `(window_manager: &mut `WindowManager`, window_id: WindowId) -> Option<WindowId>` — used only as a liveness test before pushing a `WindowCapture` |
 | `window_manager_animate_window_list` | `crate::window_manager` | `:378` | `(window_list: &[WindowCapture], window_manager: &mut `WindowManager`)` — fixed verbatim by §2.3 example 3; the `int window_count` argument is gone |

@@ -29,7 +29,7 @@ pub struct mach_msg_ool_descriptor_t {
     pub deallocate: u8,
     pub copy: u8,
     pub pad1: u8,
-    pub r#type: u8,
+    pub descriptor_type: u8,
     pub size: mach_msg_size_t,
 }
 
@@ -118,7 +118,7 @@ pub fn mach_send(port: libc::mach_port_t, data: *mut c_void, size: u32) {
             deallocate: 0,
             copy: MACH_MSG_VIRTUAL_COPY,
             pad1: 0,
-            r#type: MACH_MSG_OOL_DESCRIPTOR,
+            descriptor_type: MACH_MSG_OOL_DESCRIPTOR,
             size,
         },
     };

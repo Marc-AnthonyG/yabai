@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use crate::display::display_space_id;
 use crate::ffi::color_sync::CGDisplayGetDisplayIDFromUUID;
 use crate::ffi::core_foundation::{

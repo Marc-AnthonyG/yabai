@@ -1,3 +1,0 @@
-# Deviations — `w1-repair-src-ffi-skylight-rs`
-
-`src/window_manager.h:4-6` | `kCPSAllWindows`, `kCPSUserGenerated`, `kCPSNoWindows` are `#define`s read only by `src/window_manager.c:1320,1329,1927,2104,2475` | declared once, in `src/window_manager.rs`, as `GLOSSARY.md` §7.2 spells them; the `pub const` copies `deviations/w0-ffi-skylight.md` put in `src/ffi/skylight.rs` (which `TRANSLATION_PLAN.md:379` and `patterns/ffi-objc-and-os.md:592-594` also asked for) are removed — they are not SkyLight framework symbols, no caller referenced them, and `DECISIONS.md` 41 makes the glossary binding over a pattern document

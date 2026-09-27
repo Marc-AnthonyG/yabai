@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use core::ffi::{c_int, c_void};
 use core::ptr::NonNull;
 
@@ -482,7 +484,10 @@ pub(crate) fn display_manager_menu_bar_hidden() -> bool {
 }
 
 pub(crate) fn display_manager_menu_bar_rect(display_id: DisplayId) -> CGRect {
+    #[cfg(target_arch = "x86_64")]
     let mut bounds = CGRect::ZERO;
+    #[cfg(target_arch = "aarch64")]
+    let mut bounds: CGRect;
 
     #[cfg(target_arch = "x86_64")]
     {

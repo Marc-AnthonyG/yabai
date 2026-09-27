@@ -69,7 +69,7 @@ event-loop thread, **MSGLOOP** = the message accept thread.
 
 | C name | file:line | thread context | event-loop-owned state touched transitively | Rust signature | visibility |
 | --- | --- | --- | --- | --- | --- |
-| `update_window_notifications` | `src/event_loop.c:16` | MAIN (start-up only, `yabai.c:341`) + EVENTLOOP | `window_manager` | `pub(crate) fn update_window_notifications(window_manager: &mut WindowManager)` | `pub(crate)` |
+| `update_window_notifications` | `src/event_loop.c:16` | MAIN (start-up only, `yabai.c:341`) + EVENTLOOP | `window_manager`, `space_manager` | `pub(crate) fn update_window_notifications(window_manager: &mut WindowManager, space_manager: &SpaceManager)` | `pub(crate)` |
 | `window_did_receive_focus` | `src/event_loop.c:36` | EVENTLOOP | `window_manager`, `space_manager`, `mouse_drag_state` | `fn window_did_receive_focus(window_manager: &mut WindowManager, mouse_drag_state: &mut MouseDragState, window_id: WindowId, space_manager: &mut SpaceManager)` | private |
 | `EVENT_HANDLER_APPLICATION_LAUNCHED` | `src/event_loop.c:75` | EVENTLOOP | `signal_event`, `process_manager`, `display_manager`, `window_manager`, `space_manager`, `signal_storage`, `mouse_drag_state`, `mission_control_mode` | `fn event_handler_application_launched(process: Arc<Process>, signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT], process_manager: &mut ProcessManager, display_manager: &mut DisplayManager, window_manager: &mut WindowManager, space_manager: &mut SpaceManager, signal_storage: &mut Vec<PendingSignal>, mouse_drag_state: &mut MouseDragState, mission_control_mode: &mut MissionControlMode)` | private |
 | `EVENT_HANDLER_APPLICATION_TERMINATED` | `src/event_loop.c:250` | EVENTLOOP | `signal_event`, `process_manager`, `display_manager`, `window_manager`, `space_manager`, `signal_storage`, `mouse_drag_state` | `fn event_handler_application_terminated(process: Arc<Process>, signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT], process_manager: &mut ProcessManager, display_manager: &mut DisplayManager, window_manager: &mut WindowManager, space_manager: &mut SpaceManager, signal_storage: &mut Vec<PendingSignal>, mouse_drag_state: &mut MouseDragState)` | private |
@@ -178,7 +178,11 @@ each difference is forced by `patterns/state-and-ownership.md` §2.1 or §3.2.
    `SpaceManager::view`. `node->window_order[0]` in the same statement is **not** a resolve — §3.2
    fixes the table key as `node->window_order[0]`, so it is the lookup key already in hand.
 
-3. **`update_window_notifications` does *not* gain `space_manager`.** Its loop body
+3. **Superseded in wave 3: `update_window_notifications` gains `space_manager: &SpaceManager`**, because
+   the table key is the `WindowId` the slot held when the entry was added, while C reads
+   `node->window_order[0]` live, and the two differ once a stacked node's front window changes.
+   The original judgement follows.
+   **`update_window_notifications` does *not* gain `space_manager`.** Its loop body
    (`src/event_loop.c:28`) reads only `node->window_order[0]`, which by the same §3.2 sentence is
    the key, so the node is never resolved. `Managers = { WindowManager }`, matching the binding
    worked example (1) and `THREADS.md` §4.2 step 14.
@@ -258,7 +262,7 @@ is binding here is the manager tail, because it is derived from the same fixed p
 | `space_manager_remove_label_for_space` | `src/space_manager.c:169` | `(space_manager, space_id: SpaceId)` |
 | `space_manager_mark_spaces_invalid` | `src/space_manager.c:1122` | `(space_manager, display_manager, window_manager)` |
 | `space_manager_mark_spaces_invalid_for_display` | `src/space_manager.c:1106` | `(space_manager, display_id: DisplayId, display_manager, window_manager)` |
-| `space_manager_handle_display_add` | `src/space_manager.c:1150` | `(space_manager, display_id: DisplayId, window_manager)` |
+| `space_manager_handle_display_add` | `src/space_manager.c:1150` | `(space_manager, display_id: DisplayId, window_manager, mouse_drag_state)` |
 | `space_manager_refresh_application_windows` | `src/space_manager.c:1133` | `(space_manager, process_manager, display_manager, window_manager, mouse_drag_state, mission_control_mode) -> bool` |
 | `space_manager_active_space` | `src/space_manager.c:653` | `(window_manager) -> SpaceId` |
 | `space_manager_cursor_space` | `src/space_manager.c:551` | `() -> SpaceId` |

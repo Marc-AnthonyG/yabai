@@ -55,8 +55,8 @@ pub(crate) unsafe extern "C-unwind" fn connection_handler(
     notification_type: u32,
     data: *mut c_void,
     data_length: usize,
-    context: *mut c_void,
-    connection_id: i32,
+    _context: *mut c_void,
+    _connection_id: i32,
 ) {
     if notification_type == 1204 {
         event_loop_post(Event::MissionControlEnter);
@@ -86,10 +86,10 @@ pub(crate) unsafe extern "C-unwind" fn connection_handler(
 }
 
 pub(crate) unsafe extern "C-unwind" fn mission_control_notification_handler(
-    observer: NonNull<AXObserver>,
-    element: NonNull<AXUIElement>,
+    _observer: NonNull<AXObserver>,
+    _element: NonNull<AXUIElement>,
     notification: NonNull<CFString>,
-    context: *mut c_void,
+    _context: *mut c_void,
 ) {
     let notification = as_cftype(unsafe { notification.as_ref() });
 

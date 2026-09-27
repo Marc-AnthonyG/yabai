@@ -1,5 +1,4 @@
 #![allow(deprecated)]
-#![allow(unused_imports)]
 #![allow(non_upper_case_globals)]
 
 pub use objc2_app_kit::{

@@ -1,5 +1,4 @@
 #![allow(deprecated)]
-#![allow(unused_imports)]
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
 
@@ -10,12 +9,12 @@ use std::sync::OnceLock;
 use objc2_core_foundation::{CFBoolean, CFData, CFDictionary, CFString, CFType};
 
 pub use objc2_application_services::{
-    AXError, AXIsProcessTrustedWithOptions, AXObserver, AXObserverAddNotification,
-    AXObserverCallback, AXObserverCreate, AXObserverGetRunLoopSource, AXObserverRemoveNotification,
-    AXUIElement, AXUIElementCopyAttributeValue, AXUIElementCopyElementAtPosition,
-    AXUIElementCreateApplication, AXUIElementCreateSystemWide, AXUIElementIsAttributeSettable,
-    AXUIElementPerformAction, AXUIElementSetAttributeValue, AXUIElementSetMessagingTimeout,
-    AXValue, AXValueCreate, AXValueGetValue, AXValueType, kAXTrustedCheckOptionPrompt,
+    AXError, AXIsProcessTrustedWithOptions, AXObserver, AXObserverAddNotification, AXObserverCreate,
+    AXObserverGetRunLoopSource, AXObserverRemoveNotification, AXUIElement,
+    AXUIElementCopyAttributeValue, AXUIElementCopyElementAtPosition, AXUIElementCreateApplication,
+    AXUIElementCreateSystemWide, AXUIElementIsAttributeSettable, AXUIElementPerformAction,
+    AXUIElementSetAttributeValue, AXUIElementSetMessagingTimeout, AXValue, AXValueCreate,
+    AXValueGetValue, AXValueType, kAXTrustedCheckOptionPrompt,
 };
 
 use crate::ffi::core_foundation::{
@@ -26,15 +25,12 @@ use crate::ffi::core_foundation::{
 
 pub type AXUIElementRef = *const AXUIElement;
 pub type AXObserverRef = *mut AXObserver;
-pub type AXValueRef = *const AXValue;
-
-pub type ObserverCallback = AXObserverCallback;
 
 pub const kAXErrorSuccess: AXError = AXError::Success;
 
 #[link(name = "ApplicationServices", kind = "framework")]
 unsafe extern "C" {
-    pub fn _AXUIElementGetWindow(r#ref: *const AXUIElement, window_id: *mut u32) -> AXError;
+    pub fn _AXUIElementGetWindow(element_ref: *const AXUIElement, window_id: *mut u32) -> AXError;
     pub fn _AXUIElementCreateWithRemoteToken(data: *const CFData) -> *mut AXUIElement;
 }
 
@@ -54,7 +50,6 @@ macro_rules! ax_string_constants {
 ax_string_constants! {
     kAXWindowsAttribute                 => "AXWindows",
     kAXFocusedWindowAttribute           => "AXFocusedWindow",
-    kAXMainWindowAttribute              => "AXMainWindow",
     kAXWindowAttribute                  => "AXWindow",
     kAXPositionAttribute                => "AXPosition",
     kAXSizeAttribute                    => "AXSize",

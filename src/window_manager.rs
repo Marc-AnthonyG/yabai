@@ -217,8 +217,6 @@ pub(crate) struct JankyBordersEvent {
 const _: () = assert!(core::mem::size_of::<JankyBordersEvent>() == 4104);
 
 #[allow(non_upper_case_globals)]
-pub(crate) const kCPSAllWindows: u32 = 0x100;
-#[allow(non_upper_case_globals)]
 pub(crate) const kCPSUserGenerated: u32 = 0x200;
 #[allow(non_upper_case_globals)]
 pub(crate) const kCPSNoWindows: u32 = 0x400;
@@ -1463,8 +1461,8 @@ pub(crate) unsafe extern "C-unwind" fn window_manager_animate_window_list_thread
     link: NonNull<CVDisplayLink>,
     now: NonNull<CVTimeStamp>,
     output_time: NonNull<CVTimeStamp>,
-    flags: CVOptionFlags,
-    flags_out: NonNull<CVOptionFlags>,
+    _flags: CVOptionFlags,
+    _flags_out: NonNull<CVOptionFlags>,
     data: *mut c_void,
 ) -> CVReturn {
     let animation_context =
@@ -4824,10 +4822,10 @@ pub(crate) fn window_manager_apply_grid(
     if y >= rows {
         y = rows.wrapping_sub(1);
     }
-    if width <= 0 {
+    if width == 0 {
         width = 1;
     }
-    if height <= 0 {
+    if height == 0 {
         height = 1;
     }
     if width > columns.wrapping_sub(x) {

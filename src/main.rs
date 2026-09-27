@@ -1,6 +1,3 @@
-#![allow(dead_code)]
-#![allow(unused_variables)]
-#![allow(unused_mut)]
 
 mod ffi;
 mod misc;
@@ -410,7 +407,7 @@ fn main() {
         error!("yabai: could not acquire lock-file! abort..\n");
     }
 
-    let (event_sender, event_receiver) = event_loop_begin();
+    let event_receiver = event_loop_begin();
 
     let mut event_loop_owned_state = EventLoopOwnedState {
         signal_event: std::array::from_fn(|_| Vec::new()),

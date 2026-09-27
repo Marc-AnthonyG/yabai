@@ -2682,7 +2682,6 @@ pub(crate) fn event_handler_mouse_up(
                     }
 
                     let drop_action = mouse_determine_drop_action(
-                        mouse_drag_state,
                         source_view,
                         a_node,
                         window,
@@ -2963,7 +2962,6 @@ pub(crate) fn event_handler_mouse_dragged(
 
             let mut insert_direction = 0;
             let drop_action = mouse_determine_drop_action(
-                mouse_drag_state,
                 source_view,
                 a_node,
                 window,
@@ -3034,7 +3032,7 @@ pub(crate) fn event_handler_mouse_dragged(
 
 pub(crate) fn event_handler_mouse_moved(
     event: SendCFRetained<CGEvent>,
-    event_modifier: MouseMod,
+    _event_modifier: MouseMod,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
@@ -3464,7 +3462,7 @@ pub(crate) fn event_handler_dock_did_restart(
 }
 
 pub(crate) fn event_handler_menu_opened(
-    window_id: WindowId,
+    _window_id: WindowId,
     window_manager: &mut WindowManager,
     focus_follows_mouse_suspended_value: &mut FfmMode,
     is_menu_open: &mut i32,
@@ -3650,7 +3648,7 @@ pub(crate) fn event_loop_run(
     } = &mut event_loop_owned_state;
 
     while let Ok(first_event_of_batch) = event_receiver.recv() {
-        autoreleasepool(|pool| {
+        autoreleasepool(|_| {
             let mut next = first_event_of_batch;
 
             loop {
@@ -4040,9 +4038,9 @@ pub(crate) fn event_loop_post(event: Event) {
     }
 }
 
-pub(crate) fn event_loop_begin() -> (Sender<Event>, Receiver<Event>) {
+pub(crate) fn event_loop_begin() -> Receiver<Event> {
     let (event_sender, event_receiver) = channel::<Event>();
-    let _ = EVENT_SENDER.set(event_sender.clone());
+    let _ = EVENT_SENDER.set(event_sender);
 
-    (event_sender, event_receiver)
+    event_receiver
 }

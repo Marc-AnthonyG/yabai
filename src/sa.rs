@@ -831,15 +831,6 @@ pub(crate) fn scripting_addition_set_shadow(window_id: WindowId, shadow: bool) -
     sa_payload_send(&mut bytes, length, SaOpcode::WindowShadow)
 }
 
-pub(crate) fn scripting_addition_focus_window(window_id: WindowId) -> bool {
-    let mut bytes = [0u8; SA_SOCKET_BUFF_LEN];
-    let mut length: i16 = 1 + 2;
-    if !pack(&mut bytes, &mut length, &window_id.0.to_ne_bytes()) {
-        return false;
-    }
-    sa_payload_send(&mut bytes, length, SaOpcode::WindowFocus)
-}
-
 pub(crate) fn scripting_addition_scale_window(
     window_id: WindowId,
     x: f32,

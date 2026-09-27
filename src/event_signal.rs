@@ -97,8 +97,6 @@ pub(crate) enum SignalContext {
 pub(crate) struct PreparedSignalCommand {
     arguments: Vec<CString>,
     environment: Vec<CString>,
-    argument_pointers: Vec<*const c_char>,
-    environment_pointers: Vec<*const c_char>,
 }
 
 pub(crate) const SIGNAL_TYPE_COUNT: usize = 30;
@@ -333,24 +331,20 @@ pub(crate) fn event_signal_prepare_commands(
                 arguments.push(CString::new(command).unwrap());
             }
 
-            let mut argument_pointers: Vec<*const c_char> =
-                arguments.iter().map(|argument| argument.as_ptr()).collect();
-            argument_pointers.push(core::ptr::null());
-
-            let mut environment_pointers: Vec<*const c_char> =
-                environment.iter().map(|entry| entry.as_ptr()).collect();
-            environment_pointers.push(core::ptr::null());
-
             prepared_commands.push(PreparedSignalCommand {
                 arguments,
                 environment,
-                argument_pointers,
-                environment_pointers,
             });
         }
     }
 
     prepared_commands
+}
+
+pub(crate) fn null_terminated_pointer_list(strings: &[CString]) -> Vec<*const c_char> {
+    let mut pointers: Vec<*const c_char> = strings.iter().map(|string| string.as_ptr()).collect();
+    pointers.push(core::ptr::null());
+    pointers
 }
 
 pub(crate) fn event_signal_flush(
@@ -362,6 +356,16 @@ pub(crate) fn event_signal_flush(
     }
 
     let prepared_commands = event_signal_prepare_commands(signal_event, signal_storage.as_slice());
+    let prepared_command_pointers: Vec<(Vec<*const c_char>, Vec<*const c_char>)> =
+        prepared_commands
+            .iter()
+            .map(|prepared_command| {
+                (
+                    null_terminated_pointer_list(&prepared_command.arguments),
+                    null_terminated_pointer_list(&prepared_command.environment),
+                )
+            })
+            .collect();
 
     let process_id = unsafe { libc::fork() };
     if process_id != 0 {
@@ -369,18 +373,17 @@ pub(crate) fn event_signal_flush(
         return;
     }
 
-    for prepared_command in prepared_commands.iter() {
+    for (argument_pointers, environment_pointers) in prepared_command_pointers.iter() {
         let process_id = unsafe { libc::fork() };
         if process_id != 0 {
             continue;
         }
 
         unsafe {
-            *libc::_NSGetEnviron() =
-                prepared_command.environment_pointers.as_ptr() as *mut *mut c_char;
+            *libc::_NSGetEnviron() = environment_pointers.as_ptr() as *mut *mut c_char;
             libc::_exit(libc::execvp(
-                prepared_command.argument_pointers[0],
-                prepared_command.argument_pointers.as_ptr(),
+                argument_pointers[0],
+                argument_pointers.as_ptr(),
             ));
         }
     }

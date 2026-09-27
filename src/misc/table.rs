@@ -104,12 +104,6 @@ impl<K: PartialEq, V> Table<K, V> {
             .flat_map(|bucket| bucket.iter().map(|(key, value)| (key, value)))
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&K, &mut V)> {
-        self.buckets
-            .iter_mut()
-            .flat_map(|bucket| bucket.iter_mut().map(|(key, value)| (&*key, value)))
-    }
-
     pub fn values(&self) -> impl Iterator<Item = &V> {
         self.buckets
             .iter()

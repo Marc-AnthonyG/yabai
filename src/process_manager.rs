@@ -6,7 +6,7 @@ use crate::display::display_space_list;
 use crate::display_manager::display_manager_active_display_list;
 use crate::event_loop::{Event, event_loop_post};
 use crate::ffi::carbon_events::{
-    EventHandlerCallRef, EventHandlerRef, EventHandlerUPP, EventRef, EventTargetRef, EventTypeSpec,
+    EventHandlerCallRef, EventHandlerRef, EventHandlerUPP, EventRef, EventTypeSpec,
     GetApplicationEventTarget, GetCurrentEventTime, GetEventKind, GetEventParameter,
     InstallEventHandler, OSStatus, kEventAppFrontSwitched, kEventAppLaunched, kEventAppTerminated,
     kEventClassApplication, kEventParamProcessID, noErr, typeProcessSerialNumber,
@@ -36,12 +36,6 @@ use crate::workspace::{
     workspace_application_destroy_running_ns_application, workspace_application_unobserve,
 };
 
-pub(crate) type ProcessEventHandler = unsafe extern "C-unwind" fn(
-    handler_call_ref: EventHandlerCallRef,
-    event: EventRef,
-    context: *mut c_void,
-) -> OSStatus;
-
 pub(crate) struct Process {
     pub(crate) process_serial_number: ProcessSerialNumber,
     pub(crate) process_id: ProcessId,
@@ -61,20 +55,7 @@ pub(crate) struct ProcessManager {
     pub(crate) finder_process_serial_number: ProcessSerialNumber,
 }
 
-pub(crate) struct CarbonProcessEventInstallation {
-    pub(crate) target: EventTargetRef,
-    pub(crate) handler: EventHandlerUPP,
-    pub(crate) event_type: [EventTypeSpec; 3],
-    pub(crate) handler_ref: EventHandlerRef,
-}
-
-unsafe impl Send for CarbonProcessEventInstallation {}
-unsafe impl Sync for CarbonProcessEventInstallation {}
-
 pub(crate) static PROCESS_TABLE: OnceLock<Mutex<Table<ProcessSerialNumber, Arc<Process>>>> =
-    OnceLock::new();
-
-pub(crate) static CARBON_PROCESS_EVENT_INSTALLATION: OnceLock<CarbonProcessEventInstallation> =
     OnceLock::new();
 
 pub(crate) const PROCESS_NAME_BLACKLIST: [&str; 4] = [
@@ -240,9 +221,9 @@ pub(crate) fn process_manager_active_space_for_psn(connection: i32) -> SpaceId {
 
 #[allow(non_upper_case_globals)]
 pub(crate) unsafe extern "C-unwind" fn process_handler(
-    handler_call_ref: EventHandlerCallRef,
+    _handler_call_ref: EventHandlerCallRef,
     event: EventRef,
-    context: *mut c_void,
+    _context: *mut c_void,
 ) -> OSStatus {
     let mut process_serial_number = ProcessSerialNumber {
         high_long_of_psn: 0,
@@ -385,7 +366,7 @@ pub(crate) fn process_manager_begin(process_manager: &mut ProcessManager) -> boo
     ];
     PROCESS_TABLE.get_or_init(|| Mutex::new(Table::new(125, hash_process_serial_number)));
 
-    objc2::rc::autoreleasepool(|pool| process_manager_add_running_processes(process_manager));
+    objc2::rc::autoreleasepool(|_| process_manager_add_running_processes(process_manager));
 
     let mut front_process_serial_number = ProcessSerialNumber {
         high_long_of_psn: 0,
@@ -412,13 +393,6 @@ pub(crate) fn process_manager_begin(process_manager: &mut ProcessManager) -> boo
             &mut handler_ref,
         )
     } == noErr;
-
-    let _ = CARBON_PROCESS_EVENT_INSTALLATION.set(CarbonProcessEventInstallation {
-        target,
-        handler,
-        event_type,
-        handler_ref,
-    });
 
     installed
 }

@@ -125,7 +125,6 @@ impl AxWindowNotification {
 
 pub(crate) struct WindowLivenessCell {
     pub(crate) window_id: WindowId,
-    pub(crate) application_process_id: ProcessId,
     pub(crate) state: AtomicU8,
 }
 
@@ -1935,7 +1934,6 @@ pub(crate) fn window_create(
         id: WindowId(0),
         liveness: Arc::new(WindowLivenessCell {
             window_id,
-            application_process_id: application,
             state: AtomicU8::new(WINDOW_LIVENESS_ALIVE),
         }),
         liveness_reference_held_by_the_observation: None,

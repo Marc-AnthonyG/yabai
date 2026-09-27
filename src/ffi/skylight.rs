@@ -8,7 +8,7 @@ use objc2_core_graphics::{CGContext, CGError};
 use crate::ffi::carbon_process::ProcessSerialNumber;
 
 pub type ConnectionCallback = unsafe extern "C-unwind" fn(
-    r#type: u32,
+    notification_type: u32,
     data: *mut c_void,
     data_length: usize,
     context: *mut c_void,
@@ -50,7 +50,7 @@ unsafe extern "C" {
     pub fn SLSReenableUpdate(connection_id: c_int) -> CGError;
     pub fn SLSNewWindowWithOpaqueShapeAndContext(
         connection_id: c_int,
-        r#type: c_int,
+        type_of_window: c_int,
         region: *const CFType,
         opaque_shape: *const CFType,
         options: c_int,
@@ -102,11 +102,13 @@ unsafe extern "C" {
         alpha: f32,
     ) -> CGError;
     pub fn SLSGetMenuBarAutohideEnabled(connection_id: c_int, enabled: *mut c_int) -> CGError;
+    #[cfg(target_arch = "x86_64")]
     pub fn SLSGetRevealedMenuBarBounds(
         rect: *mut CGRect,
         connection_id: c_int,
         space_id: u64,
     ) -> CGError;
+    #[cfg(target_arch = "aarch64")]
     pub fn SLSGetDisplayMenubarHeight(display_id: u32, height: *mut u32) -> CGError;
     pub fn SLSGetDockRectWithReason(
         connection_id: c_int,
@@ -131,12 +133,6 @@ unsafe extern "C" {
     ) -> *mut CFArray;
     pub fn SLSGetSpaceManagementMode(connection_id: c_int) -> c_int;
     pub fn SLSCopyManagedDisplaySpaces(connection_id: c_int) -> *mut CFArray;
-    pub fn SLSProcessAssignToSpace(
-        connection_id: c_int,
-        process_id: pid_t,
-        space_id: u64,
-    ) -> CGError;
-    pub fn SLSProcessAssignToAllSpaces(connection_id: c_int, process_id: pid_t) -> CGError;
     pub fn SLSMoveWindowsToManagedSpace(
         connection_id: c_int,
         window_list: *const CFArray,

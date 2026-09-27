@@ -324,10 +324,6 @@ pub fn ts_string_escape(string: &str) -> Option<String> {
     Some(destination)
 }
 
-pub fn ts_string_copy(string: &str) -> String {
-    string.to_owned()
-}
-
 pub fn string_copy(string: &str) -> String {
     string.to_owned()
 }

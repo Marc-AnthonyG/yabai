@@ -63,7 +63,7 @@ A node handle that crosses a `View` boundary is the pair `(SpaceId, NodeId)`, ne
 | `struct mouse_state` (`mouse_handler.h:62`) | **split**: `MouseTapState` + `MouseDragState` | `crate::mouse_handler`, `crate::state` | `DECISIONS.md` 23 |
 | `struct mouse_window_info` (`mouse_handler.h:53`) | `MouseWindowInfo` | `crate::mouse_handler` | |
 | `struct process` (`process_manager.h:7`) | `Process`, always held as `Arc<Process>` | `crate::process_manager` | `DECISIONS.md` 22 |
-| `struct process_manager` (`process_manager.h:17`) | **split**: `ProcessManager` + `PROCESS_TABLE` + `CarbonProcessEventInstallation` | `crate::process_manager` | §3.5 |
+| `struct process_manager` (`process_manager.h:17`) | **split**: `ProcessManager` + `PROCESS_TABLE`; `target`/`handler`/`type`/`ref` are locals of `process_manager_begin` | `crate::process_manager` | §3.5 |
 | `struct profile_anchor` (`misc/timer.h:8`) | **not translated** | — | dead code (`DECISIONS.md` 5) |
 | `struct properties` (`message.c:605`) | `Properties` | `crate::message` | |
 | `struct rgba_color` (`misc/helpers.h:162`) | `RgbaColor` | `crate::misc::helpers` | |
@@ -139,9 +139,9 @@ A node handle that crosses a `View` boundary is the pair `(SpaceId, NodeId)`, ne
 
 | C | Rust |
 | --- | --- |
-| `observer_callback` (`application.h:5`) | `type ObserverCallback` |
-| `display_callback` (`display.h:5`) | `type DisplayCallback` |
-| `process_event_handler` (`process_manager.h:5`) | `type ProcessEventHandler` |
+| `observer_callback` (`application.h:5`) | **not declared** — no user; handlers match `objc2_application_services::AXObserverCallback` |
+| `display_callback` (`display.h:5`) | **not declared** — no user |
+| `process_event_handler` (`process_manager.h:5`) | **not declared** — no user |
 | `connection_callback` (`misc/extern.h:2`) | `type ConnectionCallback` |
 | `table_hash_func` (`misc/hashtable.h:5`) | `type TableHashFunc` — becomes the `hash: fn(&K) -> u64` field |
 | `table_compare_func` (`misc/hashtable.h:8`) | `type TableCompareFunc` — **vanishes**, replaced by `K: PartialEq` |
@@ -152,7 +152,6 @@ A node handle that crosses a `View` boundary is the pair `(SpaceId, NodeId)`, ne
 | --- | --- | --- |
 | `EventLoopOwnedState` | `crate::state` | `DECISIONS.md` 12 |
 | `ProcessManager` | `crate::process_manager` | the event-loop-visible remainder of `struct process_manager` |
-| `CarbonProcessEventInstallation` | `crate::process_manager` | keeps the Carbon UPP alive; `target`/`handler`/`type`/`ref` |
 | `MouseDragState` | `crate::state` | event-loop half of `struct mouse_state` (`DECISIONS.md` 23) |
 | `MouseTapState` | `crate::mouse_handler` | atomic half of `struct mouse_state` |
 | `WindowLivenessCell` | `crate::window` | `DECISIONS.md` 21 |
@@ -163,7 +162,7 @@ A node handle that crosses a `View` boundary is the pair `(SpaceId, NodeId)`, ne
 | `MessageCursor<'message>` | `crate::message` | `DECISIONS.md` 27 |
 | `CFStringOwned` | `crate::ffi` | owned `CFStringRef` with `Drop` |
 | `OsaxPaths` | `crate::sa` | the eleven `sa.m` path buffers |
-| `MessageLoop` | `crate::message` | `UnixListener` + accept `JoinHandle` |
+| `MessageLoop` | `crate::message` | `UnixListener`; the accept thread is detached |
 | `MissionControlObserver` | `crate::mission_control` | the two CF refs |
 | `MacosVersion` | `crate::workspace` | the six version flags |
 | `ResizeHandle` | `crate::misc::macros` | `HANDLE_*` |
@@ -264,10 +263,10 @@ One row per C field. The Rust column is the **only** spelling. Pointer fields fo
 | C field | C type | Rust | note |
 | --- | --- | --- | --- |
 | `process` | `struct table` | `static PROCESS_TABLE: Mutex<Table<ProcessSerialNumber, Arc<Process>>>` | `DECISIONS.md` 22 |
-| `target` | `EventTargetRef` | `CarbonProcessEventInstallation::target` | inside `static CARBON_PROCESS_EVENT_INSTALLATION: OnceLock<_>` |
-| `handler` | `EventHandlerUPP` | `CarbonProcessEventInstallation::handler` | |
-| `type[3]` | `EventTypeSpec[3]` | `CarbonProcessEventInstallation::event_type` | `[EventTypeSpec; 3]`, `#[repr(C)]` |
-| `ref` | `EventHandlerRef` | `CarbonProcessEventInstallation::handler_ref` | `ref` is a Rust keyword |
+| `target` | `EventTargetRef` | local `target` of `process_manager_begin` | never read after `InstallEventHandler` |
+| `handler` | `EventHandlerUPP` | local `handler` of `process_manager_begin` | |
+| `type[3]` | `EventTypeSpec[3]` | local `event_type` of `process_manager_begin` | `[EventTypeSpec; 3]`, `#[repr(C)]` |
+| `ref` | `EventHandlerRef` | local `handler_ref` of `process_manager_begin` | `ref` is a Rust keyword |
 | `front_pid` | `pid_t` | `ProcessManager::front_process_id` | `ProcessId` |
 | `last_front_pid` | `pid_t` | `ProcessManager::last_front_process_id` | `ProcessId` |
 | `switch_event_time` | `EventTime` (`double`) | `ProcessManager::switch_event_time` | `f64` |
@@ -609,7 +608,7 @@ If a local ever needs the C words: `len` → `length`, `cap` → `capacity`, `bu
 | --- | --- | --- |
 | `g_message_loop::sockfd` (`message.c:2`) | `MessageLoop::listener` | `UnixListener` |
 | `g_message_loop::is_running` (`:3`) | **gone** | `for stream in listener.incoming()` |
-| `g_message_loop::thread` (`:4`) | `MessageLoop::thread` | `JoinHandle<()>` |
+| `g_message_loop::thread` (`:4`) | **gone** | never read; the accept thread is detached |
 | `g_mission_control_observer::ref` (`mission_control.c:47`) | `MissionControlObserver::element_ref` | `AXUIElementRef` |
 | `g_mission_control_observer::observer_ref` (`:48`) | `MissionControlObserver::observer_ref` | `AXObserverRef` |
 | `g_mission_control_observer::is_observing` (`:49`) | **gone** | `Option::is_some` on the `Mutex<Option<MissionControlObserver>>` |
@@ -657,7 +656,6 @@ Field order is the `src/yabai.c:27-35` declaration order. **Not** a parameter or
 | Rust field | Rust type |
 | --- | --- |
 | `window_id` | `WindowId` — write-once |
-| `application_process_id` | `ProcessId` — write-once |
 | `state` | `AtomicU8` |
 
 ---
@@ -892,7 +890,7 @@ each `fn(f32) -> f32` with the parameter named `interpolant`.
 | C | Rust |
 | --- | --- |
 | `TOKEN_TYPE_INVALID` | `TokenType::Invalid` |
-| `TOKEN_TYPE_UNKNOWN` | `TokenType::Unknown` — kept, never constructed |
+| `TOKEN_TYPE_UNKNOWN` | **not declared** — unreachable, never constructed |
 | `TOKEN_TYPE_INT` | `TokenType::Int(i32)` |
 | `TOKEN_TYPE_FLOAT` | `TokenType::Float(f32)` |
 | `TOKEN_TYPE_U32` | `TokenType::U32(u32)` |
@@ -930,7 +928,7 @@ each `fn(f32) -> f32` with the parameter named `interpolant`.
 | `SA_OPCODE_WINDOW_LAYER` | `SaOpcode::WindowLayer` | 0x09 |
 | `SA_OPCODE_WINDOW_STICKY` | `SaOpcode::WindowSticky` | 0x0A |
 | `SA_OPCODE_WINDOW_SHADOW` | `SaOpcode::WindowShadow` | 0x0B |
-| `SA_OPCODE_WINDOW_FOCUS` | `SaOpcode::WindowFocus` | 0x0C |
+| `SA_OPCODE_WINDOW_FOCUS` | **not generated** — no live sender | 0x0C |
 | `SA_OPCODE_WINDOW_SCALE` | `SaOpcode::WindowScale` | 0x0D |
 | `SA_OPCODE_WINDOW_SWAP_PROXY_IN` | `SaOpcode::WindowSwapProxyIn` | 0x0E |
 | `SA_OPCODE_WINDOW_SWAP_PROXY_OUT` | `SaOpcode::WindowSwapProxyOut` | 0x0F |
@@ -1015,7 +1013,7 @@ The four `*_VALID` bits are still **published** by `rule_serialize`, derived fro
 
 | C | Rust | value |
 | --- | --- | --- |
-| `MOUSE_MOD_NONE` | `MouseMod::NONE` | 0x01 |
+| `MOUSE_MOD_NONE` | **not declared** — only a designator of `mouse_mod_str` | 0x01 |
 | `MOUSE_MOD_ALT` | `MouseMod::ALT` | 0x02 |
 | `MOUSE_MOD_SHIFT` | `MouseMod::SHIFT` | 0x04 |
 | `MOUSE_MOD_CMD` | `MouseMod::CMD` | 0x08 |
@@ -1043,8 +1041,8 @@ The four `*_VALID` bits are still **published** by `rule_serialize`, derived fro
 | `AX_APPLICATION_WINDOW_MOVED_INDEX` | `AX_APPLICATION_WINDOW_MOVED_INDEX: usize` | 2 |
 | `AX_APPLICATION_WINDOW_RESIZED_INDEX` | `AX_APPLICATION_WINDOW_RESIZED_INDEX: usize` | 3 |
 | `AX_APPLICATION_WINDOW_TITLE_CHANGED_INDEX` | `AX_APPLICATION_WINDOW_TITLE_CHANGED_INDEX: usize` | 4 |
-| `AX_APPLICATION_WINDOW_MENU_OPENED_INDEX` | `AX_APPLICATION_WINDOW_MENU_OPENED_INDEX: usize` | 5 |
-| `AX_APPLICATION_WINDOW_MENU_CLOSED_INDEX` | `AX_APPLICATION_WINDOW_MENU_CLOSED_INDEX: usize` | 6 |
+| `AX_APPLICATION_WINDOW_MENU_OPENED_INDEX` | **not declared** — only a designator | 5 |
+| `AX_APPLICATION_WINDOW_MENU_CLOSED_INDEX` | **not declared** — only a designator | 6 |
 | `AX_APPLICATION_WINDOW_CREATED` | `AxApplicationNotification::WINDOW_CREATED` | 0x01 |
 | `AX_APPLICATION_WINDOW_FOCUSED` | `AxApplicationNotification::WINDOW_FOCUSED` | 0x02 |
 | `AX_APPLICATION_WINDOW_MOVED` | `AxApplicationNotification::WINDOW_MOVED` | 0x04 |
@@ -1147,7 +1145,7 @@ The four `*_VALID` bits are still **published** by `rule_serialize`, derived fro
 | `NODE_MAX_WINDOW_COUNT` (`view.h:151`) | `pub(crate) const NODE_MAX_WINDOW_COUNT: usize = 32;` |
 | `INSERT_FEEDBACK_WIDTH` (`view.c:6`) | `pub(crate) const INSERT_FEEDBACK_WIDTH: f64 = 2.0;` |
 | `INSERT_FEEDBACK_RADIUS` (`view.c:7`) | `pub(crate) const INSERT_FEEDBACK_RADIUS: f64 = 9.0;` |
-| `kCPSAllWindows` (`window_manager.h:4`) | `pub(crate) const kCPSAllWindows: u32 = 0x100;` with `#[allow(non_upper_case_globals)]` |
+| `kCPSAllWindows` (`window_manager.h:4`) | **not declared** — never read |
 | `kCPSUserGenerated` (`:5`) | `pub(crate) const kCPSUserGenerated: u32 = 0x200;` |
 | `kCPSNoWindows` (`:6`) | `pub(crate) const kCPSNoWindows: u32 = 0x400;` |
 | `DOCK_ORIENTATION_BOTTOM` (`display_manager.h:4`) | `pub(crate) const DOCK_ORIENTATION_BOTTOM: i32 = 2;` |
@@ -1477,7 +1475,7 @@ enum variants or `#define` string constants.
 
 | C spelling | Rust |
 | --- | --- |
-| `ref` | renamed to `element_ref` (or `handler_ref` on `CarbonProcessEventInstallation`, `observer_ref` where the C already says so). **No `r#ref` anywhere.** |
+| `ref` | renamed to `element_ref` (or `handler_ref` for the Carbon handler of `process_manager_begin`, `observer_ref` where the C already says so). **No `r#ref` anywhere.** |
 | `mod` | renamed to `event_modifier` or `misalignment`. **No `r#mod` anywhere.** |
 | `type` | see the table below. **No `r#type` anywhere** — no field in the daemon genuinely names a type discriminator. |
 | `move` | never appears as a C identifier; nothing to rename |
@@ -1488,7 +1486,7 @@ Every C `type` in `src/**`, and what it is called:
 | --- | --- | --- |
 | `struct event_signal::type` (`event_signal.h:96`) | `enum signal_type` | `PendingSignal::signal_type` |
 | `struct token_value::type` (`message.c:273`) | `enum token_type` | `TokenValue::type_of_value` |
-| `struct process_manager::type[3]` (`process_manager.h:22`) | `EventTypeSpec[3]` | `CarbonProcessEventInstallation::event_type` |
+| `struct process_manager::type[3]` (`process_manager.h:22`) | `EventTypeSpec[3]` | `event_type`, a local of `process_manager_begin` |
 | `struct event::type` (`event_loop.h:57`) | `enum event_type` | **gone** — the `Event` variant is the tag |
 | `event_loop_post` (`event_loop.h:74`) | `enum event_type type` | **gone** — the parameter is the whole `Event` |
 | `event_signal_push` (`event_signal.h:119`) | `enum signal_type type` | `signal_type` |

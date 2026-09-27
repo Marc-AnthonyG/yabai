@@ -95,6 +95,8 @@ fn run_or_fail_the_build(command: &mut Command) {
     }
 }
 
+const SA_OPCODES_NO_LIVE_DAEMON_CODE_SENDS: [&str; 1] = ["SA_OPCODE_WINDOW_FOCUS"];
+
 const OSAX_ATTRIBUTE_NAMES: [&str; 7] = [
     "OSAX_ATTRIB_DOCK_SPACES",
     "OSAX_ATTRIB_DPPM",
@@ -314,6 +316,7 @@ fn parse_sa_opcode_enum(header_text: &str, common_header: &Path) -> Vec<(String,
     }
 
     let mut opcodes = Vec::new();
+    let mut skipped_opcode_names: Vec<String> = Vec::new();
     for entry in body[body_start + 1..body_end].split(',') {
         let entry = entry.trim();
         if entry.is_empty() {
@@ -348,7 +351,21 @@ fn parse_sa_opcode_enum(header_text: &str, common_header: &Path) -> Vec<(String,
             );
         };
 
+        if SA_OPCODES_NO_LIVE_DAEMON_CODE_SENDS.contains(&name) {
+            skipped_opcode_names.push(name.to_string());
+            continue;
+        }
+
         opcodes.push((camel_case_from_screaming_snake_case(variant_suffix), value));
+    }
+
+    for skipped_name in SA_OPCODES_NO_LIVE_DAEMON_CODE_SENDS {
+        if !skipped_opcode_names.iter().any(|name| name == skipped_name) {
+            panic!(
+                "build.rs: enum sa_opcode in {} no longer declares {skipped_name}",
+                common_header.display()
+            );
+        }
     }
 
     if opcodes.is_empty() {

@@ -79,8 +79,6 @@ pub(crate) const AX_APPLICATION_WINDOW_FOCUSED_INDEX: usize = 1;
 pub(crate) const AX_APPLICATION_WINDOW_MOVED_INDEX: usize = 2;
 pub(crate) const AX_APPLICATION_WINDOW_RESIZED_INDEX: usize = 3;
 pub(crate) const AX_APPLICATION_WINDOW_TITLE_CHANGED_INDEX: usize = 4;
-pub(crate) const AX_APPLICATION_WINDOW_MENU_OPENED_INDEX: usize = 5;
-pub(crate) const AX_APPLICATION_WINDOW_MENU_CLOSED_INDEX: usize = 6;
 
 pub(crate) static AX_APPLICATION_NOTIFICATION_STR: [&str; 7] = [
     "kAXCreatedNotification",
@@ -109,7 +107,7 @@ pub(crate) fn ax_application_notification() -> &'static [CFStringOwned; 7] {
 }
 
 pub(crate) unsafe extern "C-unwind" fn application_notification_handler(
-    observer: NonNull<AXObserver>,
+    _observer: NonNull<AXObserver>,
     element: NonNull<AXUIElement>,
     notification: NonNull<CFString>,
     context: *mut c_void,

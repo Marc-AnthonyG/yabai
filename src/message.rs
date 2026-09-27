@@ -6,7 +6,6 @@ use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::sync::OnceLock;
 use std::sync::atomic::Ordering;
-use std::thread::JoinHandle;
 
 use crate::daemon_fail;
 use crate::display_manager::{
@@ -118,7 +117,6 @@ use crate::window_manager::{
 
 pub(crate) struct MessageLoop {
     pub(crate) listener: UnixListener,
-    pub(crate) thread: JoinHandle<()>,
 }
 
 #[derive(Clone, Copy)]
@@ -166,7 +164,6 @@ impl<'message> MessageCursor<'message> {
 #[derive(Clone, Copy)]
 pub(crate) enum TokenType {
     Invalid,
-    Unknown,
     Int(i32),
     Float(f32),
     U32(u32),
@@ -1077,7 +1074,7 @@ pub(crate) fn parse_display_selector(
                 ]);
             }
         }
-        TokenType::Unknown | TokenType::Float(_) | TokenType::U32(_) => {
+        TokenType::Float(_) | TokenType::U32(_) => {
             result.outcome = SelectorOutcome::NotASelector;
             response.fail_pieces(&[
                 FailurePiece::Text("value '"),
@@ -1220,7 +1217,7 @@ pub(crate) fn parse_space_selector(
                 ]);
             }
         }
-        TokenType::Unknown | TokenType::Float(_) | TokenType::U32(_) => {
+        TokenType::Float(_) | TokenType::U32(_) => {
             result.outcome = SelectorOutcome::NotASelector;
             response.fail_pieces(&[
                 FailurePiece::Text("value '"),
@@ -1722,7 +1719,7 @@ pub(crate) fn parse_window_selector(
                 ]);
             }
         }
-        TokenType::Unknown | TokenType::Float(_) | TokenType::U32(_) => {
+        TokenType::Float(_) | TokenType::U32(_) => {
             result.outcome = SelectorOutcome::NotASelector;
             response.fail_pieces(&[
                 FailurePiece::Text("value '"),
@@ -5820,7 +5817,9 @@ pub(crate) fn handle_message(
 }
 
 pub(crate) fn message_loop_run() {
-    let message_loop = MESSAGE_LOOP.wait();
+    let Some(message_loop) = MESSAGE_LOOP.get() else {
+        return;
+    };
     for stream in message_loop.listener.incoming() {
         let Ok(stream) = stream else {
             continue;
@@ -5876,9 +5875,8 @@ pub(crate) fn message_loop_begin(socket_path: &Path) -> bool {
     };
 
     let listener = UnixListener::from(socket);
-    if let Ok(thread) = std::thread::Builder::new().spawn(message_loop_run) {
-        let _ = MESSAGE_LOOP.set(MessageLoop { listener, thread });
-    }
+    let _ = MESSAGE_LOOP.set(MessageLoop { listener });
+    let _ = std::thread::Builder::new().spawn(message_loop_run);
 
     true
 }

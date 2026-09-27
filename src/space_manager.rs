@@ -994,7 +994,7 @@ pub(crate) fn space_manager_mission_control_index(space_id: SpaceId) -> i32 {
 }
 
 pub(crate) fn space_manager_mission_control_space(desktop_id: i32) -> SpaceId {
-    let mut result: u64 = 0;
+    let mut result: u64;
     let mut desktop_count: i32 = 1;
 
     let Some(display_spaces_ref) = (unsafe {
@@ -1041,7 +1041,7 @@ pub(crate) fn space_manager_cursor_space() -> SpaceId {
 
 pub(crate) fn space_manager_prev_space(space_id: SpaceId) -> SpaceId {
     let mut previous_space_id: u64 = 0;
-    let mut next_space_id: u64 = 0;
+    let mut next_space_id: u64;
 
     let Some(display_spaces_ref) = (unsafe {
         take_create_rule_result(SLSCopyManagedDisplaySpaces(*CONNECTION.get().unwrap()))

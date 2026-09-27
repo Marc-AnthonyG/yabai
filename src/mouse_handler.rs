@@ -56,7 +56,6 @@ pub(crate) enum MouseDropAction {
 pub(crate) struct MouseMod(pub u8);
 
 impl MouseMod {
-    pub(crate) const NONE: MouseMod = MouseMod(0x01);
     pub(crate) const ALT: MouseMod = MouseMod(0x02);
     pub(crate) const SHIFT: MouseMod = MouseMod(0x04);
     pub(crate) const CMD: MouseMod = MouseMod(0x08);
@@ -317,7 +316,6 @@ pub(crate) fn mouse_window_info_populate(
 }
 
 pub(crate) fn mouse_determine_drop_action(
-    mouse_drag_state: &mut MouseDragState,
     source_space_id: SpaceId,
     source_node_id: NodeId,
     destination_window_id: WindowId,

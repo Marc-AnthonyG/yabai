@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use core::ffi::c_void;
 
 use crate::display_manager::{
@@ -29,12 +31,6 @@ use crate::misc::response::Response;
 use crate::space_manager::space_manager_mission_control_index;
 use crate::workspace::workspace_display_notch_height;
 
-pub(crate) type DisplayCallback = unsafe extern "C-unwind" fn(
-    display_id: CGDirectDisplayID,
-    flags: CGDisplayChangeSummaryFlags,
-    context: *mut c_void,
-);
-
 macro_rules! display_property_list {
     ($display_property_entry:ident) => {
         $display_property_entry! {
@@ -64,7 +60,7 @@ display_property_list!(define_display_property_list);
 pub(crate) unsafe extern "C-unwind" fn display_handler(
     display_id: CGDirectDisplayID,
     flags: CGDisplayChangeSummaryFlags,
-    context: *mut c_void,
+    _context: *mut c_void,
 ) {
     if flags.contains(kCGDisplayAddFlag) {
         event_loop_post(Event::DisplayAdded(DisplayId(display_id)));

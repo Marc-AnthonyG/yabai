@@ -1,7 +1,6 @@
 use crate::display::arrangement::display_manager_display_id_arrangement;
 use crate::display::manager::DisplayManager;
 use crate::ffi::core_foundation::ts_cfstring_copy;
-use crate::handles::{ROOT_NODE_ID, SpaceId, WindowId};
 use crate::layout::settings::VIEW_TYPE_STR;
 use crate::layout::tree::{window_node_find_first_leaf, window_node_find_last_leaf};
 use crate::space::labels::space_manager_get_label_for_space;
@@ -10,6 +9,7 @@ use crate::space::managed_space::{
     space_display_id, space_is_fullscreen, space_is_visible, space_window_list,
 };
 use crate::space::manager::SpaceManager;
+use crate::support::handles::{ROOT_NODE_ID, SpaceId, WindowId};
 use crate::support::json::json_bool;
 use crate::support::response::Response;
 use crate::window::manager::WindowManager;

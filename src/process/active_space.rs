@@ -8,8 +8,8 @@ use crate::ffi::skylight::{
     SLSWindowIteratorGetLevel, SLSWindowIteratorGetParentID, SLSWindowIteratorGetTags,
     SLSWindowIteratorGetWindowID, SLSWindowQueryResultCopyWindows, SLSWindowQueryWindows,
 };
-use crate::globals::CONNECTION;
-use crate::handles::{SpaceId, WindowId};
+use crate::state::process_wide::CONNECTION;
+use crate::support::handles::{SpaceId, WindowId};
 use crate::window::model::window_space;
 
 pub(crate) fn process_manager_active_space_for_psn(connection: i32) -> SpaceId {

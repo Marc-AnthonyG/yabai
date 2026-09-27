@@ -7,9 +7,9 @@ use crate::ffi::core_foundation::{
 use crate::ffi::skylight::{
     SLSCopyManagedDisplaySpaces, SLSManagedDisplayGetCurrentSpace, SLSManagedDisplayIsAnimating,
 };
-use crate::globals::CONNECTION;
-use crate::handles::{DisplayId, SpaceId};
-use crate::workspace::{
+use crate::state::process_wide::CONNECTION;
+use crate::support::handles::{DisplayId, SpaceId};
+use crate::support::macos_version::{
     workspace_is_macos_bigsur, workspace_is_macos_monterey, workspace_is_macos_ventura,
 };
 

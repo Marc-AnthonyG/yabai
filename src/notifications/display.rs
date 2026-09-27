@@ -1,11 +1,11 @@
 use core::ffi::c_void;
 
-use crate::event_loop::{Event, event_loop_post};
+use crate::event::queue::{Event, event_loop_post};
 use crate::ffi::core_graphics::{
     CGDirectDisplayID, CGDisplayChangeSummaryFlags, kCGDisplayAddFlag,
     kCGDisplayDesktopShapeChangedFlag, kCGDisplayMovedFlag, kCGDisplayRemoveFlag,
 };
-use crate::handles::DisplayId;
+use crate::support::handles::DisplayId;
 
 pub(crate) unsafe extern "C-unwind" fn display_handler(
     display_id: CGDirectDisplayID,

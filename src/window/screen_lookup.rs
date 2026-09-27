@@ -1,8 +1,8 @@
 use crate::ffi::core_foundation::CGPoint;
 use crate::ffi::skylight::{SLSFindWindowAndOwner, SLSGetCurrentCursorLocation};
-use crate::globals::CONNECTION;
-use crate::handles::{SpaceId, WindowId};
 use crate::space::managed_space::space_window_list;
+use crate::state::process_wide::CONNECTION;
+use crate::support::handles::{SpaceId, WindowId};
 use crate::window::janky_borders::window_manager_window_connection_is_jankyborders;
 use crate::window::manager::{WindowManager, window_manager_find_window};
 

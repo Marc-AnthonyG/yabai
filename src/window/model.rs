@@ -32,14 +32,14 @@ use crate::ffi::skylight::{
     SLSWindowIteratorGetTags, SLSWindowQueryResultCopyWindows, SLSWindowQueryWindows,
 };
 use crate::ffi::skylight_dynamic::cgs_get_connection_port_by_id;
-use crate::globals::{CONNECTION, LAYER_NORMAL_WINDOW_LEVEL};
-use crate::handles::{DisplayId, ProcessId, SpaceId, WindowId};
 use crate::space::managed_space::space_is_fullscreen;
-use crate::window::manager::WindowManager;
-use crate::workspace::{
+use crate::state::process_wide::{CONNECTION, LAYER_NORMAL_WINDOW_LEVEL};
+use crate::support::handles::{DisplayId, ProcessId, SpaceId, WindowId};
+use crate::support::macos_version::{
     workspace_is_macos_sequoia, workspace_is_macos_sonoma, workspace_is_macos_tahoe,
     workspace_is_macos_ventura,
 };
+use crate::window::manager::WindowManager;
 
 pub(crate) struct Window {
     pub(crate) application: Option<ProcessId>,

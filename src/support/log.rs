@@ -31,11 +31,11 @@ macro_rules! require {
 }
 
 pub fn g_verbose() -> bool {
-    crate::globals::VERBOSE.load(std::sync::atomic::Ordering::Relaxed)
+    crate::state::process_wide::VERBOSE.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 pub fn set_g_verbose(value: bool) {
-    crate::globals::VERBOSE.store(value, std::sync::atomic::Ordering::Relaxed);
+    crate::state::process_wide::VERBOSE.store(value, std::sync::atomic::Ordering::Relaxed);
 }
 
 pub fn or_null(value: Option<&str>) -> &str {

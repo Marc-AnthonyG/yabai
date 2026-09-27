@@ -1,7 +1,7 @@
 use crate::ffi::skylight::SLSSetMenuBarInsetAndAlpha;
-use crate::globals::CONNECTION;
-use crate::handles::WindowId;
 use crate::scripting_addition::client::scripting_addition_set_opacity;
+use crate::state::process_wide::CONNECTION;
+use crate::support::handles::WindowId;
 use crate::window::focus::window_manager_focused_window;
 use crate::window::manager::{WindowManager, window_manager_is_window_eligible};
 

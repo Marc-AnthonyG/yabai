@@ -5,23 +5,23 @@ use crate::display::manager::DisplayManager;
 use crate::display::spaces::{display_manager_display_is_animating, display_space_id};
 use crate::ffi::accessibility::{AXUIElementSetAttributeValue, kAXFullscreenAttribute};
 use crate::ffi::core_foundation::{as_cftype, kCFBooleanFalse, kCFBooleanTrue};
-use crate::handles::{ROOT_NODE_ID, WindowId};
 use crate::layout::settings::{ViewFlag, ViewType};
 use crate::layout::tree::{view_find_window_node, window_node_flush};
 use crate::scripting_addition::client::scripting_addition_scale_window;
 use crate::space::focus::space_manager_active_space;
 use crate::space::managed_space::{space_is_user, space_is_visible};
 use crate::space::manager::{SpaceManager, space_manager_find_view};
+use crate::support::handles::{ROOT_NODE_ID, WindowId};
+use crate::support::macos_version::{
+    workspace_is_macos_monterey, workspace_is_macos_sequoia, workspace_is_macos_sonoma,
+    workspace_is_macos_tahoe, workspace_is_macos_ventura,
+};
 use crate::window::animation::{WindowCapture, window_manager_animate_window};
 use crate::window::focus::window_manager_focus_window_with_raise_resolving_its_application;
 use crate::window::manager::{WindowManager, window_manager_find_managed_window};
 use crate::window::model::{
     WindowFlag, window_check_flag, window_clear_flag, window_display_id, window_is_fullscreen,
     window_set_flag, window_space,
-};
-use crate::workspace::{
-    workspace_is_macos_monterey, workspace_is_macos_sequoia, workspace_is_macos_sonoma,
-    workspace_is_macos_tahoe, workspace_is_macos_ventura,
 };
 
 pub(crate) fn window_manager_wait_for_native_fullscreen_transition(

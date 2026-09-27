@@ -11,3 +11,5 @@ pub fn dispatch_after_on_main_queue(delay_in_nanoseconds: i64, work: impl Fn() +
         );
     }
 }
+
+pub(crate) const NSEC_PER_SEC: u64 = 1000000000;

@@ -10,7 +10,7 @@ use crate::ffi::accessibility::{
 use crate::ffi::core_foundation::{
     CFType, as_cftype, kCFBooleanFalse, kCFBooleanTrue, take_create_rule_result,
 };
-use crate::handles::WindowId;
+use crate::support::handles::WindowId;
 use crate::window::manager::{WindowManager, WindowOpError};
 use crate::window::model::{WindowFlag, window_can_minimize, window_check_flag};
 

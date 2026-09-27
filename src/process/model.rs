@@ -6,12 +6,12 @@ use crate::ffi::carbon_process::{
     CopyProcessName, GetProcessInformation, GetProcessPID, ProcessInfoRec, ProcessSerialNumber,
 };
 use crate::ffi::core_foundation::{CFString, cfstring_copy, take_create_rule_result};
-use crate::handles::ProcessId;
-use crate::support::strings::string_equals;
-use crate::workspace::{
-    WORKSPACE_CONTEXT, workspace_application_create_running_ns_application,
-    workspace_application_destroy_running_ns_application,
+use crate::notifications::workspace::{
+    WORKSPACE_CONTEXT, workspace_application_destroy_running_ns_application,
 };
+use crate::process::running_application::workspace_application_create_running_ns_application;
+use crate::support::handles::ProcessId;
+use crate::support::strings::string_equals;
 
 pub(crate) struct Process {
     pub(crate) process_serial_number: ProcessSerialNumber,

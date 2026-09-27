@@ -3,7 +3,6 @@ use std::sync::atomic::Ordering;
 use crate::display::manager::DisplayManager;
 use crate::ffi::core_foundation::{CGPoint, CGRect, CGSize};
 use crate::ffi::core_graphics::CGRectContainsPoint;
-use crate::handles::{NodeId, SpaceId, WindowId};
 use crate::layout::settings::ViewType;
 use crate::layout::tree::{
     NODE_MAX_WINDOW_COUNT, WindowNodeChild, WindowNodeSplit,
@@ -17,6 +16,7 @@ use crate::scripting_addition::client::scripting_addition_order_window;
 use crate::space::manager::SpaceManager;
 use crate::space::tiling::{space_manager_tile_window_on_space, space_manager_untile_window};
 use crate::support::geometry::triangle_contains_point;
+use crate::support::handles::{NodeId, SpaceId, WindowId};
 use crate::support::layer::LAYER_BELOW;
 use crate::support::resize_handle::ResizeHandle;
 use crate::window::animation::{

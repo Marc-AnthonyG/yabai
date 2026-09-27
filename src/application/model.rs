@@ -10,9 +10,9 @@ use crate::ffi::accessibility::{
 use crate::ffi::carbon_process::{IsProcessVisible, ProcessSerialNumber, psn_equals};
 use crate::ffi::core_foundation::{CFArray, CFRetained, CFType, take_create_rule_result};
 use crate::ffi::skylight::{_SLPSGetFrontProcess, SLSGetConnectionIDForPSN};
-use crate::globals::CONNECTION;
-use crate::handles::{ProcessId, WindowId};
 use crate::process::model::Process;
+use crate::state::process_wide::CONNECTION;
+use crate::support::handles::{ProcessId, WindowId};
 
 pub(crate) struct Application {
     pub(crate) element_ref: AXUIElementRef,

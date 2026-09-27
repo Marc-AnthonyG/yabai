@@ -3,8 +3,6 @@ use crate::display::manager::DisplayManager;
 use crate::display::spaces::{display_space_id, display_space_list};
 use crate::ffi::core_foundation::{CFEqual, SendCFRetained, as_cftype, take_create_rule_result};
 use crate::ffi::skylight::SLSSpaceCopyName;
-use crate::globals::CONNECTION;
-use crate::handles::{DisplayId, SpaceId};
 use crate::layout::insertion::WindowInsertionPoint;
 use crate::layout::settings::{ViewFlag, ViewType};
 use crate::layout::tree::{WindowNodeChild, WindowNodeSplit};
@@ -12,6 +10,8 @@ use crate::layout::view::{View, view_create, view_flush, view_update};
 use crate::mouse::drag::MouseDragState;
 use crate::space::focus::space_manager_active_space;
 use crate::space::labels::{SpaceLabel, space_manager_get_label_for_space};
+use crate::state::process_wide::CONNECTION;
+use crate::support::handles::{DisplayId, SpaceId};
 use crate::support::table::Table;
 use crate::window::manager::WindowManager;
 

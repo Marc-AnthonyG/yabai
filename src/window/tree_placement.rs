@@ -1,7 +1,6 @@
 use crate::display::manager::DisplayManager;
 use crate::ffi::core_foundation::CGPoint;
 use crate::ffi::skylight::_SLPSSetFrontProcessWithOptions;
-use crate::handles::WindowId;
 use crate::layout::area::area_make_pair;
 use crate::layout::insertion::{insert_feedback_destroy, insert_feedback_show};
 use crate::layout::settings::{
@@ -23,6 +22,7 @@ use crate::space::tiling::{
     space_manager_tile_window_on_space_with_insertion_point, space_manager_untile_window,
 };
 use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST};
+use crate::support::handles::WindowId;
 use crate::support::layer::LAYER_BELOW;
 use crate::window::animation::{
     WindowCapture, window_manager_animate_window, window_manager_animate_window_list,

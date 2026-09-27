@@ -1,5 +1,5 @@
-use crate::handles::WindowId;
 use crate::scripting_addition::client::scripting_addition_set_shadow;
+use crate::support::handles::WindowId;
 use crate::window::manager::{
     PurifyMode, WindowManager, window_manager_find_managed_window,
     window_manager_is_window_eligible,

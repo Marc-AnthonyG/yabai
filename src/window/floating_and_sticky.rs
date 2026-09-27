@@ -1,10 +1,10 @@
 use crate::display::manager::DisplayManager;
-use crate::handles::WindowId;
 use crate::mouse::drag::MouseDragState;
 use crate::scripting_addition::client::scripting_addition_set_sticky;
 use crate::space::focus::space_manager_active_space;
 use crate::space::manager::SpaceManager;
 use crate::space::tiling::{space_manager_tile_window_on_space, space_manager_untile_window};
+use crate::support::handles::WindowId;
 use crate::window::manager::{
     WindowManager, window_manager_add_managed_window, window_manager_find_managed_window,
     window_manager_is_window_eligible, window_manager_remove_managed_window,

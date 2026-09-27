@@ -3,9 +3,9 @@ use crate::ffi::skylight::{
     SLSCopyAssociatedWindows, SLSWindowIteratorAdvance, SLSWindowIteratorGetParentID,
     SLSWindowIteratorGetWindowID, SLSWindowQueryResultCopyWindows, SLSWindowQueryWindows,
 };
-use crate::globals::CONNECTION;
-use crate::handles::WindowId;
 use crate::scripting_addition::client::scripting_addition_set_layer;
+use crate::state::process_wide::CONNECTION;
+use crate::support::handles::WindowId;
 use crate::support::layer::{LAYER_AUTO, LAYER_BELOW, LAYER_NORMAL};
 use crate::window::manager::{WindowManager, window_manager_find_managed_window};
 

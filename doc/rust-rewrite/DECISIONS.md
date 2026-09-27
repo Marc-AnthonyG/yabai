@@ -163,9 +163,8 @@ elaborates these decisions; none may reopen them.
 41. `GLOSSARY.md` is binding for every spelling and every type name. Where a pattern document,
     `THREADS.md` or an inventory spells something differently, the glossary wins.
 42. Code on disk is ground truth for the API it defines. `src/ffi/`, `src/support/`,
-    `src/service/`, `src/globals.rs` and `src/state.rs` exist and compile; later waves call what
-    is there, not what a pattern document sketched. The dispatch wrapper is
-    `dispatch_after_on_main_queue`.
+    `src/service/` and `src/state/` exist and compile; later waves call what is there, not what a
+    pattern document sketched. The dispatch wrapper is `dispatch_after_on_main_queue`.
 43. Every C `FILE *rsp` parameter is `response: &mut Response`, in first position. The two
     verbose-mode calls that pass `stdout` (`src/window_manager.c:1531`, `:1547`) build the value
     with `Response::to_standard_output()`.
@@ -185,8 +184,8 @@ elaborates these decisions; none may reopen them.
     shared file, because units run concurrently. They are merged into `DEVIATIONS.md` once, at
     the end of phase 2. Signature changes follow the same rule under `signature-changes/`.
 50. `ax_application_notification` and `ax_application_notification_str` belong to
-    `src/application/notifications.rs`. `WORKSPACE_CONTEXT` is declared by the unit that writes
-    `src/workspace.rs`. `SIGNAL_TYPE_COUNT` moves from `src/state.rs` to
+    `src/notifications/application.rs`. `WORKSPACE_CONTEXT` is declared by the unit that writes
+    `src/notifications/workspace.rs`. `SIGNAL_TYPE_COUNT` moves from `src/state.rs` to
     `src/signal/definition.rs`.
 51. `src/support/timer.rs` does not exist: its only live functions are `read_os_timer` and
     `read_os_freq` in `src/ffi/carbon_core.rs`. `Cargo.lock` is kept.

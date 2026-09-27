@@ -1,9 +1,9 @@
 use crate::display::identity::display_manager_active_display_list;
 use crate::display::manager::DisplayManager;
 use crate::display::spaces::display_space_list;
-use crate::handles::{DisplayId, SpaceId, WindowId};
 use crate::serialise::space::view_serialize;
 use crate::space::manager::{SpaceManager, space_manager_find_view};
+use crate::support::handles::{DisplayId, SpaceId, WindowId};
 use crate::support::response::Response;
 use crate::window::manager::WindowManager;
 use crate::window::model::window_space_list;

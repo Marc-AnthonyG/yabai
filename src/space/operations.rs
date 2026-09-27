@@ -2,9 +2,7 @@ use std::sync::atomic::{Ordering, compiler_fence};
 
 use crate::display::manager::DisplayManager;
 use crate::display::spaces::{display_manager_display_is_animating, display_space_id};
-use crate::handles::{DisplayId, SpaceId};
 use crate::layout::view::{view_flush, view_update};
-use crate::mission_control::{MissionControlMode, mission_control_is_active};
 use crate::mouse::drag::MouseDragState;
 use crate::scripting_addition::client::{
     scripting_addition_create_space, scripting_addition_destroy_space,
@@ -21,6 +19,8 @@ use crate::space::manager::{
     space_manager_point_view_handles_at_rekeyed_views,
 };
 use crate::space::moving_windows::space_manager_move_window_list_to_space;
+use crate::state::mission_control_mode::{MissionControlMode, mission_control_is_active};
+use crate::support::handles::{DisplayId, SpaceId};
 use crate::window::manager::WindowManager;
 use crate::window::space_reconciliation::window_manager_validate_and_check_for_windows_on_space;
 

@@ -18,13 +18,13 @@ use crate::ffi::core_graphics::{CGPostMouseEvent, CGWarpMouseCursorPosition};
 use crate::ffi::skylight::{
     SLSGetConnectionPSN, SLSGetWindowOwner, SLSSetActiveMenuBarDisplayIdentifier,
 };
-use crate::globals::CONNECTION;
-use crate::handles::{DisplayId, SpaceId, WindowId};
-use crate::mission_control::{MissionControlMode, mission_control_is_active};
 use crate::scripting_addition::client::scripting_addition_focus_space;
 use crate::space::focus::space_manager_active_space;
 use crate::space::managed_space::space_display_id;
 use crate::space::operations::SpaceOpError;
+use crate::state::mission_control_mode::{MissionControlMode, mission_control_is_active};
+use crate::state::process_wide::CONNECTION;
+use crate::support::handles::{DisplayId, SpaceId, WindowId};
 use crate::window::focus::{window_manager_center_mouse, window_manager_focus_window_with_raise};
 use crate::window::manager::WindowManager;
 use crate::window::screen_lookup::window_manager_find_window_on_space_by_rank_filtering_window;

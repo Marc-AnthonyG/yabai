@@ -10,9 +10,9 @@ use crate::ffi::foundation::{NSBundle, NSString};
 use crate::ffi::libsystem::{
     CSR_ALLOW_TASK_FOR_PID, CSR_ALLOW_UNRESTRICTED_FS, csr_get_active_config,
 };
-use crate::globals::SA_SOCKET_FILE;
 use crate::scripting_addition::client::scripting_addition_request_handshake;
 use crate::scripting_addition::frame::{OSAX_ATTRIB_ALL, OSAX_VERSION, SA_SOCKET_PATH_FMT};
+use crate::state::process_wide::SA_SOCKET_FILE;
 use crate::support::privilege::is_root;
 use crate::support::strings::{MAXLEN, string_equals};
 use crate::{notify, warn};

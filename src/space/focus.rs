@@ -13,14 +13,14 @@ use crate::ffi::core_graphics::{
     CGEventCreate, CGEventField, CGEventPost, CGEventSetDoubleValueField,
     CGEventSetIntegerValueField, CGPostMouseEvent, CGWarpMouseCursorPosition, kCGSessionEventTap,
 };
-use crate::handles::{DisplayId, SpaceId};
-use crate::mission_control::{MissionControlMode, mission_control_is_active};
 use crate::mouse::drag::MouseDragState;
 use crate::scripting_addition::client::scripting_addition_focus_space;
 use crate::space::lookup::space_manager_mission_control_index;
 use crate::space::managed_space::space_display_id;
 use crate::space::manager::SpaceManager;
 use crate::space::operations::{SpaceOpError, space_manager_swap_space_with_space_on_display};
+use crate::state::mission_control_mode::{MissionControlMode, mission_control_is_active};
+use crate::support::handles::{DisplayId, SpaceId};
 use crate::window::focus::window_manager_focused_window;
 use crate::window::manager::WindowManager;
 use crate::window::model::window_display_id;

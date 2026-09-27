@@ -20,13 +20,13 @@ use crate::ffi::skylight::{
     SLSTransactionSetWindowAlpha, SLSTransactionSetWindowSystemAlpha,
     SLSTransactionSetWindowTransform,
 };
-use crate::globals::CV_HOST_CLOCK_FREQUENCY;
-use crate::handles::WindowId;
 use crate::scripting_addition::client::{
     scripting_addition_swap_window_proxy_in, scripting_addition_swap_window_proxy_out,
 };
+use crate::state::process_wide::CV_HOST_CLOCK_FREQUENCY;
 use crate::support::arithmetic::lerp;
 use crate::support::easing::AnimationEasingType;
+use crate::support::handles::WindowId;
 use crate::support::table::Table;
 use crate::window::frame::window_manager_set_window_frame;
 use crate::window::janky_borders::window_manager_notify_jankyborders;

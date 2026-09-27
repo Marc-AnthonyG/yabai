@@ -9,9 +9,9 @@ use crate::ffi::carbon_events::{
 use crate::ffi::carbon_process::{GetNextProcess, GetProcessPID, ProcessSerialNumber, kNoProcess};
 use crate::ffi::libsystem::process_is_being_debugged;
 use crate::ffi::skylight::_SLPSGetFrontProcess;
-use crate::handles::ProcessId;
+use crate::notifications::process::process_handler;
 use crate::process::model::{Process, process_create, process_pid_for_psn};
-use crate::process::notifications::process_handler;
+use crate::support::handles::ProcessId;
 use crate::support::strings::string_equals;
 use crate::support::table::Table;
 

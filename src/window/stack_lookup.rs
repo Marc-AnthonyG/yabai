@@ -1,9 +1,9 @@
 use crate::display::manager::DisplayManager;
-use crate::handles::WindowId;
 use crate::layout::tree::{NODE_MAX_WINDOW_COUNT, view_find_window_node};
 use crate::space::focus::space_manager_active_space;
 use crate::space::manager::{SpaceManager, space_manager_find_view};
 use crate::support::arithmetic::in_range_ii;
+use crate::support::handles::WindowId;
 use crate::window::manager::{WindowManager, window_manager_find_window};
 
 fn window_node_stack_of_window_in_active_view(

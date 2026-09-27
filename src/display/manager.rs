@@ -1,8 +1,8 @@
 use crate::display::identity::display_manager_active_display_id;
 use crate::display::labels::DisplayLabel;
-use crate::display::notifications::display_handler;
 use crate::ffi::core_graphics::{CGDisplayRegisterReconfigurationCallback, kCGErrorSuccess};
-use crate::handles::DisplayId;
+use crate::notifications::display::display_handler;
+use crate::support::handles::DisplayId;
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 #[repr(usize)]

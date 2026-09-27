@@ -2,10 +2,10 @@
 
 Windows as yabai tracks and drives them: the window struct and what AX and SkyLight report about
 it, the window manager's tables and settings, discovering windows and applying rules to them, the
-lookups that select a window, and every window command (focus, frame, opacity, layer, shadow,
-fullscreen and zoom, floating, placement in a tree, on a grid or on another space, the
-scratchpad), including the animation that carries windows to their new frames through proxy
-windows.
+lookups that select a window, what changes when a window gains focus, and every window command
+(focus, frame, opacity, layer, shadow, fullscreen and zoom, floating, placement in a tree, on a
+grid or on another space, the scratchpad), including the animation that carries windows to their
+new frames through proxy windows.
 
 ## Notes
 
@@ -16,9 +16,6 @@ windows.
 - The liveness cell is shared between a window and its AX refcon (decision 21). Claiming a
   window for destruction is a compare-exchange from alive to dead; every other probe is a load of
   the same cell. An event for a window that is dead or no longer tracked is dropped.
-- AX notification callbacks run on the main thread and never touch event-loop-owned memory
-  (decision 20). The refcon is a raw `Arc` pointer to the liveness cell; it is released on the
-  main queue after the notifications are removed, never from the event-loop thread.
 - The animation context is an `Arc` shared with the CVDisplayLink callback thread (decisions 24,
   46), and proxy images are captured on scoped builder threads. The proxies' target and frame
   atomics hold `f32` and `f64` bits, not integers, and the animations table is locked for exactly

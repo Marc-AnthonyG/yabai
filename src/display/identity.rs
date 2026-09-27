@@ -12,8 +12,8 @@ use crate::ffi::skylight::{
     SLSCopyActiveMenuBarDisplayIdentifier, SLSCopyBestManagedDisplayForPoint,
     SLSCopyBestManagedDisplayForRect, SLSGetCurrentCursorLocation,
 };
-use crate::globals::CONNECTION;
-use crate::handles::DisplayId;
+use crate::state::process_wide::CONNECTION;
+use crate::support::handles::DisplayId;
 
 pub(crate) fn display_uuid(display_id: DisplayId) -> Option<CFStringOwned> {
     let uuid_ref = unsafe { take_create_rule_result(CGDisplayCreateUUIDFromDisplayID(display_id.0)) };

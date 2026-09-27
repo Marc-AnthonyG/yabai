@@ -1,9 +1,9 @@
 #![allow(non_snake_case)]
 
-use core::ffi::{c_uint, c_void};
+use core::ffi::c_void;
 use core::mem::ManuallyDrop;
 use std::panic::AssertUnwindSafe;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, OnceLock};
 
@@ -12,48 +12,29 @@ use objc2::runtime::AnyObject;
 use objc2::{AnyThread, DefinedClass, define_class, msg_send, sel};
 
 use crate::debug;
-use crate::event_loop::{EVENT_SENDER, Event};
+use crate::event::queue::{EVENT_SENDER, Event};
 use crate::ffi::appkit::{
     APPLE_INTERFACE_MENU_BAR_HIDING_CHANGED_NOTIFICATION, COM_APPLE_DOCK_PREFCHANGED,
     NS_APPLICATION_DOCK_DID_RESTART_NOTIFICATION,
-    NS_WORKSPACE_ACTIVE_DISPLAY_DID_CHANGE_NOTIFICATION, NSApplicationActivationPolicy,
-    NSRunningApplication, NSScreen, NSWorkspace, NSWorkspaceActiveSpaceDidChangeNotification,
-    NSWorkspaceApplicationKey, NSWorkspaceDidHideApplicationNotification,
-    NSWorkspaceDidUnhideApplicationNotification, NSWorkspaceDidWakeNotification,
+    NS_WORKSPACE_ACTIVE_DISPLAY_DID_CHANGE_NOTIFICATION, NSRunningApplication, NSWorkspace,
+    NSWorkspaceActiveSpaceDidChangeNotification, NSWorkspaceApplicationKey,
+    NSWorkspaceDidHideApplicationNotification, NSWorkspaceDidUnhideApplicationNotification,
+    NSWorkspaceDidWakeNotification,
 };
-use crate::ffi::core_graphics::CGDisplayIsBuiltin;
 use crate::ffi::dispatch::dispatch_after_on_main_queue;
 use crate::ffi::foundation::{
-    MainThreadMarker, NSDictionary, NSDistributedNotificationCenter, NSKeyValueChangeNewKey,
+    NSDictionary, NSDistributedNotificationCenter, NSKeyValueChangeNewKey,
     NSKeyValueObservingOptions, NSNotification, NSNotificationCenter, NSObject,
     NSObjectNSKeyValueObserverRegistration, NSProcessInfo, NSString,
 };
-use crate::handles::{DisplayId, ProcessId};
 use crate::process::model::Process;
-
-macro_rules! supported_macos_version_list {
-    ($entry:ident) => {
-        $entry!(tahoe,    _workspace_is_macos_version_tahoe,    workspace_is_macos_tahoe,    26);
-        $entry!(sequoia,  _workspace_is_macos_version_sequoia,  workspace_is_macos_sequoia,  15);
-        $entry!(sonoma,   _workspace_is_macos_version_sonoma,   workspace_is_macos_sonoma,   14);
-        $entry!(ventura,  _workspace_is_macos_version_ventura,  workspace_is_macos_ventura,  13);
-        $entry!(monterey, _workspace_is_macos_version_monterey, workspace_is_macos_monterey, 12);
-        $entry!(bigsur,   _workspace_is_macos_version_bigsur,   workspace_is_macos_bigsur,   11);
-    };
-}
-
-macro_rules! support_macos_version {
-    ($name:ident, $flag_name:ident, $accessor_name:ident, $major_version:literal) => {
-        #[allow(non_upper_case_globals)]
-        static $flag_name: AtomicBool = AtomicBool::new(false);
-
-        pub(crate) fn $accessor_name() -> bool {
-            $flag_name.load(Ordering::Relaxed)
-        }
-    };
-}
-
-supported_macos_version_list!(support_macos_version);
+use crate::support::handles::ProcessId;
+use crate::support::macos_version::{
+    _workspace_is_macos_version_bigsur, _workspace_is_macos_version_monterey,
+    _workspace_is_macos_version_sequoia, _workspace_is_macos_version_sonoma,
+    _workspace_is_macos_version_tahoe, _workspace_is_macos_version_ventura,
+    supported_macos_version_list,
+};
 
 pub(crate) struct WorkspaceContextIvars {
     event_sender: Sender<Event>,
@@ -336,31 +317,6 @@ pub(crate) fn workspace_event_handler_begin() -> bool {
     true
 }
 
-pub(crate) fn workspace_use_macos_space_workaround() -> bool {
-    let os_version = NSProcessInfo::processInfo().operatingSystemVersion();
-
-    if os_version.majorVersion == 12 && os_version.minorVersion >= 7 {
-        return true;
-    }
-    if os_version.majorVersion == 13 && os_version.minorVersion >= 6 {
-        return true;
-    }
-    if os_version.majorVersion == 14 && os_version.minorVersion >= 5 {
-        return true;
-    }
-
-    os_version.majorVersion >= 15
-}
-
-pub(crate) fn workspace_application_create_running_ns_application(
-    process: &Arc<Process>,
-) -> *mut c_void {
-    match NSRunningApplication::runningApplicationWithProcessIdentifier(process.process_id.0) {
-        Some(application) => Retained::into_raw(application).cast::<c_void>(),
-        None => core::ptr::null_mut(),
-    }
-}
-
 pub(crate) fn workspace_application_destroy_running_ns_application(
     workspace_context: &WorkspaceContext,
     process: &Arc<Process>,
@@ -486,72 +442,6 @@ pub(crate) fn workspace_application_unobserve(
             release_kvo_refcon_on_main_queue(process);
         }
     }
-}
-
-pub(crate) fn workspace_application_is_observable(process: &Arc<Process>) -> bool {
-    let application = process.ns_application.load(Ordering::Relaxed);
-    if let Some(application) = unsafe { application.cast::<NSRunningApplication>().as_ref() } {
-        process
-            .policy
-            .store(application.activationPolicy().0 as i32, Ordering::Relaxed);
-        process.policy.load(Ordering::Relaxed) as isize == NSApplicationActivationPolicy::Regular.0
-    } else {
-        process.policy.store(
-            NSApplicationActivationPolicy::Prohibited.0 as i32,
-            Ordering::Relaxed,
-        );
-        false
-    }
-}
-
-pub(crate) fn workspace_application_is_finished_launching(process: &Arc<Process>) -> bool {
-    let application = process.ns_application.load(Ordering::Relaxed);
-    if let Some(application) = unsafe { application.cast::<NSRunningApplication>().as_ref() } {
-        application.isFinishedLaunching()
-    } else {
-        false
-    }
-}
-
-pub(crate) fn workspace_display_notch_height(display_id: DisplayId) -> i32 {
-    if !CGDisplayIsBuiltin(display_id.0) {
-        return 0;
-    }
-
-    if !workspace_is_macos_bigsur() {
-        let screen_list = unsafe {
-            let main_thread_marker = MainThreadMarker::new_unchecked();
-            NSScreen::screens(main_thread_marker)
-        };
-
-        for screen in screen_list.iter() {
-            let screen_number: c_uint = screen
-                .deviceDescription()
-                .objectForKey(&NSString::from_str("NSScreenNumber"))
-                .map_or(0, |screen_number| unsafe {
-                    msg_send![&*screen_number, unsignedIntValue]
-                });
-            if screen_number == display_id.0 {
-                return screen.safeAreaInsets().top as i32;
-            }
-        }
-    }
-
-    0
-}
-
-pub(crate) fn workspace_get_dock_pid() -> ProcessId {
-    let list =
-        NSRunningApplication::runningApplicationsWithBundleIdentifier(&NSString::from_str(
-            "com.apple.dock",
-        ));
-
-    if list.count() == 1 {
-        let dock = list.objectAtIndexedSubscript(0);
-        return ProcessId(dock.processIdentifier());
-    }
-
-    ProcessId(0)
 }
 
 pub(crate) fn remove_observer_swallowing_exception(

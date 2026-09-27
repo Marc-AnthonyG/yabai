@@ -1,14 +1,15 @@
 pub mod arithmetic;
 pub mod color;
-pub mod config_file;
 pub mod direction;
 pub mod easing;
 pub mod filesystem;
 pub mod geometry;
+pub mod handles;
 pub mod image;
 pub mod json;
 pub mod layer;
 pub mod log;
+pub mod macos_version;
 pub mod notify;
 pub mod privilege;
 pub mod regex;

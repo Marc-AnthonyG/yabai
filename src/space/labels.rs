@@ -1,5 +1,5 @@
-use crate::handles::SpaceId;
 use crate::space::manager::SpaceManager;
+use crate::support::handles::SpaceId;
 
 pub(crate) struct SpaceLabel {
     pub(crate) space_id: SpaceId,

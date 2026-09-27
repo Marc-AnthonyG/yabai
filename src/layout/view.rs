@@ -3,8 +3,6 @@ use crate::display::manager::DisplayManager;
 use crate::ffi::CFStringOwned;
 use crate::ffi::core_foundation::{SendCFRetained, take_create_rule_result};
 use crate::ffi::skylight::SLSSpaceCopyName;
-use crate::globals::CONNECTION;
-use crate::handles::{NodeId, ROOT_NODE_ID, SpaceId, WindowId};
 use crate::layout::area::area_from_cgrect;
 use crate::layout::insertion::insert_feedback_destroy;
 use crate::layout::settings::{ViewFlag, ViewType};
@@ -14,6 +12,8 @@ use crate::layout::tree::{
 use crate::mouse::drag::MouseDragState;
 use crate::space::managed_space::{space_display_id, space_is_user, space_is_visible};
 use crate::space::manager::SpaceManager;
+use crate::state::process_wide::CONNECTION;
+use crate::support::handles::{NodeId, ROOT_NODE_ID, SpaceId, WindowId};
 use crate::window::manager::{WindowManager, window_manager_remove_managed_window};
 
 pub(crate) struct View {

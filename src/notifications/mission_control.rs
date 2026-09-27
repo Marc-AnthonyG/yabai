@@ -3,35 +3,22 @@
 use core::ffi::c_void;
 use core::ptr::NonNull;
 use std::sync::Mutex;
-use std::sync::atomic::Ordering;
 
-use crate::event_loop::{Event, event_loop_post};
+use crate::event::queue::{Event, event_loop_post};
 use crate::ffi::accessibility::{
     AXObserver, AXObserverAddNotification, AXObserverCreate, AXObserverGetRunLoopSource,
     AXObserverRef, AXObserverRemoveNotification, AXUIElement, AXUIElementCreateApplication,
     AXUIElementRef, kAXErrorSuccess, kAXExposeExit, kAXExposeShowAllWindows, kAXExposeShowDesktop,
     kAXExposeShowFrontWindows,
 };
-use crate::ffi::carbon_core::read_os_timer;
+use crate::ffi::appkit::NSRunningApplication;
 use crate::ffi::core_foundation::{
     CFEqual, CFRetained, CFRunLoopAddSource, CFRunLoopGetMain, CFRunLoopSourceInvalidate, CFString,
     as_cftype, kCFRunLoopDefaultMode, take_create_rule_result,
 };
 use crate::ffi::dispatch::dispatch_after_on_main_queue;
-use crate::globals::LAST_CMD_TAB_TIME;
-use crate::handles::{SpaceId, WindowId};
-use crate::workspace::workspace_get_dock_pid;
-
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
-#[repr(i32)]
-pub(crate) enum MissionControlMode {
-    #[default]
-    Inactive = 0,
-    Show = 1,
-    ShowAllWindows = 2,
-    ShowFrontWindows = 3,
-    ShowDesktop = 4,
-}
+use crate::ffi::foundation::NSString;
+use crate::support::handles::ProcessId;
 
 pub(crate) struct MissionControlObserver {
     pub(crate) element_ref: AXUIElementRef,
@@ -40,50 +27,8 @@ pub(crate) struct MissionControlObserver {
 
 unsafe impl Send for MissionControlObserver {}
 
-pub(crate) static MISSION_CONTROL_MODE_STR: [Option<&str>; 5] = [
-    Some("inactive"),
-    Some("show"),
-    Some("show-all-windows"),
-    Some("show-front-windows"),
-    Some("show-desktop"),
-];
-
 pub(crate) static MISSION_CONTROL_OBSERVER: Mutex<Option<MissionControlObserver>> =
     Mutex::new(None);
-
-pub(crate) unsafe extern "C-unwind" fn connection_handler(
-    notification_type: u32,
-    data: *mut c_void,
-    data_length: usize,
-    _context: *mut c_void,
-    _connection_id: i32,
-) {
-    if notification_type == 1204 {
-        event_loop_post(Event::MissionControlEnter);
-    } else if notification_type == 1327 {
-        if !data.is_null() && data_length >= size_of::<u64>() {
-            let space_id: u64 = unsafe { data.cast::<u64>().read_unaligned() };
-            event_loop_post(Event::SlsSpaceCreated(SpaceId(space_id)));
-        }
-    } else if notification_type == 1328 {
-        if !data.is_null() && data_length >= size_of::<u64>() {
-            let space_id: u64 = unsafe { data.cast::<u64>().read_unaligned() };
-            event_loop_post(Event::SlsSpaceDestroyed(SpaceId(space_id)));
-        }
-    } else if notification_type == 808 {
-        if !data.is_null() && data_length >= size_of::<u32>() {
-            let window_id: u32 = unsafe { data.cast::<u32>().read_unaligned() };
-            event_loop_post(Event::SlsWindowOrdered(WindowId(window_id)));
-        }
-    } else if notification_type == 804 {
-        if !data.is_null() && data_length >= size_of::<u32>() {
-            let window_id: u32 = unsafe { data.cast::<u32>().read_unaligned() };
-            event_loop_post(Event::SlsWindowDestroyed(WindowId(window_id)));
-        }
-    } else if notification_type == 1202 {
-        LAST_CMD_TAB_TIME.store(read_os_timer(), Ordering::Release);
-    }
-}
 
 pub(crate) unsafe extern "C-unwind" fn mission_control_notification_handler(
     _observer: NonNull<AXObserver>,
@@ -198,6 +143,16 @@ pub(crate) fn mission_control_unobserve() {
     });
 }
 
-pub(crate) fn mission_control_is_active(mission_control_mode: &mut MissionControlMode) -> bool {
-    *mission_control_mode != MissionControlMode::Inactive
+pub(crate) fn workspace_get_dock_pid() -> ProcessId {
+    let list =
+        NSRunningApplication::runningApplicationsWithBundleIdentifier(&NSString::from_str(
+            "com.apple.dock",
+        ));
+
+    if list.count() == 1 {
+        let dock = list.objectAtIndexedSubscript(0);
+        return ProcessId(dock.processIdentifier());
+    }
+
+    ProcessId(0)
 }

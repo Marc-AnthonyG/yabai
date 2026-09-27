@@ -1,14 +1,18 @@
-use core::ffi::c_int;
+use core::ffi::{c_int, c_uint};
+
+use objc2::msg_send;
 
 use crate::display::identity::{display_manager_dock_display_id, display_manager_main_display_id};
 use crate::display::manager::{DisplayManager, ExternalBarMode};
+use crate::ffi::appkit::NSScreen;
 use crate::ffi::carbon_process::{CoreDockGetAutoHideEnabled, CoreDockGetOrientationAndPinning};
 use crate::ffi::core_foundation::{CGFloat, CGPoint, CGRect};
-use crate::ffi::core_graphics::CGDisplayBounds;
+use crate::ffi::core_graphics::{CGDisplayBounds, CGDisplayIsBuiltin};
+use crate::ffi::foundation::{MainThreadMarker, NSString};
 use crate::ffi::skylight::{SLSGetDockRectWithReason, SLSGetMenuBarAutohideEnabled};
-use crate::globals::CONNECTION;
-use crate::handles::DisplayId;
-use crate::workspace::workspace_display_notch_height;
+use crate::state::process_wide::CONNECTION;
+use crate::support::handles::DisplayId;
+use crate::support::macos_version::workspace_is_macos_bigsur;
 
 #[cfg(target_arch = "aarch64")]
 use crate::ffi::skylight::SLSGetDisplayMenubarHeight;
@@ -150,4 +154,31 @@ pub(crate) fn display_manager_dock_rect() -> CGRect {
     let mut bounds = CGRect::ZERO;
     unsafe { SLSGetDockRectWithReason(connection_id, &mut bounds, &mut reason) };
     bounds
+}
+
+pub(crate) fn workspace_display_notch_height(display_id: DisplayId) -> i32 {
+    if !CGDisplayIsBuiltin(display_id.0) {
+        return 0;
+    }
+
+    if !workspace_is_macos_bigsur() {
+        let screen_list = unsafe {
+            let main_thread_marker = MainThreadMarker::new_unchecked();
+            NSScreen::screens(main_thread_marker)
+        };
+
+        for screen in screen_list.iter() {
+            let screen_number: c_uint = screen
+                .deviceDescription()
+                .objectForKey(&NSString::from_str("NSScreenNumber"))
+                .map_or(0, |screen_number| unsafe {
+                    msg_send![&*screen_number, unsignedIntValue]
+                });
+            if screen_number == display_id.0 {
+                return screen.safeAreaInsets().top as i32;
+            }
+        }
+    }
+
+    0
 }

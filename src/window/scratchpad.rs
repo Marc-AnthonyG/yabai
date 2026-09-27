@@ -1,8 +1,5 @@
 use crate::display::manager::DisplayManager;
 use crate::ffi::skylight::{_SLPSSetFrontProcessWithOptions, SLSWindowIsOrderedIn};
-use crate::globals::CONNECTION;
-use crate::handles::WindowId;
-use crate::mission_control::MissionControlMode;
 use crate::mouse::drag::MouseDragState;
 use crate::process::manager::ProcessManager;
 use crate::scripting_addition::client::{
@@ -11,6 +8,9 @@ use crate::scripting_addition::client::{
 use crate::space::focus::space_manager_active_space;
 use crate::space::manager::SpaceManager;
 use crate::space::moving_windows::space_manager_move_window_to_space;
+use crate::state::mission_control_mode::MissionControlMode;
+use crate::state::process_wide::CONNECTION;
+use crate::support::handles::WindowId;
 use crate::window::discovery::{
     space_manager_refresh_application_windows, window_manager_existing_application_window_list,
 };

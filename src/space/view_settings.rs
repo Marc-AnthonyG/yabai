@@ -1,5 +1,4 @@
 use crate::display::manager::DisplayManager;
-use crate::handles::SpaceId;
 use crate::layout::settings::{ViewFlag, ViewType};
 use crate::layout::tree::WindowNodeSplit;
 use crate::layout::view::{view_clear, view_flush, view_update};
@@ -7,6 +6,7 @@ use crate::mouse::drag::MouseDragState;
 use crate::space::managed_space::space_is_user;
 use crate::space::manager::{SpaceManager, space_manager_find_view};
 use crate::support::arithmetic::add_and_clamp_to_zero;
+use crate::support::handles::SpaceId;
 use crate::support::type_of_change::{TYPE_ABS, TYPE_REL};
 use crate::window::manager::WindowManager;
 use crate::window::space_reconciliation::window_manager_validate_and_check_for_windows_on_space;

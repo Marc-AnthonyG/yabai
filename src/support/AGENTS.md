@@ -2,9 +2,10 @@
 
 The bottom layer of the daemon: small building blocks that know nothing of windows, spaces or
 displays as state. Text, JSON, geometry and arithmetic helpers, sockets and files, the
-C-compatible hash table, POSIX regex, the client response, logging and user notifications, and
-the small value vocabularies (window layers, directions, resize handles, easing curves, colours)
-that several modules share.
+C-compatible hash table, POSIX regex, the client response, logging and user notifications, which
+macOS version the daemon runs on, the handles that name windows, processes, spaces, displays and
+tree nodes, and the small value vocabularies (window layers, directions, resize handles, easing
+curves, colours) that several modules share.
 
 ## Notes
 
@@ -20,5 +21,8 @@ that several modules share.
   regex match stays three-valued (decisions 26, 44).
 - The exit codes of the fatal log macros are decision 33; which one a call site uses is
   deliberate.
-- The config file child follows decision 25; the alpha restore follows decision 36 on each
-  target.
+- Handles are plain ids looked up at each use, never pointers (decision 14). The tree root handle
+  is `NodeId` 0 (decision 15).
+- The alpha restore follows decision 36 on each target.
+- The macOS version flags are written once at start-up, when the workspace observer is created,
+  and only read afterwards (decision 18). Which version-specific path runs is behaviour.

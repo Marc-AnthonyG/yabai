@@ -12,8 +12,8 @@ use crate::ffi::skylight::{
     SLSWindowIteratorGetParentID, SLSWindowIteratorGetTags, SLSWindowIteratorGetWindowID,
     SLSWindowQueryResultCopyWindows, SLSWindowQueryWindows,
 };
-use crate::globals::CONNECTION;
-use crate::handles::{DisplayId, SpaceId, WindowId};
+use crate::state::process_wide::CONNECTION;
+use crate::support::handles::{DisplayId, SpaceId, WindowId};
 use crate::window::manager::{WindowManager, window_manager_find_window};
 use crate::window::model::{WindowFlag, window_check_flag, window_space_list};
 

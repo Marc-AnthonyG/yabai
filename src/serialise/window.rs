@@ -1,10 +1,6 @@
 use crate::display::arrangement::display_manager_display_id_arrangement;
 use crate::display::manager::DisplayManager;
 use crate::ffi::skylight::SLSWindowIsOrderedIn;
-use crate::globals::{
-    CONNECTION, LAYER_ABOVE_WINDOW_LEVEL, LAYER_BELOW_WINDOW_LEVEL, LAYER_NORMAL_WINDOW_LEVEL,
-};
-use crate::handles::{NodeId, ROOT_NODE_ID, SpaceId, WindowId};
 use crate::layout::tree::{
     WINDOW_NODE_CHILD_STR, WINDOW_NODE_SPLIT_STR, WindowNodeChild, view_find_window_node,
     window_node_index_of_window, window_node_is_left_child,
@@ -13,6 +9,10 @@ use crate::mouse::drag::MouseDragState;
 use crate::space::lookup::space_manager_mission_control_index;
 use crate::space::managed_space::{space_display_id, space_is_visible};
 use crate::space::manager::SpaceManager;
+use crate::state::process_wide::{
+    CONNECTION, LAYER_ABOVE_WINDOW_LEVEL, LAYER_BELOW_WINDOW_LEVEL, LAYER_NORMAL_WINDOW_LEVEL,
+};
+use crate::support::handles::{NodeId, ROOT_NODE_ID, SpaceId, WindowId};
 use crate::support::json::{json_bool, ts_string_escape};
 use crate::support::layer::{LAYER_ABOVE, LAYER_BELOW, LAYER_NORMAL, LAYER_STR};
 use crate::support::response::Response;

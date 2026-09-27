@@ -8,11 +8,11 @@ use crate::ffi::accessibility::{
 };
 use crate::ffi::carbon_process::ProcessSerialNumber;
 use crate::ffi::core_foundation::CFRetained;
-use crate::handles::{NodeId, ProcessId, SpaceId, WindowId};
 use crate::layout::settings::ViewType;
 use crate::space::manager::SpaceManager;
 use crate::support::color::{RgbaColor, rgba_color_from_hex};
 use crate::support::easing::AnimationEasingType;
+use crate::support::handles::{NodeId, ProcessId, SpaceId, WindowId};
 use crate::support::table::Table;
 use crate::window::animation::AnimationContext;
 use crate::window::model::{

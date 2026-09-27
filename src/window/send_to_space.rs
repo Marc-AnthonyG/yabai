@@ -1,13 +1,13 @@
 use crate::display::manager::DisplayManager;
 use crate::ffi::skylight::{_SLPSSetFrontProcessWithOptions, SLSSpaceSetFrontPSN};
-use crate::globals::CONNECTION;
-use crate::handles::{SpaceId, WindowId};
 use crate::mouse::drag::MouseDragState;
 use crate::process::manager::ProcessManager;
 use crate::space::managed_space::space_is_visible;
 use crate::space::manager::SpaceManager;
 use crate::space::moving_windows::space_manager_move_window_to_space;
 use crate::space::tiling::{space_manager_tile_window_on_space, space_manager_untile_window};
+use crate::state::process_wide::CONNECTION;
+use crate::support::handles::{SpaceId, WindowId};
 use crate::window::focus::{
     kCPSNoWindows, window_manager_focus_window_with_raise_resolving_its_application,
 };

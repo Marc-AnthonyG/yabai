@@ -6,9 +6,9 @@ use crate::ffi::core_foundation::{
     take_create_rule_result,
 };
 use crate::ffi::skylight::SLSCopyManagedDisplaySpaces;
-use crate::globals::CONNECTION;
-use crate::handles::{DisplayId, SpaceId};
 use crate::space::managed_space::{space_display_id, space_is_user};
+use crate::state::process_wide::CONNECTION;
+use crate::support::handles::{DisplayId, SpaceId};
 
 pub(crate) fn space_manager_mission_control_index(space_id: SpaceId) -> i32 {
     let mut desktop_count: i32 = 1;

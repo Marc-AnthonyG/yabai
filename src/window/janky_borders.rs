@@ -5,7 +5,7 @@ use std::sync::atomic::Ordering;
 use crate::ffi::libsystem::{PROC_PIDPATHINFO_MAXSIZE, proc_name};
 use crate::ffi::mach_port::{bootstrap_look_up, mach_send};
 use crate::ffi::skylight::SLSConnectionGetPID;
-use crate::globals::BOOTSTRAP_PORT;
+use crate::state::process_wide::BOOTSTRAP_PORT;
 use crate::window::animation::WindowAnimation;
 
 #[repr(C)]

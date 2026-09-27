@@ -1,5 +1,4 @@
 use crate::display::manager::DisplayManager;
-use crate::handles::{NodeId, ROOT_NODE_ID, SpaceId, WindowId};
 use crate::layout::tree::{
     view_find_window_node, view_find_window_node_in_direction, window_node_find_first_leaf,
     window_node_find_last_leaf, window_node_find_next_leaf, window_node_find_prev_leaf,
@@ -7,6 +6,7 @@ use crate::layout::tree::{
 };
 use crate::space::focus::space_manager_active_space;
 use crate::space::manager::{SpaceManager, space_manager_find_view};
+use crate::support::handles::{NodeId, ROOT_NODE_ID, SpaceId, WindowId};
 use crate::window::manager::{
     WindowManager, window_manager_find_managed_window, window_manager_find_window,
 };

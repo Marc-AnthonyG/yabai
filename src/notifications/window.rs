@@ -1,6 +1,6 @@
 #![allow(deprecated)]
 
-use core::ffi::c_void;
+use core::ffi::{c_int, c_void};
 use core::ptr::NonNull;
 use std::sync::{Arc, OnceLock};
 
@@ -12,6 +12,10 @@ use crate::ffi::accessibility::{
 };
 use crate::ffi::core_foundation::{CFRetained, SendCFRetained};
 use crate::ffi::dispatch::dispatch_after_on_main_queue;
+use crate::ffi::skylight::SLSRequestNotificationsForWindows;
+use crate::space::manager::SpaceManager;
+use crate::state::process_wide::CONNECTION;
+use crate::support::macos_version::{workspace_is_macos_sequoia, workspace_is_macos_tahoe};
 use crate::window::manager::WindowManager;
 use crate::window::model::{Window, WindowLivenessCell};
 
@@ -153,4 +157,39 @@ fn window_unobserve_on_main_queue(request: *mut WindowUnobserveRequest) {
     }
 
     drop(unsafe { Arc::from_raw(request.liveness_reference) });
+}
+
+pub(crate) fn update_window_notifications(
+    window_manager: &mut WindowManager,
+    space_manager: &SpaceManager,
+) {
+    let mut window_list: Vec<u32> = Vec::new();
+
+    if workspace_is_macos_sequoia() || workspace_is_macos_tahoe() {
+        // NOTE(asmvik): Subscribe to all windows because of window_destroyed (and ordered) notifications
+        for window in window_manager.window.values() {
+            window_list.push(window.id.0);
+        }
+    } else {
+        // NOTE(asmvik): Subscribe to windows that have a feedback_border because of window_ordered notifications
+        for (space_id, node_id) in window_manager.insert_feedback.values() {
+            let Some(node) = space_manager
+                .view
+                .find(space_id)
+                .and_then(|view| view.find_node(*node_id))
+            else {
+                continue;
+            };
+            window_list.push(node.window_order[0].0);
+        }
+    }
+
+    let window_count = window_list.len() as c_int;
+    unsafe {
+        SLSRequestNotificationsForWindows(
+            *CONNECTION.get().unwrap(),
+            window_list.as_mut_ptr(),
+            window_count,
+        );
+    }
 }

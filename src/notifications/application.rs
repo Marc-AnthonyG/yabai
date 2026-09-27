@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use std::sync::atomic::Ordering;
 
 use crate::application::model::Application;
-use crate::event_loop::{Event, event_loop_post};
+use crate::event::queue::{Event, event_loop_post};
 use crate::ffi::CFStringOwned;
 use crate::ffi::accessibility::{
     AXError, AXObserver, AXObserverAddNotification, AXObserverCreate, AXObserverGetRunLoopSource,
@@ -21,8 +21,8 @@ use crate::ffi::core_foundation::{
     SendCFRetained, Type, as_cftype, kCFRunLoopDefaultMode,
 };
 use crate::ffi::dispatch::dispatch_after_on_main_queue;
-use crate::globals::PENDING_WINDOW_FOCUS;
-use crate::handles::WindowId;
+use crate::state::process_wide::PENDING_WINDOW_FOCUS;
+use crate::support::handles::WindowId;
 use crate::window::model::WindowLivenessCell;
 
 #[derive(Clone, Copy, PartialEq, Eq)]

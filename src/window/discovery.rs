@@ -4,11 +4,10 @@ use core::ptr::NonNull;
 use std::sync::Arc;
 
 use crate::application::model::{application_create, application_destroy, application_window_list};
-use crate::application::notifications::{application_observe, application_unobserve};
 use crate::display::identity::display_manager_active_display_list;
 use crate::display::manager::DisplayManager;
 use crate::display::spaces::display_space_list;
-use crate::event_loop::{Event, event_loop_post};
+use crate::event::queue::{Event, event_loop_post};
 use crate::ffi::accessibility::{
     _AXUIElementCreateWithRemoteToken, AXUIElement, AXUIElementCopyAttributeValue, AXUIElementRef,
     ax_window_id, kAXRoleAttribute, kAXWindowRole,
@@ -18,14 +17,20 @@ use crate::ffi::core_foundation::{
     CFMutableData, CFRetained, CFType, as_cftype, cfarray_borrow_value_at_index, cfarray_count,
     take_create_rule_result,
 };
-use crate::handles::{ProcessId, SpaceId, WindowId};
-use crate::mission_control::MissionControlMode;
 use crate::mouse::drag::MouseDragState;
+use crate::notifications::application::{application_observe, application_unobserve};
+use crate::notifications::window::{window_observe, window_unobserve};
+use crate::notifications::workspace::{
+    WORKSPACE_CONTEXT, workspace_application_observe_activation_policy,
+};
 use crate::process::manager::{PROCESS_TABLE, ProcessManager};
 use crate::process::model::Process;
+use crate::process::running_application::workspace_application_is_observable;
 use crate::serialise::window::window_serialize;
 use crate::space::managed_space::space_window_list_for_connection;
 use crate::space::manager::SpaceManager;
+use crate::state::mission_control_mode::MissionControlMode;
+use crate::support::handles::{ProcessId, SpaceId, WindowId};
 use crate::support::log::{g_verbose, or_null};
 use crate::support::response::Response;
 use crate::window::focus::window_manager_focused_window;
@@ -40,17 +45,12 @@ use crate::window::model::{
     window_is_standard, window_is_sticky, window_is_undersized, window_is_unknown,
     window_level_is_standard, window_role_ts, window_set_flag, window_subrole_ts, window_title_ts,
 };
-use crate::window::notifications::{window_observe, window_unobserve};
 use crate::window::opacity::window_manager_set_window_opacity;
 use crate::window::rule::RuleFlag;
 use crate::window::rule_application::{
     window_manager_apply_manage_rules_to_window, window_manager_apply_rules_to_window,
 };
 use crate::window::shadow::window_manager_purify_window;
-use crate::workspace::{
-    WORKSPACE_CONTEXT, workspace_application_is_observable,
-    workspace_application_observe_activation_policy,
-};
 
 pub(crate) fn window_manager_create_and_add_window(
     space_manager: &mut SpaceManager,

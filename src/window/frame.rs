@@ -9,7 +9,6 @@ use crate::ffi::accessibility::{
     kAXSizeAttribute, with_enhanced_user_interface_disabled,
 };
 use crate::ffi::core_foundation::{CGPoint, CGRect, CGSize, as_cftype};
-use crate::handles::{NodeId, WindowId};
 use crate::layout::settings::ViewFlag;
 use crate::layout::tree::{
     view_find_window_node, window_node_fence, window_node_flush, window_node_update,
@@ -19,6 +18,7 @@ use crate::space::managed_space::space_is_visible;
 use crate::space::manager::SpaceManager;
 use crate::support::arithmetic::{clampf_range, max};
 use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST};
+use crate::support::handles::{NodeId, WindowId};
 use crate::support::resize_handle::ResizeHandle;
 use crate::support::type_of_change::{TYPE_ABS, TYPE_REL};
 use crate::window::animation::{WindowCapture, window_manager_animate_window};

@@ -1,5 +1,5 @@
-use crate::handles::{DisplayId, SpaceId};
 use crate::support::arithmetic::in_range_ii;
+use crate::support::handles::{DisplayId, SpaceId};
 use crate::support::regex::PosixRegex;
 use crate::support::strings::{string_copy, string_equals};
 use crate::window::manager::WindowManager;

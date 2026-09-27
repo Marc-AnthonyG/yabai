@@ -6,14 +6,14 @@ use crate::display::manager::DisplayManager;
 use crate::display::spaces::display_space_id;
 use crate::ffi::accessibility::{AXUIElementSetAttributeValue, kAXFullscreenAttribute};
 use crate::ffi::core_foundation::{as_cftype, kCFBooleanTrue};
-use crate::handles::WindowId;
-use crate::mission_control::MissionControlMode;
 use crate::mouse::drag::MouseDragState;
 use crate::process::manager::ProcessManager;
 use crate::space::focus::space_manager_focus_space;
 use crate::space::managed_space::space_is_fullscreen;
 use crate::space::manager::SpaceManager;
+use crate::state::mission_control_mode::MissionControlMode;
 use crate::support::arithmetic::in_range_ii;
+use crate::support::handles::WindowId;
 use crate::support::regex::{RegexMatch, regex_match};
 use crate::support::strings::{string_copy, string_equals};
 use crate::window::floating_and_sticky::{

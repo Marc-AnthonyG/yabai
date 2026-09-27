@@ -1,6 +1,5 @@
 #![allow(deprecated)]
 
-use crate::event_loop::update_window_notifications;
 use crate::ffi::core_foundation::{
     CFType, CGPoint, CGRect, CGSize, sls_window_disable_shadow, take_create_rule_result,
 };
@@ -15,14 +14,15 @@ use crate::ffi::skylight::{
     SLSReleaseWindow, SLSSetWindowLevel, SLSSetWindowOpacity, SLSSetWindowResolution,
     SLSSetWindowShape, SLSSetWindowSubLevel, SLWindowContextCreate,
 };
-use crate::globals::CONNECTION;
-use crate::handles::{NodeId, SpaceId, WindowId};
+use crate::notifications::window::update_window_notifications;
 use crate::space::manager::SpaceManager;
+use crate::state::process_wide::CONNECTION;
 use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, STACK};
 use crate::support::geometry::{cgrect_clamp_x_radius, cgrect_clamp_y_radius};
+use crate::support::handles::{NodeId, SpaceId, WindowId};
+use crate::support::macos_version::{workspace_is_macos_sequoia, workspace_is_macos_tahoe};
 use crate::window::manager::WindowManager;
 use crate::window::model::{window_level, window_sub_level};
-use crate::workspace::{workspace_is_macos_sequoia, workspace_is_macos_tahoe};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]

@@ -10,7 +10,6 @@ pub mod layer;
 pub mod manager;
 pub mod minimize_and_close;
 pub mod model;
-pub mod notifications;
 pub mod opacity;
 pub mod proxy;
 pub mod rule;

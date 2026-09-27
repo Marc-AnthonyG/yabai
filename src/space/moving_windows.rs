@@ -9,12 +9,12 @@ use crate::ffi::skylight::{
     SLSMoveWindowsToManagedSpace, SLSSetWindowListWorkspace, SLSSpaceSetCompatID,
 };
 use crate::ffi::skylight_dynamic::sls_perform_asynchronous_bridged_window_management_operation;
-use crate::globals::CONNECTION;
-use crate::handles::{SpaceId, WindowId};
 use crate::scripting_addition::client::{
     scripting_addition_move_window_list_to_space, scripting_addition_move_window_to_space,
 };
-use crate::workspace::workspace_use_macos_space_workaround;
+use crate::state::process_wide::CONNECTION;
+use crate::support::handles::{SpaceId, WindowId};
+use crate::support::macos_version::workspace_use_macos_space_workaround;
 
 type InitWithWindowsSpaceIdFn =
     unsafe extern "C" fn(*mut AnyObject, Sel, *mut AnyObject, u64) -> *mut AnyObject;

@@ -6,8 +6,6 @@ use crate::display::manager::DisplayManager;
 use crate::ffi::core_foundation::CGRect;
 use crate::ffi::libsystem::{PROC_PIDPATHINFO_MAXSIZE, proc_name};
 use crate::ffi::skylight::{SLSConnectionGetPID, SLSGetWindowBounds, SLSGetWindowOwner};
-use crate::globals::CONNECTION;
-use crate::handles::{SpaceId, WindowId};
 use crate::layout::tree::{WINDOW_NODE_CHILD_STR, WINDOW_NODE_SPLIT_STR, WindowNodeChild};
 use crate::serialise::window::{
     WINDOW_PROPERTY_APP, WINDOW_PROPERTY_CAN_MOVE, WINDOW_PROPERTY_CAN_RESIZE,
@@ -25,6 +23,8 @@ use crate::serialise::window::{
 };
 use crate::space::lookup::space_manager_mission_control_index;
 use crate::space::managed_space::{space_display_id, space_is_fullscreen};
+use crate::state::process_wide::CONNECTION;
+use crate::support::handles::{SpaceId, WindowId};
 use crate::support::json::{json_bool, ts_string_escape};
 use crate::support::response::Response;
 use crate::window::model::{

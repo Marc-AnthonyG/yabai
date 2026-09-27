@@ -1,7 +1,6 @@
 use crate::display::identity::display_manager_active_display_list;
 use crate::display::manager::DisplayManager;
 use crate::display::spaces::{display_space_id, display_space_list};
-use crate::handles::{DisplayId, ROOT_NODE_ID, SpaceId, WindowId};
 use crate::layout::settings::{ViewFlag, ViewType};
 use crate::layout::tree::{
     view_add_window_node, view_find_window_list, view_remove_window_node, window_node_flush,
@@ -13,6 +12,7 @@ use crate::space::manager::{
     SpaceManager, space_manager_find_view, space_manager_mark_view_invalid,
     space_manager_refresh_view,
 };
+use crate::support::handles::{DisplayId, ROOT_NODE_ID, SpaceId, WindowId};
 use crate::support::layer::{LAYER_BELOW, LAYER_NORMAL};
 use crate::window::layer::window_manager_adjust_layer;
 use crate::window::manager::{

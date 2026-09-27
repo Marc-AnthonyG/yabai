@@ -4,5 +4,4 @@ pub mod focus;
 pub mod identity;
 pub mod labels;
 pub mod manager;
-pub mod notifications;
 pub mod spaces;

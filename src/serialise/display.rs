@@ -5,8 +5,8 @@ use crate::display::manager::DisplayManager;
 use crate::display::spaces::display_space_list;
 use crate::ffi::core_foundation::ts_cfstring_copy;
 use crate::ffi::core_graphics::CGDisplayBounds;
-use crate::handles::DisplayId;
 use crate::space::lookup::space_manager_mission_control_index;
+use crate::support::handles::DisplayId;
 use crate::support::json::json_bool;
 use crate::support::response::Response;
 

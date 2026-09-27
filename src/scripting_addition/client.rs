@@ -2,9 +2,9 @@ use core::ffi::{c_char, c_void};
 use std::sync::atomic::Ordering;
 
 use crate::ffi::skylight::SLSWindowIsOrderedIn;
-use crate::globals::{CONNECTION, SA_SOCKET_FILE};
-use crate::handles::{SpaceId, WindowId};
 use crate::scripting_addition::frame::{SA_SOCKET_BUFF_LEN, SaOpcode, pack, sa_payload_send};
+use crate::state::process_wide::{CONNECTION, SA_SOCKET_FILE};
+use crate::support::handles::{SpaceId, WindowId};
 use crate::support::sockets::{socket_close, socket_connect, socket_open};
 use crate::window::animation::WindowAnimation;
 

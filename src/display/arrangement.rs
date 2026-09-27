@@ -17,12 +17,12 @@ use crate::ffi::core_foundation::{
 };
 use crate::ffi::core_graphics::CGDisplayBounds;
 use crate::ffi::skylight::SLSCopyManagedDisplays;
-use crate::globals::CONNECTION;
-use crate::handles::DisplayId;
 use crate::layout::area::{
     area_distance_in_direction, area_from_cgrect, area_is_in_direction, area_max_point,
 };
+use crate::state::process_wide::CONNECTION;
 use crate::support::arithmetic::in_range_ie;
+use crate::support::handles::DisplayId;
 
 pub(crate) unsafe extern "C-unwind" fn display_manager_coordinate_comparator(
     a_display: *const c_void,

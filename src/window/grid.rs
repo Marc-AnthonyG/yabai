@@ -1,9 +1,9 @@
 use crate::display::bounds::display_bounds_constrained;
 use crate::display::manager::DisplayManager;
 use crate::display::spaces::display_space_id;
-use crate::handles::WindowId;
 use crate::layout::settings::{ViewFlag, window_node_get_gap};
 use crate::space::manager::{SpaceManager, space_manager_find_view};
+use crate::support::handles::WindowId;
 use crate::window::animation::{WindowCapture, window_manager_animate_window};
 use crate::window::manager::{WindowManager, WindowOpError, window_manager_find_managed_window};
 use crate::window::model::window_display_id;

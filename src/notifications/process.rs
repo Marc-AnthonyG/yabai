@@ -2,7 +2,7 @@ use core::ffi::{c_ulong, c_void};
 use std::sync::Arc;
 use std::sync::atomic::{Ordering, compiler_fence};
 
-use crate::event_loop::{Event, event_loop_post};
+use crate::event::queue::{Event, event_loop_post};
 use crate::ffi::carbon_events::{
     EventHandlerCallRef, EventRef, GetEventKind, GetEventParameter, OSStatus,
     kEventAppFrontSwitched, kEventAppLaunched, kEventAppTerminated, kEventParamProcessID, noErr,
@@ -10,9 +10,9 @@ use crate::ffi::carbon_events::{
 };
 use crate::ffi::carbon_process::ProcessSerialNumber;
 use crate::ffi::libsystem::process_is_being_debugged;
+use crate::notifications::workspace::{WORKSPACE_CONTEXT, workspace_application_unobserve};
 use crate::process::manager::{PROCESS_TABLE, process_manager_find_process};
 use crate::process::model::{process_create, process_pid_for_psn};
-use crate::workspace::{WORKSPACE_CONTEXT, workspace_application_unobserve};
 
 #[allow(non_upper_case_globals)]
 pub(crate) unsafe extern "C-unwind" fn process_handler(

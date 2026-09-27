@@ -3,14 +3,12 @@
 Displays: the display manager's settings, display labels, identifying a display (by UUID, the
 main, active, cursor or Dock display, the one under a point), the arrangement order and its
 neighbours, the bounds left for windows once the menu bar, notch, Dock and external bar are
-taken out, the spaces SkyLight assigns each display, focusing a display, and the
-reconfiguration callback.
+taken out, the spaces SkyLight assigns each display, and focusing a display.
 
 ## Notes
 
-- Everything here runs on the event-loop thread and takes the managers it touches as explicit
-  parameters (decision 13), except the reconfiguration callback, which runs on the main thread
-  and only posts an event (decision 20).
+- Everything here runs on the event-loop thread, or on the main thread at start-up, and takes the
+  managers it touches as explicit parameters (decision 13).
 - Arrangement indices count from 1; 0 means none (decision 32). With a non-default order,
   displays are sorted by the `f32` centre coordinate on the chosen axis, then on the other
   (decision 30). The index is what the CLI selects displays by and what queries print

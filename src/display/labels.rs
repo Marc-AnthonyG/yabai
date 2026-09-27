@@ -1,5 +1,5 @@
 use crate::display::manager::DisplayManager;
-use crate::handles::DisplayId;
+use crate::support::handles::DisplayId;
 use crate::support::strings::string_equals;
 
 pub(crate) struct DisplayLabel {

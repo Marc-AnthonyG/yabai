@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 
 use crate::display::manager::DisplayManager;
-use crate::handles::{NodeId, ROOT_NODE_ID, SpaceId, WindowId};
 use crate::layout::area::{
     Area, area_distance_in_direction, area_is_in_direction, area_make_pair, area_max_point,
 };
@@ -17,6 +16,7 @@ use crate::mouse::drag::MouseDragState;
 use crate::space::managed_space::space_window_list;
 use crate::space::manager::SpaceManager;
 use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, STACK};
+use crate::support::handles::{NodeId, ROOT_NODE_ID, SpaceId, WindowId};
 use crate::window::animation::{WindowCapture, window_manager_animate_window_list};
 use crate::window::manager::{
     WindowManager, window_manager_find_window, window_manager_remove_managed_window,

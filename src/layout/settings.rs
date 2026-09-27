@@ -1,7 +1,7 @@
-use crate::handles::{NodeId, SpaceId};
 use crate::layout::tree::{WindowNodeChild, WindowNodeSplit};
 use crate::space::manager::SpaceManager;
 use crate::support::arithmetic::in_range_ii;
+use crate::support::handles::{NodeId, SpaceId};
 
 pub(crate) static AUTO_BALANCE_STR: [&str; 4] = ["off", "vertical", "horizontal", "on"];
 

@@ -1,12 +1,12 @@
 use crate::display::identity::display_manager_active_display_list;
 use crate::display::manager::DisplayManager;
 use crate::display::spaces::display_space_list;
-use crate::handles::{DisplayId, SpaceId};
 use crate::mouse::drag::MouseDragState;
 use crate::serialise::untracked_window::window_nonax_serialize;
 use crate::serialise::window::window_serialize;
 use crate::space::managed_space::space_window_list_for_connection;
 use crate::space::manager::SpaceManager;
+use crate::support::handles::{DisplayId, SpaceId};
 use crate::support::response::Response;
 use crate::window::manager::{WindowManager, window_manager_find_window};
 

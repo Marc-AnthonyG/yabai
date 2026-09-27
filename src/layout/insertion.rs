@@ -1,28 +1,20 @@
-#![allow(deprecated)]
-
-use crate::ffi::core_foundation::{
-    CFType, CGPoint, CGRect, CGSize, sls_window_disable_shadow, take_create_rule_result,
+use crate::layout::area::{
+    area_a_window_inserted_in_direction_takes_from_node_area, cgrect_from_area,
 };
-use crate::ffi::core_graphics::{
-    CGContext, CGContextAddPath, CGContextClearRect, CGContextClipToRect, CGContextFillRect,
-    CGContextFlush, CGContextResetClip, CGContextSetLineWidth, CGContextSetRGBFillColor,
-    CGContextSetRGBStrokeColor, CGContextStrokePath, CGPathCreateWithRoundedRect, CGRectGetMidX,
-    CGRectGetMidY, CGRectInset, CGRegionCreateEmptyRegion, CGSNewRegionWithRect,
+use crate::layout::feedback_window::{
+    FeedbackWindow, feedback_window_advance_fade_in,
+    feedback_window_create_transparent_above_window, feedback_window_draw_ghost_of_frame,
+    feedback_window_is_fading_in, schedule_the_next_feedback_window_fade_in_step,
 };
-use crate::ffi::skylight::{
-    SLSDisableUpdate, SLSNewWindowWithOpaqueShapeAndContext, SLSOrderWindow, SLSReenableUpdate,
-    SLSReleaseWindow, SLSSetWindowLevel, SLSSetWindowOpacity, SLSSetWindowResolution,
-    SLSSetWindowShape, SLSSetWindowSubLevel, SLWindowContextCreate,
-};
+use crate::layout::settings::{ViewType, window_node_get_gap, window_node_get_ratio};
+use crate::layout::tree::{WindowNodeChild, WindowNodeSplit, view_find_window_node};
+use crate::mouse::drag::MouseDragState;
 use crate::notifications::window::update_window_notifications;
 use crate::space::manager::SpaceManager;
-use crate::state::process_wide::CONNECTION;
-use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, STACK};
-use crate::support::geometry::{cgrect_clamp_x_radius, cgrect_clamp_y_radius};
+use crate::support::direction::STACK;
 use crate::support::handles::{NodeId, SpaceId, WindowId};
 use crate::support::macos_version::{workspace_is_macos_sequoia, workspace_is_macos_tahoe};
 use crate::window::manager::WindowManager;
-use crate::window::model::{window_level, window_sub_level};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(u32)]
@@ -34,251 +26,78 @@ pub(crate) enum WindowInsertionPoint {
 
 pub(crate) static WINDOW_INSERTION_POINT_STR: [&str; 3] = ["focused", "first", "last"];
 
-pub(crate) struct FeedbackWindow {
-    pub(crate) id: WindowId,
-    pub(crate) context: *mut CGContext,
-}
-
-impl Drop for FeedbackWindow {
-    fn drop(&mut self) {
-        let connection = *CONNECTION.get().unwrap();
-        if self.id.0 != 0 {
-            unsafe { SLSOrderWindow(connection, self.id.0, 0, 0) };
-            drop(unsafe { take_create_rule_result(self.context.cast_const()) });
-            unsafe { SLSReleaseWindow(connection, self.id.0) };
-        } else {
-            drop(unsafe { take_create_rule_result(self.context.cast_const()) });
-        }
-    }
-}
-
-impl FeedbackWindow {
-    pub(crate) fn window_id_or_zero(feedback_window: &Option<FeedbackWindow>) -> u32 {
-        feedback_window
-            .as_ref()
-            .map_or(0, |feedback_window| feedback_window.id.0)
-    }
-}
-
-pub(crate) const INSERT_FEEDBACK_WIDTH: f64 = 2.0;
-pub(crate) const INSERT_FEEDBACK_RADIUS: f64 = 9.0;
-
 pub(crate) fn insert_feedback_show(
     space_id: SpaceId,
     node_id: NodeId,
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
 ) {
-    let connection = *CONNECTION.get().unwrap();
+    let ratio = window_node_get_ratio(space_id, node_id, space_manager);
+    let gap = window_node_get_gap(space_manager, space_id);
 
-    let Some(view) = space_manager.view.find_mut(&space_id) else {
+    let Some(view) = space_manager.view.find(&space_id) else {
         return;
     };
-    let node = view.node_mut(node_id);
-
-    let mut frame = CGRect {
-        origin: CGPoint {
-            x: node.area.x as f64,
-            y: node.area.y as f64,
-        },
-        size: CGSize {
-            width: node.area.width as f64,
-            height: node.area.height as f64,
-        },
+    let Some(node) = view.find_node(node_id) else {
+        return;
     };
-    let mut frame_region: *mut CFType = std::ptr::null_mut();
-    unsafe { CGSNewRegionWithRect(&mut frame, &mut frame_region) };
-    frame.origin.x = 0.0;
-    frame.origin.y = 0.0;
+    let insert_direction_the_view_layout_honours =
+        if view.layout == ViewType::Stack && node.insert_direction != 0 {
+            STACK
+        } else {
+            node.insert_direction
+        };
+    let Some(area_of_the_inserted_window) =
+        area_a_window_inserted_in_direction_takes_from_node_area(
+            insert_direction_the_view_layout_honours,
+            node.area,
+            ratio,
+            gap,
+        )
+    else {
+        return;
+    };
+    let frame_of_the_inserted_window = cgrect_from_area(area_of_the_inserted_window);
+    let node_first_window_id = node.window_order[0];
 
     if FeedbackWindow::window_id_or_zero(&node.feedback_window) == 0 {
-        let mut tags: u64 = (1u64 << 1) | (1u64 << 9);
-        let empty_region = unsafe { CGRegionCreateEmptyRegion() };
-        let mut feedback_window_id: u32 = 0;
-        unsafe {
-            SLSNewWindowWithOpaqueShapeAndContext(
-                connection,
-                2,
-                frame_region.cast_const(),
-                empty_region.cast_const(),
-                13,
-                &mut tags,
-                0.0,
-                0.0,
-                64,
-                &mut feedback_window_id,
-                std::ptr::null_mut(),
-            )
-        };
-        drop(unsafe { take_create_rule_result(empty_region.cast_const()) });
-
-        sls_window_disable_shadow(feedback_window_id);
-        unsafe { SLSSetWindowResolution(connection, feedback_window_id, 1.0f32 as f64) };
-        unsafe { SLSSetWindowOpacity(connection, feedback_window_id, false) };
-        unsafe {
-            SLSSetWindowLevel(
-                connection,
-                feedback_window_id,
-                window_level(node.window_order[0]),
-            )
-        };
-        unsafe {
-            SLSSetWindowSubLevel(
-                connection,
-                feedback_window_id,
-                window_sub_level(node.window_order[0]),
-            )
-        };
-        let feedback_window_context =
-            unsafe { SLWindowContextCreate(connection, feedback_window_id, std::ptr::null()) };
-        node.feedback_window = Some(FeedbackWindow {
-            id: WindowId(feedback_window_id),
-            context: feedback_window_context,
-        });
-        let feedback_window_context = unsafe { feedback_window_context.as_ref() };
-        CGContextSetLineWidth(feedback_window_context, INSERT_FEEDBACK_WIDTH);
-        CGContextSetRGBFillColor(
-            feedback_window_context,
-            window_manager.insert_feedback_color.red as f64,
-            window_manager.insert_feedback_color.green as f64,
-            window_manager.insert_feedback_color.blue as f64,
-            (window_manager.insert_feedback_color.alpha * 0.25f32) as f64,
+        let a_fade_in_is_already_stepping = a_feedback_window_is_still_fading_in(space_manager);
+        let feedback_window = feedback_window_create_transparent_above_window(
+            frame_of_the_inserted_window,
+            node_first_window_id,
         );
-        CGContextSetRGBStrokeColor(
-            feedback_window_context,
-            window_manager.insert_feedback_color.red as f64,
-            window_manager.insert_feedback_color.green as f64,
-            window_manager.insert_feedback_color.blue as f64,
-            window_manager.insert_feedback_color.alpha as f64,
-        );
-        unsafe { SLSDisableUpdate(connection) };
-        CGContextClearRect(feedback_window_context, frame);
-        CGContextFlush(feedback_window_context);
-        unsafe { SLSReenableUpdate(connection) };
-        unsafe { SLSOrderWindow(connection, feedback_window_id, 1, node.window_order[0].0) };
+        let Some(node) = space_manager
+            .view
+            .find_mut(&space_id)
+            .and_then(|view| view.find_node_mut(node_id))
+        else {
+            return;
+        };
+        node.feedback_window = Some(feedback_window);
+        if !a_fade_in_is_already_stepping {
+            schedule_the_next_feedback_window_fade_in_step();
+        }
         window_manager
             .insert_feedback
-            .add(node.window_order[0], (space_id, node_id));
+            .add(node_first_window_id, (space_id, node_id));
         if !workspace_is_macos_sequoia() && !workspace_is_macos_tahoe() {
             update_window_notifications(window_manager, space_manager);
         }
     }
 
-    let Some(node) = space_manager
+    let Some(feedback_window) = space_manager
         .view
         .find(&space_id)
         .and_then(|view| view.find_node(node_id))
+        .and_then(|node| node.feedback_window.as_ref())
     else {
-        drop(unsafe { take_create_rule_result(frame_region.cast_const()) });
         return;
     };
-    let (feedback_window_id, feedback_window_context) = match &node.feedback_window {
-        Some(feedback_window) => (feedback_window.id, feedback_window.context),
-        None => (WindowId(0), std::ptr::null_mut()),
-    };
-    let insert_direction = node.insert_direction;
-
-    let clip_x: f64;
-    let clip_y: f64;
-    let clip_width: f64;
-    let clip_height: f64;
-    let middle_x = CGRectGetMidX(frame);
-    let middle_y = CGRectGetMidY(frame);
-
-    match insert_direction {
-        DIR_NORTH => {
-            clip_x = -0.5 * INSERT_FEEDBACK_WIDTH;
-            clip_y = middle_y - 0.5 * INSERT_FEEDBACK_WIDTH;
-            clip_width = INSERT_FEEDBACK_WIDTH;
-            clip_height = INSERT_FEEDBACK_WIDTH;
-        }
-        DIR_EAST => {
-            clip_x = middle_x - 0.5 * INSERT_FEEDBACK_WIDTH;
-            clip_y = -0.5 * INSERT_FEEDBACK_WIDTH;
-            clip_width = INSERT_FEEDBACK_WIDTH;
-            clip_height = INSERT_FEEDBACK_WIDTH;
-        }
-        DIR_SOUTH => {
-            clip_x = -0.5 * INSERT_FEEDBACK_WIDTH;
-            clip_y = -0.5 * INSERT_FEEDBACK_WIDTH;
-            clip_width = INSERT_FEEDBACK_WIDTH;
-            clip_height = -middle_y + INSERT_FEEDBACK_WIDTH;
-        }
-        DIR_WEST => {
-            clip_x = -0.5 * INSERT_FEEDBACK_WIDTH;
-            clip_y = -0.5 * INSERT_FEEDBACK_WIDTH;
-            clip_width = -middle_x + INSERT_FEEDBACK_WIDTH;
-            clip_height = INSERT_FEEDBACK_WIDTH;
-        }
-        STACK => {
-            clip_x = -0.5 * INSERT_FEEDBACK_WIDTH;
-            clip_y = -0.5 * INSERT_FEEDBACK_WIDTH;
-            clip_width = INSERT_FEEDBACK_WIDTH;
-            clip_height = INSERT_FEEDBACK_WIDTH;
-        }
-        _ => {
-            drop(unsafe { take_create_rule_result(frame_region.cast_const()) });
-            return;
-        }
-    }
-
-    let rect = CGRect {
-        origin: CGPoint {
-            x: 0.5 * INSERT_FEEDBACK_WIDTH,
-            y: 0.5 * INSERT_FEEDBACK_WIDTH,
-        },
-        size: CGSize {
-            width: frame.size.width - INSERT_FEEDBACK_WIDTH,
-            height: frame.size.height - INSERT_FEEDBACK_WIDTH,
-        },
-    };
-    let fill = CGRectInset(
-        rect,
-        0.5 * INSERT_FEEDBACK_WIDTH,
-        0.5 * INSERT_FEEDBACK_WIDTH,
+    feedback_window_draw_ghost_of_frame(
+        feedback_window,
+        frame_of_the_inserted_window,
+        window_manager.insert_feedback_color,
     );
-    let clip = CGRect {
-        origin: CGPoint {
-            x: rect.origin.x + clip_x,
-            y: rect.origin.y + clip_y,
-        },
-        size: CGSize {
-            width: rect.size.width + clip_width,
-            height: rect.size.height + clip_height,
-        },
-    };
-    let path = unsafe {
-        CGPathCreateWithRoundedRect(
-            rect,
-            cgrect_clamp_x_radius(rect, INSERT_FEEDBACK_RADIUS as f32) as f64,
-            cgrect_clamp_y_radius(rect, INSERT_FEEDBACK_RADIUS as f32) as f64,
-            std::ptr::null(),
-        )
-    };
-
-    let feedback_window_context = unsafe { feedback_window_context.as_ref() };
-    unsafe { SLSDisableUpdate(connection) };
-    unsafe {
-        SLSSetWindowShape(
-            connection,
-            feedback_window_id.0,
-            0.0,
-            0.0,
-            frame_region.cast_const(),
-        )
-    };
-    CGContextClearRect(feedback_window_context, frame);
-    CGContextClipToRect(feedback_window_context, clip);
-    CGContextFillRect(feedback_window_context, fill);
-    CGContextAddPath(feedback_window_context, Some(&path));
-    CGContextStrokePath(feedback_window_context);
-    if let Some(feedback_window_context) = feedback_window_context {
-        CGContextResetClip(feedback_window_context);
-    }
-    CGContextFlush(feedback_window_context);
-    unsafe { SLSReenableUpdate(connection) };
-    drop(path);
-    drop(unsafe { take_create_rule_result(frame_region.cast_const()) });
 }
 
 pub(crate) fn insert_feedback_destroy(
@@ -309,5 +128,87 @@ pub(crate) fn insert_feedback_destroy(
             return;
         };
         drop(node.feedback_window.take());
+    }
+}
+
+pub(crate) fn a_feedback_window_is_still_fading_in(space_manager: &SpaceManager) -> bool {
+    space_manager.view.values().any(|view| {
+        view.nodes.iter().flatten().any(|node| {
+            node.feedback_window
+                .as_ref()
+                .is_some_and(feedback_window_is_fading_in)
+        })
+    })
+}
+
+pub(crate) fn insert_feedback_advance_every_fade_in(space_manager: &mut SpaceManager) {
+    for view in space_manager.view.values_mut() {
+        for node in view.nodes.iter_mut().flatten() {
+            if let Some(feedback_window) = node.feedback_window.as_mut() {
+                feedback_window_advance_fade_in(feedback_window);
+            }
+        }
+    }
+}
+
+pub(crate) fn clear_every_pending_insertion_point_other_than_the_window(
+    window_id: WindowId,
+    window_manager: &mut WindowManager,
+    space_manager: &mut SpaceManager,
+    mouse_drag_state: &MouseDragState,
+) {
+    let space_ids_of_views_pending_an_insertion_at_another_window: Vec<SpaceId> = space_manager
+        .view
+        .iter()
+        .filter(|(_, view)| view.insertion_point.0 != 0 && view.insertion_point != window_id)
+        .map(|(space_id, _)| *space_id)
+        .collect();
+
+    for space_id in space_ids_of_views_pending_an_insertion_at_another_window {
+        clear_the_pending_insertion_point_of_view(
+            space_id,
+            window_manager,
+            space_manager,
+            mouse_drag_state,
+        );
+    }
+}
+
+fn clear_the_pending_insertion_point_of_view(
+    space_id: SpaceId,
+    window_manager: &mut WindowManager,
+    space_manager: &mut SpaceManager,
+    mouse_drag_state: &MouseDragState,
+) {
+    let Some(insertion_point) = space_manager
+        .view
+        .find(&space_id)
+        .map(|view| view.insertion_point)
+    else {
+        return;
+    };
+
+    if let Some(insert_node_id) = view_find_window_node(space_manager, space_id, insertion_point) {
+        let the_mouse_drag_preview_is_shown_on_the_insert_node =
+            mouse_drag_state.feedback_node == Some((space_id, insert_node_id));
+        if !the_mouse_drag_preview_is_shown_on_the_insert_node {
+            insert_feedback_destroy(space_id, insert_node_id, window_manager, space_manager);
+        }
+
+        if let Some(insert_node) = space_manager
+            .view
+            .find_mut(&space_id)
+            .and_then(|view| view.find_node_mut(insert_node_id))
+        {
+            insert_node.split = WindowNodeSplit::None;
+            insert_node.child = WindowNodeChild::None;
+            if !the_mouse_drag_preview_is_shown_on_the_insert_node {
+                insert_node.insert_direction = 0;
+            }
+        }
+    }
+
+    if let Some(view) = space_manager.view.find_mut(&space_id) {
+        view.insertion_point = WindowId(0);
     }
 }

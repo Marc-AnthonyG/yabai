@@ -12,6 +12,7 @@ use crate::event::handlers::display::{
     event_handler_display_added, event_handler_display_changed, event_handler_display_moved,
     event_handler_display_removed, event_handler_display_resized,
 };
+use crate::event::handlers::insert_feedback::event_handler_insert_feedback_fade_in_step;
 use crate::event::handlers::menu::{event_handler_menu_closed, event_handler_menu_opened};
 use crate::event::handlers::mission_control::{
     event_handler_mission_control_check_for_exit, event_handler_mission_control_enter,
@@ -27,7 +28,8 @@ use crate::event::handlers::space::{
 };
 use crate::event::handlers::system::{
     event_handler_dock_did_change_pref, event_handler_dock_did_restart,
-    event_handler_menu_bar_hidden_changed, event_handler_system_woke,
+    event_handler_menu_bar_hidden_changed, event_handler_system_accent_color_changed,
+    event_handler_system_woke,
 };
 use crate::event::handlers::window::{
     event_handler_sls_window_destroyed, event_handler_sls_window_ordered,
@@ -418,6 +420,12 @@ pub(crate) fn event_loop_run(
                         space_manager,
                         signal_storage,
                     ),
+                    Event::SystemAccentColorChanged(accent_color) => {
+                        event_handler_system_accent_color_changed(accent_color, window_manager)
+                    }
+                    Event::InsertFeedbackFadeInStep => {
+                        event_handler_insert_feedback_fade_in_step(space_manager)
+                    }
                     Event::DaemonMessage(stream) => event_handler_daemon_message(
                         stream,
                         signal_event,

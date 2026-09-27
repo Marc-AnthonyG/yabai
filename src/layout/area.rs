@@ -1,6 +1,6 @@
-use crate::ffi::core_foundation::{CGPoint, CGRect};
-use crate::layout::tree::WindowNodeSplit;
-use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST};
+use crate::ffi::core_foundation::{CGPoint, CGRect, CGSize};
+use crate::layout::tree::{WindowNodeChild, WindowNodeSplit};
+use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, STACK};
 
 #[derive(Clone, Copy, Default)]
 pub(crate) struct Area {
@@ -16,6 +16,19 @@ pub(crate) fn area_from_cgrect(rect: CGRect) -> Area {
         y: rect.origin.y as f32,
         width: rect.size.width as f32,
         height: rect.size.height as f32,
+    }
+}
+
+pub(crate) fn cgrect_from_area(area: Area) -> CGRect {
+    CGRect {
+        origin: CGPoint {
+            x: area.x as f64,
+            y: area.y as f64,
+        },
+        size: CGSize {
+            width: area.width as f64,
+            height: area.height as f64,
+        },
     }
 }
 
@@ -56,6 +69,29 @@ pub(crate) fn area_make_pair(
         right_area.y += ((left_width + 0.5f32) as i32 + gap) as f32;
 
         (left_area, right_area)
+    }
+}
+
+pub(crate) fn area_a_window_inserted_in_direction_takes_from_node_area(
+    insert_direction: i32,
+    node_area: Area,
+    ratio: f32,
+    gap: i32,
+) -> Option<Area> {
+    let (split, child_of_the_inserted_window) = match insert_direction {
+        DIR_NORTH => (WindowNodeSplit::X, WindowNodeChild::First),
+        DIR_EAST => (WindowNodeSplit::Y, WindowNodeChild::Second),
+        DIR_SOUTH => (WindowNodeSplit::X, WindowNodeChild::Second),
+        DIR_WEST => (WindowNodeSplit::Y, WindowNodeChild::First),
+        STACK => return Some(node_area),
+        _ => return None,
+    };
+
+    let (first_child_area, second_child_area) = area_make_pair(split, gap, ratio, node_area);
+    if child_of_the_inserted_window == WindowNodeChild::Second {
+        Some(second_child_area)
+    } else {
+        Some(first_child_area)
     }
 }
 

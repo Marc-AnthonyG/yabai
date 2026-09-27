@@ -5,6 +5,7 @@ use crate::process::manager::ProcessManager;
 use crate::signal::definition::{SIGNAL_TYPE_COUNT, Signal, SignalType};
 use crate::signal::queue::{PendingSignal, SignalContext, event_signal_push};
 use crate::space::manager::{SpaceManager, space_manager_mark_spaces_invalid};
+use crate::support::color::RgbaColor;
 use crate::support::macos_version::{
     workspace_is_macos_monterey, workspace_is_macos_sequoia, workspace_is_macos_sonoma,
     workspace_is_macos_tahoe, workspace_is_macos_ventura,
@@ -117,4 +118,18 @@ pub(crate) fn event_handler_system_woke(
         space_manager,
         signal_storage,
     );
+}
+
+pub(crate) fn event_handler_system_accent_color_changed(
+    accent_color: RgbaColor,
+    window_manager: &mut WindowManager,
+) {
+    debug!(
+        "{}: 0x{:x}\n",
+        "EVENT_HANDLER_SYSTEM_ACCENT_COLOR_CHANGED", accent_color.packed
+    );
+
+    if window_manager.insert_feedback_color_follows_the_system_accent_color {
+        window_manager.insert_feedback_color = accent_color;
+    }
 }

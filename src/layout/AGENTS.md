@@ -1,8 +1,9 @@
 # layout
 
 The tiling layout of each space: the view a space owns, its BSP tree of window nodes, the area
-arithmetic that divides the display between them, the per-view settings that override the global
-ones, and the insertion point with its feedback window.
+arithmetic that divides the display between them and predicts the frame an inserted window will
+take, the per-view settings that override the global ones, and the insertion point with its
+preview, a SkyLight overlay window drawn as a ghost of that frame.
 
 ## Notes
 
@@ -20,3 +21,19 @@ ones, and the insertion point with its feedback window.
   place windows to the pixel and are observable (decision 3).
 - The name tables for view type, split, child, auto-balance and insertion point are the CLI and
   query spellings; each index is the enum discriminant (decision 31).
+- The preview (decision 53) is computed by one pure function from the node's area, the insert
+  direction, the node's ratio or the global split ratio, and the view's gap, with the same split
+  arithmetic the tree runs when it inserts: `window --insert` and a mouse drop both use it, and a
+  swap, a stack or any insertion into a view with the stack layout covers the whole node. It shows
+  the frame the split gives; auto-balance may still move frames once the window is inserted. Keep
+  it in step with the tree whenever the split rules change.
+- The overlay covers only that frame and is drawn at a 2.0 resolution so it stays sharp on Retina
+  displays. It fades in through steps posted to the event loop from the main queue; a step only
+  touches overlay windows a node still owns, so a released overlay is never touched, and a step is
+  scheduled only while some overlay is still fading in.
+- The preview colour is the window manager's insert feedback colour. It follows the accent colour
+  the workspace observer reads and posts, until `insert_feedback_color` is set by a client.
+- A pending insertion point is cleared when a window yabai tracks gains focus and is not that
+  insertion point (decision 54), the way repeating the same `--insert` clears it. A window that is
+  not tracked yet cannot clear it, so the new window still consumes it. A node that is showing the
+  mouse drag preview keeps its overlay and insert direction; the drag owns them.

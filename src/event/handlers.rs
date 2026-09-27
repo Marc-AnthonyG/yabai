@@ -1,6 +1,7 @@
 pub mod application;
 pub mod daemon_message;
 pub mod display;
+pub mod insert_feedback;
 pub mod menu;
 pub mod mission_control;
 pub mod mouse;

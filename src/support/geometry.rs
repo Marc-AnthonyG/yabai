@@ -1,21 +1,4 @@
 use crate::ffi::core_foundation::{CGPoint, CGRect};
-use crate::ffi::core_graphics::{CGRectGetHeight, CGRectGetWidth};
-
-pub fn cgrect_clamp_x_radius(frame: CGRect, radius: f32) -> f32 {
-    let mut radius = radius;
-    if (radius * 2.0) as f64 > CGRectGetWidth(frame) {
-        radius = (CGRectGetWidth(frame) / 2.0) as f32;
-    }
-    radius
-}
-
-pub fn cgrect_clamp_y_radius(frame: CGRect, radius: f32) -> f32 {
-    let mut radius = radius;
-    if (radius * 2.0) as f64 > CGRectGetHeight(frame) {
-        radius = (CGRectGetHeight(frame) / 2.0) as f32;
-    }
-    radius
-}
 
 pub fn cgrect_contains_point(rect: CGRect, point: CGPoint) -> bool {
     point.x >= rect.origin.x

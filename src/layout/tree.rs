@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::display_manager::DisplayManager;
+use crate::display::manager::DisplayManager;
 use crate::handles::{NodeId, ROOT_NODE_ID, SpaceId, WindowId};
 use crate::layout::area::{
     Area, area_distance_in_direction, area_is_in_direction, area_make_pair, area_max_point,
@@ -14,14 +14,14 @@ use crate::layout::settings::{
 };
 use crate::layout::view::{View, view_update};
 use crate::mouse::drag::MouseDragState;
-use crate::space::space_window_list;
-use crate::space_manager::SpaceManager;
+use crate::space::managed_space::space_window_list;
+use crate::space::manager::SpaceManager;
 use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, STACK};
-use crate::window::animation::WindowCapture;
-use crate::window_manager::{
-    WindowManager, window_manager_animate_window_list, window_manager_find_rank_of_window_in_list,
-    window_manager_find_window, window_manager_remove_managed_window,
+use crate::window::animation::{WindowCapture, window_manager_animate_window_list};
+use crate::window::manager::{
+    WindowManager, window_manager_find_window, window_manager_remove_managed_window,
 };
+use crate::window::screen_lookup::window_manager_find_rank_of_window_in_list;
 
 #[derive(Clone, Copy)]
 pub(crate) struct BalanceNode {

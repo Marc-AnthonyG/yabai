@@ -8,24 +8,29 @@ use std::sync::OnceLock;
 use std::sync::atomic::Ordering;
 
 use crate::daemon_fail;
-use crate::display_manager::{
-    DISPLAY_ARRANGEMENT_ORDER_STR, DisplayArrangementOrder, DisplayManager, EXTERNAL_BAR_MODE_STR,
-    ExternalBarMode, display_manager_active_display_id, display_manager_query_displays, display_manager_arrangement_display_id,
-    display_manager_cursor_display_id, display_manager_focus_display, display_manager_focus_space,
-    display_manager_remove_label_for_display, display_manager_set_label_for_display,
-    display_manager_find_closest_display_in_direction, display_manager_first_display_id,
-    display_manager_get_display_for_label, display_manager_last_display_id,
+use crate::display::arrangement::{
+    display_manager_arrangement_display_id, display_manager_find_closest_display_in_direction,
+    display_manager_first_display_id, display_manager_last_display_id,
     display_manager_next_display_id, display_manager_prev_display_id,
 };
-use crate::display::{
-    DISPLAY_PROPERTY_STR, DISPLAY_PROPERTY_VAL, display_serialize, display_space_id,
+use crate::display::focus::{display_manager_focus_display, display_manager_focus_space};
+use crate::display::identity::{
+    display_manager_active_display_id, display_manager_cursor_display_id,
 };
+use crate::display::labels::{
+    display_manager_get_display_for_label, display_manager_remove_label_for_display,
+    display_manager_set_label_for_display,
+};
+use crate::display::manager::{
+    DISPLAY_ARRANGEMENT_ORDER_STR, DisplayArrangementOrder, DisplayManager, EXTERNAL_BAR_MODE_STR,
+    ExternalBarMode,
+};
+use crate::display::spaces::display_space_id;
 use crate::event_loop::{Event, event_loop_post};
 use crate::ffi::core_graphics::{CGPreflightScreenCaptureAccess, CGRequestScreenCaptureAccess};
 use crate::globals::VERBOSE;
 use crate::handles::{DisplayId, SpaceId, WindowId};
 use crate::layout::insertion::{WINDOW_INSERTION_POINT_STR, WindowInsertionPoint};
-use crate::layout::serialise::{SPACE_PROPERTY_STR, SPACE_PROPERTY_VAL};
 use crate::layout::settings::{AUTO_BALANCE_STR, VIEW_TYPE_STR, ViewFlag, ViewType};
 use crate::layout::tree::{
     NODE_MAX_WINDOW_COUNT, WINDOW_NODE_CHILD_STR, WINDOW_NODE_SPLIT_STR, WindowNodeChild,
@@ -35,40 +40,60 @@ use crate::layout::view::{view_clear, view_flush, view_update};
 use crate::mission_control::MissionControlMode;
 use crate::mouse::drag::MouseDragState;
 use crate::mouse::tap::{MOUSE_MOD_STR, MOUSE_MODE_STR, MOUSE_TAP_STATE, MouseMod, MouseMode};
-use crate::process_manager::ProcessManager;
-use crate::rule::{
-    RULE_PROP_OFF, RULE_PROP_ON, Rule, RuleEffectsFlag, RuleFlag, rule_add, rule_apply,
-    rule_reapply_all, rule_reapply_by_index, rule_reapply_by_label, rule_remove_by_index,
-    rule_remove_by_label,
+use crate::process::manager::ProcessManager;
+use crate::query::displays::display_manager_query_displays;
+use crate::query::spaces::{
+    space_manager_query_space, space_manager_query_spaces_for_display,
+    space_manager_query_spaces_for_displays, space_manager_query_spaces_for_window,
+};
+use crate::query::windows::{
+    window_manager_query_windows_for_display, window_manager_query_windows_for_displays,
+    window_manager_query_windows_for_spaces,
 };
 use crate::scripting_addition::client::scripting_addition_order_window;
 use crate::scripting_addition::installer::scripting_addition_is_sip_friendly;
+use crate::serialise::display::{DISPLAY_PROPERTY_STR, DISPLAY_PROPERTY_VAL, display_serialize};
+use crate::serialise::rule::window_manager_query_window_rules;
+use crate::serialise::signal::event_signal_list;
+use crate::serialise::space::{SPACE_PROPERTY_STR, SPACE_PROPERTY_VAL};
+use crate::serialise::window::{WINDOW_PROPERTY_STR, WINDOW_PROPERTY_VAL, window_serialize};
 use crate::signal::definition::{
     SIGNAL_TYPE_COUNT, Signal, SignalProp, SignalType, event_signal_add, event_signal_remove,
     event_signal_remove_by_index, signal_type_from_string,
 };
-use crate::signal::serialise::event_signal_list;
-use crate::space::{space_display_id, space_is_fullscreen, space_is_user};
-use crate::space_manager::{
-    SpaceManager, SpaceOpError, space_manager_active_space, space_manager_add_space,
-    space_manager_balance_space, space_manager_destroy_space, space_manager_equalize_space,
-    space_manager_focus_space, space_manager_mirror_space, space_manager_move_space_to_display,
-    space_manager_move_space_to_space, space_manager_remove_label_for_space,
-    space_manager_rotate_space, space_manager_set_gap_for_space, space_manager_set_label_for_space,
-    space_manager_set_layout_for_space, space_manager_set_padding_for_space,
-    space_manager_swap_space_with_space, space_manager_switch_space,
-    space_manager_toggle_gap_for_space, space_manager_toggle_mission_control,
-    space_manager_toggle_padding_for_space, space_manager_toggle_show_desktop,
-    space_manager_toggle_window_split,
-    space_manager_cursor_space, space_manager_find_view, space_manager_first_space,
-    space_manager_get_space_for_label, space_manager_last_space, space_manager_mark_spaces_invalid,
+use crate::space::focus::{
+    space_manager_active_space, space_manager_focus_space, space_manager_switch_space,
+    space_manager_toggle_mission_control, space_manager_toggle_show_desktop,
+};
+use crate::space::labels::{
+    space_manager_get_space_for_label, space_manager_remove_label_for_space,
+    space_manager_set_label_for_space,
+};
+use crate::space::lookup::{
+    space_manager_cursor_space, space_manager_first_space, space_manager_last_space,
     space_manager_mission_control_space, space_manager_next_space, space_manager_prev_space,
-    space_manager_query_space, space_manager_query_spaces_for_display,
-    space_manager_query_spaces_for_displays, space_manager_query_spaces_for_window,
+};
+use crate::space::managed_space::{space_display_id, space_is_fullscreen, space_is_user};
+use crate::space::manager::{
+    SpaceManager, space_manager_find_view, space_manager_mark_spaces_invalid,
+};
+use crate::space::operations::{
+    SpaceOpError, space_manager_add_space, space_manager_destroy_space,
+    space_manager_move_space_to_display, space_manager_move_space_to_space,
+    space_manager_swap_space_with_space,
+};
+use crate::space::tiling::{
+    space_manager_balance_space, space_manager_equalize_space, space_manager_mirror_space,
+    space_manager_rotate_space, space_manager_toggle_window_split,
+};
+use crate::space::view_settings::{
     space_manager_set_auto_balance_for_all_spaces, space_manager_set_bottom_padding_for_all_spaces,
-    space_manager_set_layout_for_all_spaces, space_manager_set_left_padding_for_all_spaces,
-    space_manager_set_right_padding_for_all_spaces, space_manager_set_split_type_for_all_spaces,
-    space_manager_set_top_padding_for_all_spaces, space_manager_set_window_gap_for_all_spaces,
+    space_manager_set_gap_for_space, space_manager_set_layout_for_all_spaces,
+    space_manager_set_layout_for_space, space_manager_set_left_padding_for_all_spaces,
+    space_manager_set_padding_for_space, space_manager_set_right_padding_for_all_spaces,
+    space_manager_set_split_type_for_all_spaces, space_manager_set_top_padding_for_all_spaces,
+    space_manager_set_window_gap_for_all_spaces, space_manager_toggle_gap_for_space,
+    space_manager_toggle_padding_for_space,
 };
 use crate::support::arithmetic::{in_range_ei, in_range_ii};
 use crate::support::color::rgba_color_from_hex;
@@ -80,42 +105,72 @@ use crate::support::resize_handle::ResizeHandle;
 use crate::support::response::{FailurePiece, Response};
 use crate::support::strings::{BOOL_STR, MAXLEN};
 use crate::support::type_of_change::{TYPE_ABS, TYPE_REL};
-use crate::window::model::{WindowFlag, window_check_flag, window_display_id};
-use crate::window::serialise::{WINDOW_PROPERTY_STR, WINDOW_PROPERTY_VAL, window_serialize};
-use crate::window_manager::{
-    FFM_MODE_STR, FfmMode, PURIFY_MODE_STR, PurifyMode, WINDOW_ORIGIN_MODE_STR, WindowManager,
-    WindowOpError, WindowOriginMode, window_manager_adjust_window_ratio, window_manager_apply_grid,
-    window_manager_close_window, window_manager_deminimize_window,
-    window_manager_focus_window_with_raise, window_manager_focused_window,
+use crate::window::floating_and_sticky::{
     window_manager_make_window_floating, window_manager_make_window_sticky,
-    window_manager_minimize_window, window_manager_move_window_relative,
-    window_manager_remove_scratchpad_for_window, window_manager_resize_window_relative,
-    window_manager_scratchpad_recover_windows, window_manager_send_window_to_space,
-    window_manager_set_opacity, window_manager_set_scratchpad_for_window,
-    window_manager_set_window_insertion, window_manager_set_window_layer,
-    window_manager_stack_window, window_manager_swap_window,
-    window_manager_toggle_scratchpad_window_by_label, window_manager_toggle_window_expose,
+};
+use crate::window::focus::{
+    window_manager_focus_window_with_raise, window_manager_focused_window,
+    window_manager_set_focus_follows_mouse, window_manager_toggle_window_expose,
+};
+use crate::window::frame::{
+    window_manager_adjust_window_ratio, window_manager_move_window_relative,
+    window_manager_resize_window_relative,
+};
+use crate::window::fullscreen::{
     window_manager_toggle_window_native_fullscreen, window_manager_toggle_window_pip,
-    window_manager_toggle_window_shadow, window_manager_toggle_window_windowed_fullscreen,
-    window_manager_toggle_window_zoom_fullscreen, window_manager_toggle_window_zoom_parent,
-    window_manager_query_window_rules, window_manager_query_windows_for_display,
-    window_manager_query_windows_for_displays, window_manager_query_windows_for_spaces,
-    window_manager_warp_window, window_manager_set_focus_follows_mouse, window_manager_set_purify_mode,
+    window_manager_toggle_window_windowed_fullscreen, window_manager_toggle_window_zoom_fullscreen,
+    window_manager_toggle_window_zoom_parent,
+};
+use crate::window::grid::window_manager_apply_grid;
+use crate::window::layer::window_manager_set_window_layer;
+use crate::window::manager::{
+    FFM_MODE_STR, FfmMode, PURIFY_MODE_STR, PurifyMode, WINDOW_ORIGIN_MODE_STR, WindowManager,
+    WindowOpError, WindowOriginMode, window_manager_find_window,
+};
+use crate::window::minimize_and_close::{
+    window_manager_close_window, window_manager_deminimize_window, window_manager_minimize_window,
+};
+use crate::window::model::{WindowFlag, window_check_flag, window_display_id};
+use crate::window::opacity::{
     window_manager_set_active_window_opacity, window_manager_set_menubar_opacity,
-    window_manager_set_normal_window_opacity, window_manager_set_window_opacity_enabled,
-    window_manager_validate_and_check_for_windows_on_space,
+    window_manager_set_normal_window_opacity, window_manager_set_opacity,
+    window_manager_set_window_opacity_enabled,
+};
+use crate::window::rule::{
+    RULE_PROP_OFF, RULE_PROP_ON, Rule, RuleEffectsFlag, RuleFlag, rule_add, rule_remove_by_index,
+    rule_remove_by_label,
+};
+use crate::window::rule_application::{
+    rule_apply, rule_reapply_all, rule_reapply_by_index, rule_reapply_by_label,
+};
+use crate::window::scratchpad::{
+    window_manager_remove_scratchpad_for_window, window_manager_scratchpad_recover_windows,
+    window_manager_set_scratchpad_for_window, window_manager_toggle_scratchpad_window_by_label,
+};
+use crate::window::screen_lookup::window_manager_find_window_below_cursor;
+use crate::window::send_to_space::window_manager_send_window_to_space;
+use crate::window::shadow::{window_manager_set_purify_mode, window_manager_toggle_window_shadow};
+use crate::window::space_reconciliation::window_manager_validate_and_check_for_windows_on_space;
+use crate::window::stack_lookup::{
+    window_manager_find_first_window_in_stack, window_manager_find_last_window_in_stack,
+    window_manager_find_next_window_in_stack, window_manager_find_prev_window_in_stack,
+    window_manager_find_recent_window_in_stack, window_manager_find_window_in_stack,
+};
+use crate::window::tree_lookup::{
     window_manager_find_closest_managed_window_in_direction,
     window_manager_find_first_cousin_for_managed_window, window_manager_find_first_managed_window,
-    window_manager_find_first_nephew_for_managed_window, window_manager_find_first_window_in_stack,
+    window_manager_find_first_nephew_for_managed_window,
     window_manager_find_largest_managed_window, window_manager_find_last_managed_window,
-    window_manager_find_last_window_in_stack, window_manager_find_next_managed_window,
-    window_manager_find_next_window_in_stack, window_manager_find_prev_managed_window,
-    window_manager_find_prev_window_in_stack, window_manager_find_recent_managed_window,
-    window_manager_find_recent_window_in_stack, window_manager_find_second_cousin_for_managed_window,
+    window_manager_find_next_managed_window, window_manager_find_prev_managed_window,
+    window_manager_find_recent_managed_window,
+    window_manager_find_second_cousin_for_managed_window,
     window_manager_find_second_nephew_for_managed_window,
     window_manager_find_sibling_for_managed_window, window_manager_find_smallest_managed_window,
-    window_manager_find_uncle_for_managed_window, window_manager_find_window,
-    window_manager_find_window_below_cursor, window_manager_find_window_in_stack,
+    window_manager_find_uncle_for_managed_window,
+};
+use crate::window::tree_placement::{
+    window_manager_set_window_insertion, window_manager_stack_window, window_manager_swap_window,
+    window_manager_warp_window,
 };
 
 pub(crate) struct MessageLoop {

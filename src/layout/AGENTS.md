@@ -2,7 +2,7 @@
 
 The tiling layout of each space: the view a space owns, its BSP tree of window nodes, the area
 arithmetic that divides the display between them, the per-view settings that override the global
-ones, the insertion point with its feedback window, and the JSON a space query prints.
+ones, and the insertion point with its feedback window.
 
 ## Notes
 
@@ -18,6 +18,5 @@ ones, the insertion point with its feedback window, and the JSON a space query p
   feedback slot is dropped.
 - Areas are `f32` (decision 30). The truncations and the `+ 0.5` rounding in the split arithmetic
   place windows to the pixel and are observable (decision 3).
-- The name tables for view type, split, child, auto-balance, insertion point and space
-  properties are the CLI and query spellings; each index is the enum discriminant
-  (decision 31). The space JSON is byte for byte the C output (decision 29).
+- The name tables for view type, split, child, auto-balance and insertion point are the CLI and
+  query spellings; each index is the enum discriminant (decision 31).

@@ -1,8 +1,8 @@
 # signal
 
 Signals: the subscriptions users add (an event type, app and title filters, an active filter, a
-command and a label), the queue of events waiting to be delivered, delivery by running each
-matching subscriber's command in a child process, and the JSON a signal listing prints.
+command and a label), the queue of events waiting to be delivered, and delivery by running each
+matching subscriber's command in a child process.
 
 ## Notes
 

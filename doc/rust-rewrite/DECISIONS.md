@@ -185,7 +185,7 @@ elaborates these decisions; none may reopen them.
     shared file, because units run concurrently. They are merged into `DEVIATIONS.md` once, at
     the end of phase 2. Signature changes follow the same rule under `signature-changes/`.
 50. `ax_application_notification` and `ax_application_notification_str` belong to
-    `src/application.rs`. `WORKSPACE_CONTEXT` is declared by the unit that writes
+    `src/application/notifications.rs`. `WORKSPACE_CONTEXT` is declared by the unit that writes
     `src/workspace.rs`. `SIGNAL_TYPE_COUNT` moves from `src/state.rs` to
     `src/signal/definition.rs`.
 51. `src/support/timer.rs` does not exist: its only live functions are `read_os_timer` and

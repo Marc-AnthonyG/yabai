@@ -1,6 +1,6 @@
 use std::sync::atomic::Ordering;
 
-use crate::display_manager::DisplayManager;
+use crate::display::manager::DisplayManager;
 use crate::ffi::core_foundation::{CGPoint, CGRect, CGSize};
 use crate::ffi::core_graphics::CGRectContainsPoint;
 use crate::handles::{NodeId, SpaceId, WindowId};
@@ -14,19 +14,21 @@ use crate::layout::tree::{
 use crate::mouse::drag::{MouseDragState, MouseWindowInfo};
 use crate::mouse::tap::{MOUSE_TAP_STATE, MouseMode};
 use crate::scripting_addition::client::scripting_addition_order_window;
-use crate::space_manager::{
-    SpaceManager, space_manager_tile_window_on_space, space_manager_untile_window,
-};
+use crate::space::manager::SpaceManager;
+use crate::space::tiling::{space_manager_tile_window_on_space, space_manager_untile_window};
 use crate::support::geometry::triangle_contains_point;
 use crate::support::layer::LAYER_BELOW;
 use crate::support::resize_handle::ResizeHandle;
-use crate::window::animation::WindowCapture;
-use crate::window_manager::{
-    WindowManager, WindowOpError, window_manager_add_managed_window, window_manager_adjust_layer,
-    window_manager_animate_window, window_manager_animate_window_list, window_manager_find_window,
-    window_manager_purify_window, window_manager_remove_managed_window,
-    window_manager_resize_window_relative,
+use crate::window::animation::{
+    WindowCapture, window_manager_animate_window, window_manager_animate_window_list,
 };
+use crate::window::frame::window_manager_resize_window_relative;
+use crate::window::layer::window_manager_adjust_layer;
+use crate::window::manager::{
+    WindowManager, WindowOpError, window_manager_add_managed_window, window_manager_find_window,
+    window_manager_remove_managed_window,
+};
+use crate::window::shadow::window_manager_purify_window;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]

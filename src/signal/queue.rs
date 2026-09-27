@@ -1,13 +1,15 @@
-use crate::display_manager::{DisplayManager, display_manager_display_id_arrangement};
+use crate::display::arrangement::display_manager_display_id_arrangement;
+use crate::display::manager::DisplayManager;
 use crate::ffi::carbon_events::GetCurrentEventTime;
 use crate::handles::{DisplayId, ProcessId, SpaceId, WindowId};
 use crate::mission_control::{MISSION_CONTROL_MODE_STR, MissionControlMode};
-use crate::process_manager::ProcessManager;
+use crate::process::manager::ProcessManager;
 use crate::signal::definition::{SIGNAL_TYPE_COUNT, Signal, SignalType};
-use crate::space_manager::{SpaceManager, space_manager_mission_control_index};
+use crate::space::lookup::space_manager_mission_control_index;
+use crate::space::manager::SpaceManager;
 use crate::support::log::or_null;
+use crate::window::manager::WindowManager;
 use crate::window::model::window_title_ts;
-use crate::window_manager::WindowManager;
 
 pub(crate) struct PendingSignal {
     pub(crate) signal_type: SignalType,

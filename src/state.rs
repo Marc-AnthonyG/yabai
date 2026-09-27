@@ -1,11 +1,11 @@
-use crate::display_manager::DisplayManager;
+use crate::display::manager::DisplayManager;
 use crate::mission_control::MissionControlMode;
 use crate::mouse::drag::MouseDragState;
-use crate::process_manager::ProcessManager;
+use crate::process::manager::ProcessManager;
 use crate::signal::definition::{SIGNAL_TYPE_COUNT, Signal};
 use crate::signal::queue::PendingSignal;
-use crate::space_manager::SpaceManager;
-use crate::window_manager::{FfmMode, WindowManager};
+use crate::space::manager::SpaceManager;
+use crate::window::manager::{FfmMode, WindowManager};
 
 pub struct EventLoopOwnedState {
     pub signal_event: [Vec<Signal>; SIGNAL_TYPE_COUNT],

@@ -17,11 +17,11 @@ use crate::ffi::skylight::{
 };
 use crate::globals::CONNECTION;
 use crate::handles::{NodeId, SpaceId, WindowId};
-use crate::space_manager::SpaceManager;
+use crate::space::manager::SpaceManager;
 use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, STACK};
 use crate::support::geometry::{cgrect_clamp_x_radius, cgrect_clamp_y_radius};
+use crate::window::manager::WindowManager;
 use crate::window::model::{window_level, window_sub_level};
-use crate::window_manager::WindowManager;
 use crate::workspace::{workspace_is_macos_sequoia, workspace_is_macos_tahoe};
 
 #[derive(Clone, Copy, PartialEq, Eq)]

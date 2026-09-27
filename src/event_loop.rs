@@ -13,18 +13,23 @@ use objc2::msg_send;
 use objc2::rc::autoreleasepool;
 use objc2_core_graphics::CGMouseButton;
 
-use crate::application::{
+use crate::application::model::{
     Application, application_create, application_destroy, application_focused_window,
-    application_is_frontmost, application_observe, application_unobserve,
+    application_is_frontmost,
 };
+use crate::application::notifications::{application_observe, application_unobserve};
 use crate::debug;
-use crate::display::{display_bounds_constrained, display_space_id};
-use crate::display_manager::{
-    DisplayManager, display_manager_active_display_id,
-    display_manager_focus_display_with_window_at_point, display_manager_main_display_id,
-    display_manager_point_display_id, display_manager_remove_label_for_display,
-    display_manager_set_active_display_id,
+use crate::display::bounds::display_bounds_constrained;
+use crate::display::focus::{
+    display_manager_focus_display_with_window_at_point, display_manager_set_active_display_id,
 };
+use crate::display::identity::{
+    display_manager_active_display_id, display_manager_main_display_id,
+    display_manager_point_display_id,
+};
+use crate::display::labels::display_manager_remove_label_for_display;
+use crate::display::manager::DisplayManager;
+use crate::display::spaces::display_space_id;
 use crate::ffi::accessibility::{
     AXUIElement, AXUIElementRef, ax_window_id, ax_window_pid, kAXDrawerRole, kAXSheetRole,
 };
@@ -71,25 +76,27 @@ use crate::mouse::drop::{
     mouse_drop_action_warp, mouse_drop_no_target, mouse_drop_try_adjust_bsp_grid,
 };
 use crate::mouse::tap::{MOUSE_TAP_STATE, MouseMod, MouseMode};
-use crate::process_manager::{
-    Process, ProcessManager, process_destroy, process_manager_active_space_for_psn,
-    process_manager_find_process,
-};
-use crate::rule::RuleFlag;
+use crate::process::active_space::process_manager_active_space_for_psn;
+use crate::process::manager::{ProcessManager, process_manager_find_process};
+use crate::process::model::{Process, process_destroy};
 use crate::scripting_addition::client::scripting_addition_move_window;
 use crate::signal::definition::{SIGNAL_TYPE_COUNT, Signal, SignalType};
 use crate::signal::exec::event_signal_flush;
 use crate::signal::queue::{PendingSignal, SignalContext, event_signal_push};
-use crate::space::{
-    space_display_id, space_is_fullscreen, space_is_user, space_is_visible, space_window_list,
+use crate::space::focus::{space_manager_active_space, space_manager_focus_space_using_gesture};
+use crate::space::labels::space_manager_remove_label_for_space;
+use crate::space::lookup::space_manager_cursor_space;
+use crate::space::managed_space::{
+    space_display_id, space_is_fullscreen, space_is_user, space_is_visible,
+    space_manager_is_window_on_space, space_window_list,
 };
-use crate::space_manager::{
-    SpaceManager, space_manager_active_space, space_manager_cursor_space, space_manager_find_view,
-    space_manager_focus_space_using_gesture, space_manager_handle_display_add,
-    space_manager_is_window_on_space, space_manager_mark_spaces_invalid,
-    space_manager_mark_spaces_invalid_for_display, space_manager_refresh_application_windows,
-    space_manager_remove_label_for_space, space_manager_tile_window_on_space,
-    space_manager_tile_window_on_space_with_insertion_point, space_manager_untile_window,
+use crate::space::manager::{
+    SpaceManager, space_manager_find_view, space_manager_handle_display_add,
+    space_manager_mark_spaces_invalid, space_manager_mark_spaces_invalid_for_display,
+};
+use crate::space::tiling::{
+    space_manager_tile_window_on_space, space_manager_tile_window_on_space_with_insertion_point,
+    space_manager_untile_window,
 };
 use crate::state::EventLoopOwnedState;
 use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, STACK};
@@ -99,6 +106,30 @@ use crate::support::log::{debug_message, or_null};
 use crate::support::resize_handle::ResizeHandle;
 use crate::support::response::Response;
 use crate::support::sockets::socket_close;
+use crate::window::discovery::{
+    space_manager_refresh_application_windows, window_manager_add_application_windows,
+    window_manager_add_existing_application_windows, window_manager_create_and_add_window,
+};
+use crate::window::focus::{
+    window_manager_center_mouse, window_manager_focus_window_with_raise,
+    window_manager_focus_window_without_raise, window_manager_focused_window,
+};
+use crate::window::frame::{
+    window_manager_move_window, window_manager_resize_window_relative_internal,
+};
+use crate::window::fullscreen::window_manager_wait_for_native_fullscreen_transition;
+use crate::window::layer::window_manager_adjust_layer;
+use crate::window::manager::{
+    FfmMode, WindowManager, WindowOriginMode, window_manager_add_application,
+    window_manager_add_lost_focused_event, window_manager_add_lost_front_switched_event,
+    window_manager_add_managed_window, window_manager_find_application,
+    window_manager_find_application_windows, window_manager_find_lost_focused_event,
+    window_manager_find_lost_front_switched_event, window_manager_find_managed_window,
+    window_manager_find_window, window_manager_is_window_eligible,
+    window_manager_remove_application, window_manager_remove_lost_focused_event,
+    window_manager_remove_lost_front_switched_event, window_manager_remove_managed_window,
+    window_manager_remove_window, window_manager_should_manage_window,
+};
 use crate::window::model::{
     WindowFlag, window_ax_can_move, window_ax_can_resize, window_ax_frame, window_ax_origin,
     window_ax_role, window_ax_subrole, window_check_flag, window_clear_flag, window_destroy,
@@ -106,25 +137,17 @@ use crate::window::model::{
     window_sub_level, window_title,
 };
 use crate::window::notifications::window_unobserve;
-use crate::window_manager::{
-    FfmMode, WindowManager, WindowOriginMode, window_manager_add_application,
-    window_manager_add_application_windows, window_manager_add_existing_application_windows,
-    window_manager_add_lost_focused_event, window_manager_add_lost_front_switched_event,
-    window_manager_add_managed_window, window_manager_adjust_layer, window_manager_center_mouse,
-    window_manager_correct_for_mission_control_changes, window_manager_create_and_add_window,
-    window_manager_find_application, window_manager_find_application_windows,
-    window_manager_find_lost_focused_event, window_manager_find_lost_front_switched_event,
-    window_manager_find_managed_window, window_manager_find_window,
+use crate::window::opacity::window_manager_set_window_opacity;
+use crate::window::rule::RuleFlag;
+use crate::window::scratchpad::window_manager_remove_scratchpad_for_window;
+use crate::window::screen_lookup::{
     window_manager_find_window_at_point, window_manager_find_window_at_point_filtering_window,
-    window_manager_focus_window_with_raise, window_manager_focus_window_without_raise,
-    window_manager_focused_window, window_manager_handle_display_add_and_remove,
-    window_manager_is_window_eligible, window_manager_move_window, window_manager_purify_window,
-    window_manager_remove_application, window_manager_remove_lost_focused_event,
-    window_manager_remove_lost_front_switched_event, window_manager_remove_managed_window,
-    window_manager_remove_scratchpad_for_window, window_manager_remove_window,
-    window_manager_resize_window_relative_internal, window_manager_set_window_opacity,
-    window_manager_should_manage_window, window_manager_validate_and_check_for_windows_on_space,
-    window_manager_wait_for_native_fullscreen_transition,
+};
+use crate::window::shadow::window_manager_purify_window;
+use crate::window::space_reconciliation::{
+    window_manager_correct_for_mission_control_changes,
+    window_manager_handle_display_add_and_remove,
+    window_manager_validate_and_check_for_windows_on_space,
 };
 use crate::workspace::{
     WORKSPACE_CONTEXT, release_kvo_refcon_on_main_queue, remove_observer_swallowing_exception,

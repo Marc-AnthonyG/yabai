@@ -1,0 +1,25 @@
+# display
+
+Displays: the display manager's settings, display labels, identifying a display (by UUID, the
+main, active, cursor or Dock display, the one under a point), the arrangement order and its
+neighbours, the bounds left for windows once the menu bar, notch, Dock and external bar are
+taken out, the spaces SkyLight assigns each display, focusing a display, and the
+reconfiguration callback.
+
+## Notes
+
+- Everything here runs on the event-loop thread and takes the managers it touches as explicit
+  parameters (decision 13), except the reconfiguration callback, which runs on the main thread
+  and only posts an event (decision 20).
+- Arrangement indices count from 1; 0 means none (decision 32). With a non-default order,
+  displays are sorted by the `f32` centre coordinate on the chosen axis, then on the other
+  (decision 30). The index is what the CLI selects displays by and what queries print
+  (decision 3).
+- The usable bounds are observable to the pixel (decision 3): the menu bar rectangle is one
+  point taller than reported, the notch only counts when the menu bar is hidden, and the Dock
+  orientation values are CoreDock's. The menu bar rectangle comes from a different SkyLight
+  call on each architecture, because the one x86_64 uses is broken on Apple Silicon.
+- Whether a display is animating is only asked of SkyLight on Big Sur to Ventura; later
+  versions always report that it is not.
+- The arrangement-order and external-bar name tables are CLI spellings indexed by the enum
+  discriminant (decision 31).

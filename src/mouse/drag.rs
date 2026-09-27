@@ -1,7 +1,7 @@
 use crate::ffi::core_foundation::{CGPoint, CGRect};
 use crate::handles::{NodeId, SpaceId, WindowId};
 use crate::mouse::tap::MouseMode;
-use crate::window_manager::WindowManager;
+use crate::window::manager::WindowManager;
 
 pub struct MouseDragState {
     pub current_action: MouseMode,

@@ -1,5 +1,5 @@
-use crate::display::display_bounds_constrained;
-use crate::display_manager::DisplayManager;
+use crate::display::bounds::display_bounds_constrained;
+use crate::display::manager::DisplayManager;
 use crate::ffi::CFStringOwned;
 use crate::ffi::core_foundation::{SendCFRetained, take_create_rule_result};
 use crate::ffi::skylight::SLSSpaceCopyName;
@@ -12,9 +12,9 @@ use crate::layout::tree::{
     WindowNode, WindowNodeSplit, window_node_destroy, window_node_flush, window_node_update,
 };
 use crate::mouse::drag::MouseDragState;
-use crate::space::{space_display_id, space_is_user, space_is_visible};
-use crate::space_manager::SpaceManager;
-use crate::window_manager::{WindowManager, window_manager_remove_managed_window};
+use crate::space::managed_space::{space_display_id, space_is_user, space_is_visible};
+use crate::space::manager::SpaceManager;
+use crate::window::manager::{WindowManager, window_manager_remove_managed_window};
 
 pub(crate) struct View {
     pub(crate) uuid: Option<CFStringOwned>,

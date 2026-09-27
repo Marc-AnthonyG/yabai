@@ -12,8 +12,8 @@ use crate::ffi::accessibility::{
 };
 use crate::ffi::core_foundation::{CFRetained, SendCFRetained};
 use crate::ffi::dispatch::dispatch_after_on_main_queue;
+use crate::window::manager::WindowManager;
 use crate::window::model::{Window, WindowLivenessCell};
-use crate::window_manager::WindowManager;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) struct AxWindowNotification(pub u8);

@@ -29,7 +29,7 @@ use crate::ffi::foundation::{
     NSObjectNSKeyValueObserverRegistration, NSProcessInfo, NSString,
 };
 use crate::handles::{DisplayId, ProcessId};
-use crate::process_manager::Process;
+use crate::process::model::Process;
 
 macro_rules! supported_macos_version_list {
     ($entry:ident) => {

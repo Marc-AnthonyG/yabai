@@ -10,18 +10,16 @@ mod scripting_addition;
 mod event_loop;
 mod signal;
 mod workspace;
-mod rule;
 mod message;
 mod display;
 mod space;
 mod window;
-mod process_manager;
+mod process;
 mod application;
-mod display_manager;
-mod space_manager;
-mod window_manager;
 mod mouse;
 mod mission_control;
+mod query;
+mod serialise;
 
 use core::ffi::{c_int, c_void};
 use core::ptr::null_mut;
@@ -32,7 +30,7 @@ use std::sync::{Arc, Mutex};
 
 use objc2::MainThreadMarker;
 
-use crate::display_manager::{DisplayManager, display_manager_begin};
+use crate::display::manager::{DisplayManager, display_manager_begin};
 use crate::event_loop::{event_loop_begin, event_loop_run, update_window_notifications};
 use crate::ffi::accessibility::ax_privilege;
 use crate::ffi::appkit::NSApplication;
@@ -58,11 +56,11 @@ use crate::message::message_loop_begin;
 use crate::mission_control::{MissionControlMode, connection_handler, mission_control_observe};
 use crate::mouse::drag::MouseDragState;
 use crate::mouse::tap::{MOUSE_EVENT_MASK, MouseMode, mouse_handler_begin, mouse_state_init};
-use crate::process_manager::{ProcessManager, process_manager_begin};
+use crate::process::manager::{ProcessManager, process_manager_begin};
 use crate::scripting_addition::installer::{scripting_addition_load, scripting_addition_uninstall};
 use crate::service::launchctl::{service_restart, service_start, service_stop};
 use crate::service::plist::{service_install, service_uninstall};
-use crate::space_manager::{SpaceManager, hash_view_key, space_manager_begin};
+use crate::space::manager::{SpaceManager, hash_view_key, space_manager_begin};
 use crate::state::EventLoopOwnedState;
 use crate::support::color::RgbaColor;
 use crate::support::config_file::exec_config_file;
@@ -74,9 +72,10 @@ use crate::support::response::FAILURE_MESSAGE;
 use crate::support::sockets::{socket_close, socket_connect, socket_open};
 use crate::support::strings::string_equals;
 use crate::support::table::Table;
-use crate::window_manager::{
+use crate::window::discovery::window_manager_begin;
+use crate::window::manager::{
     FfmMode, PurifyMode, WindowManager, WindowOriginMode, hash_wm_process_id, hash_wm_window_id,
-    window_manager_begin, window_manager_init,
+    window_manager_init,
 };
 use crate::workspace::{
     workspace_event_handler_begin, workspace_is_macos_monterey, workspace_is_macos_sequoia,

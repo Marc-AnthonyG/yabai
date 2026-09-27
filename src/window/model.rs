@@ -34,8 +34,8 @@ use crate::ffi::skylight::{
 use crate::ffi::skylight_dynamic::cgs_get_connection_port_by_id;
 use crate::globals::{CONNECTION, LAYER_NORMAL_WINDOW_LEVEL};
 use crate::handles::{DisplayId, ProcessId, SpaceId, WindowId};
-use crate::space::space_is_fullscreen;
-use crate::window_manager::WindowManager;
+use crate::space::managed_space::space_is_fullscreen;
+use crate::window::manager::WindowManager;
 use crate::workspace::{
     workspace_is_macos_sequoia, workspace_is_macos_sonoma, workspace_is_macos_tahoe,
     workspace_is_macos_ventura,

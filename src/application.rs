@@ -28,7 +28,7 @@ use crate::ffi::skylight::{_SLPSGetFrontProcess, SLSGetConnectionIDForPSN};
 use crate::globals::{CONNECTION, PENDING_WINDOW_FOCUS};
 use crate::handles::{ProcessId, WindowId};
 use crate::process_manager::Process;
-use crate::window::WindowLivenessCell;
+use crate::window::model::WindowLivenessCell;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) struct AxApplicationNotification(pub u8);

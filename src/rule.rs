@@ -1,16 +1,16 @@
 use crate::display_manager::{DisplayManager, display_manager_display_id_arrangement};
 use crate::handles::{DisplayId, SpaceId};
-use crate::misc::helpers::{
-    LAYER_STR, json_bool, json_optional_bool, string_copy, string_equals, ts_string_escape,
-};
-use crate::misc::macros::in_range_ii;
-use crate::misc::regex::PosixRegex;
-use crate::misc::response::Response;
 use crate::mission_control::MissionControlMode;
+use crate::mouse::drag::MouseDragState;
 use crate::process_manager::ProcessManager;
 use crate::space_manager::{SpaceManager, space_manager_mission_control_index};
-use crate::state::MouseDragState;
-use crate::window::{window_role_ts, window_subrole_ts, window_title_ts};
+use crate::support::arithmetic::in_range_ii;
+use crate::support::json::{json_bool, json_optional_bool, ts_string_escape};
+use crate::support::layer::LAYER_STR;
+use crate::support::regex::PosixRegex;
+use crate::support::response::Response;
+use crate::support::strings::{string_copy, string_equals};
+use crate::window::model::{window_role_ts, window_subrole_ts, window_title_ts};
 use crate::window_manager::{
     WindowManager, window_manager_apply_manage_rule_effects_to_window,
     window_manager_apply_manage_rules_to_window, window_manager_apply_rule_effects_to_window,

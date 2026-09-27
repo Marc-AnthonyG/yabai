@@ -31,16 +31,16 @@ use crate::ffi::skylight::{
 };
 use crate::globals::CONNECTION;
 use crate::handles::{DisplayId, SpaceId, WindowId};
-use crate::misc::helpers::string_equals;
-use crate::misc::macros::in_range_ie;
-use crate::misc::response::Response;
-use crate::mission_control::{MissionControlMode, mission_control_is_active};
-use crate::sa::scripting_addition_focus_space;
-use crate::space::space_display_id;
-use crate::space_manager::{SpaceOpError, space_manager_active_space};
-use crate::view::{
+use crate::layout::area::{
     area_distance_in_direction, area_from_cgrect, area_is_in_direction, area_max_point,
 };
+use crate::mission_control::{MissionControlMode, mission_control_is_active};
+use crate::scripting_addition::client::scripting_addition_focus_space;
+use crate::space::space_display_id;
+use crate::space_manager::{SpaceOpError, space_manager_active_space};
+use crate::support::arithmetic::in_range_ie;
+use crate::support::response::Response;
+use crate::support::strings::string_equals;
 use crate::window_manager::{
     WindowManager, window_manager_center_mouse,
     window_manager_find_window_on_space_by_rank_filtering_window,

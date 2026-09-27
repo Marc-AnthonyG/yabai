@@ -28,9 +28,9 @@ use crate::ffi::skylight::{
 };
 use crate::globals::CONNECTION;
 use crate::handles::{ProcessId, SpaceId, WindowId};
-use crate::misc::helpers::string_equals;
-use crate::misc::table::Table;
-use crate::window::window_space;
+use crate::support::strings::string_equals;
+use crate::support::table::Table;
+use crate::window::model::window_space;
 use crate::workspace::{
     WORKSPACE_CONTEXT, workspace_application_create_running_ns_application,
     workspace_application_destroy_running_ns_application, workspace_application_unobserve,

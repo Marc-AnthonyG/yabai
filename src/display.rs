@@ -26,9 +26,9 @@ use crate::ffi::core_graphics::{
 use crate::ffi::skylight::{SLSCopyManagedDisplaySpaces, SLSManagedDisplayGetCurrentSpace};
 use crate::globals::CONNECTION;
 use crate::handles::{DisplayId, SpaceId};
-use crate::misc::helpers::json_bool;
-use crate::misc::response::Response;
 use crate::space_manager::space_manager_mission_control_index;
+use crate::support::json::json_bool;
+use crate::support::response::Response;
 use crate::workspace::workspace_display_notch_height;
 
 macro_rules! display_property_list {

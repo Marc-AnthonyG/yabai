@@ -1,4 +1,4 @@
-use crate::misc::macros::FAILURE_MESSAGE;
+pub(crate) const FAILURE_MESSAGE: &[u8] = b"\x07";
 
 enum ResponseSink {
     Client(std::io::BufWriter<std::os::unix::net::UnixStream>),

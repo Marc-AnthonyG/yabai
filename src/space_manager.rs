@@ -32,27 +32,32 @@ use crate::ffi::skylight::{
 use crate::ffi::skylight_dynamic::sls_perform_asynchronous_bridged_window_management_operation;
 use crate::globals::CONNECTION;
 use crate::handles::{DisplayId, ROOT_NODE_ID, SpaceId, WindowId};
-use crate::misc::macros::{LAYER_BELOW, LAYER_NORMAL, TYPE_ABS, TYPE_REL, add_and_clamp_to_zero};
-use crate::misc::response::Response;
-use crate::misc::table::Table;
+use crate::layout::insertion::WindowInsertionPoint;
+use crate::layout::serialise::view_serialize;
+use crate::layout::settings::{ViewFlag, ViewType};
+use crate::layout::tree::{
+    WindowNodeChild, WindowNodeSplit, view_add_window_node_with_insertion_point,
+    view_find_window_node, view_remove_window_node, window_node_balance, window_node_equalize,
+    window_node_flush, window_node_is_intermediate, window_node_mirror, window_node_rotate,
+    window_node_update,
+};
+use crate::layout::view::{View, view_clear, view_create, view_flush, view_update};
 use crate::mission_control::{MissionControlMode, mission_control_is_active};
+use crate::mouse::drag::MouseDragState;
 use crate::process_manager::ProcessManager;
-use crate::sa::{
+use crate::scripting_addition::client::{
     scripting_addition_create_space, scripting_addition_destroy_space,
     scripting_addition_focus_space, scripting_addition_move_space_after_space,
     scripting_addition_move_space_to_display, scripting_addition_move_window_list_to_space,
     scripting_addition_move_window_to_space,
 };
 use crate::space::{space_display_id, space_is_user, space_is_visible, space_window_list};
-use crate::state::MouseDragState;
-use crate::view::{
-    View, ViewFlag, ViewType, WindowInsertionPoint, WindowNodeChild, WindowNodeSplit,
-    view_add_window_node_with_insertion_point, view_clear, view_create, view_find_window_node,
-    view_flush, view_remove_window_node, view_serialize, view_update, window_node_balance,
-    window_node_equalize, window_node_flush, window_node_is_intermediate, window_node_mirror,
-    window_node_rotate, window_node_update,
-};
-use crate::window::{window_display_id, window_space, window_space_list};
+use crate::support::arithmetic::add_and_clamp_to_zero;
+use crate::support::layer::{LAYER_BELOW, LAYER_NORMAL};
+use crate::support::response::Response;
+use crate::support::table::Table;
+use crate::support::type_of_change::{TYPE_ABS, TYPE_REL};
+use crate::window::model::{window_display_id, window_space, window_space_list};
 use crate::window_manager::{
     WindowManager, window_manager_add_existing_application_windows, window_manager_adjust_layer,
     window_manager_focused_window, window_manager_validate_and_check_for_windows_on_space,

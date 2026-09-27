@@ -100,6 +100,6 @@ pub fn notify(subtitle: &str, informative_text: &str) {
 #[macro_export]
 macro_rules! notify {
     ($subtitle:expr, $($argument:tt)*) => {
-        $crate::misc::notify::notify($subtitle, &format!($($argument)*))
+        $crate::support::notify::notify($subtitle, &format!($($argument)*))
     };
 }

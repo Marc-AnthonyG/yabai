@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! debug {
     ($($argument:tt)*) => {{
-        if $crate::misc::log::g_verbose() {
+        if $crate::support::log::g_verbose() {
             print!($($argument)*);
         }
     }};

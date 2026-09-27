@@ -14,7 +14,7 @@ use crate::ffi::skylight::{
 };
 use crate::globals::CONNECTION;
 use crate::handles::{DisplayId, SpaceId, WindowId};
-use crate::window::{WindowFlag, window_check_flag};
+use crate::window::model::{WindowFlag, window_check_flag};
 use crate::window_manager::{WindowManager, window_manager_find_window};
 
 pub(crate) fn space_display_id(space_id: SpaceId) -> DisplayId {

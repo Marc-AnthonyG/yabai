@@ -162,13 +162,14 @@ elaborates these decisions; none may reopen them.
 
 41. `GLOSSARY.md` is binding for every spelling and every type name. Where a pattern document,
     `THREADS.md` or an inventory spells something differently, the glossary wins.
-42. Code on disk is ground truth for the API it defines. `src/ffi/`, `src/misc/`,
-    `src/globals.rs` and `src/state.rs` exist and compile; later waves call what is there, not
-    what a pattern document sketched. The dispatch wrapper is `dispatch_after_on_main_queue`.
+42. Code on disk is ground truth for the API it defines. `src/ffi/`, `src/support/`,
+    `src/service/`, `src/globals.rs` and `src/state.rs` exist and compile; later waves call what
+    is there, not what a pattern document sketched. The dispatch wrapper is
+    `dispatch_after_on_main_queue`.
 43. Every C `FILE *rsp` parameter is `response: &mut Response`, in first position. The two
     verbose-mode calls that pass `stdout` (`src/window_manager.c:1531`, `:1547`) build the value
     with `Response::to_standard_output()`.
-44. `regex_match` is the one in `src/misc/regex.rs`:
+44. `regex_match` is the one in `src/support/regex.rs`:
     `regex_match(regex: Option<&PosixRegex>, subject: &CStr) -> RegexMatch`. Each C pair of
     `regex_t` and `*_regex_valid` becomes one `Option<PosixRegex>` field.
 45. `hash_wm` becomes two functions with the C body, `hash_wm_window_id(&WindowId)` and
@@ -185,7 +186,8 @@ elaborates these decisions; none may reopen them.
     the end of phase 2. Signature changes follow the same rule under `signature-changes/`.
 50. `ax_application_notification` and `ax_application_notification_str` belong to
     `src/application.rs`. `WORKSPACE_CONTEXT` is declared by the unit that writes
-    `src/workspace.rs`. `SIGNAL_TYPE_COUNT` moves from `src/state.rs` to `src/event_signal.rs`.
-51. `src/misc/timer.rs` does not exist: its only live functions are `read_os_timer` and
+    `src/workspace.rs`. `SIGNAL_TYPE_COUNT` moves from `src/state.rs` to
+    `src/signal/definition.rs`.
+51. `src/support/timer.rs` does not exist: its only live functions are `read_os_timer` and
     `read_os_freq` in `src/ffi/carbon_core.rs`. `Cargo.lock` is kept.
 52. A re-export is added by the first unit that uses it, since an unused `pub use` is a warning.

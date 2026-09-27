@@ -1,0 +1,19 @@
+# service
+
+The launchd user agent that runs yabai: the plist file that describes it, and the `launchctl`
+invocations that install, start, restart and stop it.
+
+## Notes
+
+- This code runs only on the command-line path, on the main thread, before any daemon state
+  exists. Every entry point returns the process exit code; a fatal error ends the process with
+  `EXIT_FAILURE` (decision 33).
+- The plist text is externally observable (decision 3): the label, the program path, the `PATH`
+  it captures, the `/tmp/yabai_<user>.out.log` and `.err.log` paths, `KeepAlive`, `ProcessType`
+  and `Nice`. Its whitespace, including the tab-indented lines, is reproduced from the C and is
+  not to be tidied.
+- `launchctl` is spawned with `posix_spawn` and a NULL environment, and the executable path comes
+  from `_NSGetExecutablePath` (decision 34).
+- The order of `launchctl` subcommands (print, then enable and bootstrap, or kickstart; print,
+  then kill, or bootout and disable) is the launchd state machine yabai relies on; each branch
+  is observable to the user's launchd domain.

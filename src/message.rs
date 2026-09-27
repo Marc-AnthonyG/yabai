@@ -21,32 +21,33 @@ use crate::display::{
     DISPLAY_PROPERTY_STR, DISPLAY_PROPERTY_VAL, display_serialize, display_space_id,
 };
 use crate::event_loop::{Event, event_loop_post};
-use crate::event_signal::{
-    SIGNAL_TYPE_COUNT, Signal, SignalProp, SignalType, event_signal_add, event_signal_list,
-    event_signal_remove, event_signal_remove_by_index, signal_type_from_string,
-};
 use crate::ffi::core_graphics::{CGPreflightScreenCaptureAccess, CGRequestScreenCaptureAccess};
-use crate::globals::{MOUSE_TAP_STATE, VERBOSE};
+use crate::globals::VERBOSE;
 use crate::handles::{DisplayId, SpaceId, WindowId};
-use crate::misc::helpers::{
-    ANIMATION_EASING_TYPE_STR, AnimationEasingType, BOOL_STR, EASING_TYPE_COUNT,
-    rgba_color_from_hex,
+use crate::layout::insertion::{WINDOW_INSERTION_POINT_STR, WindowInsertionPoint};
+use crate::layout::serialise::{SPACE_PROPERTY_STR, SPACE_PROPERTY_VAL};
+use crate::layout::settings::{AUTO_BALANCE_STR, VIEW_TYPE_STR, ViewFlag, ViewType};
+use crate::layout::tree::{
+    NODE_MAX_WINDOW_COUNT, WINDOW_NODE_CHILD_STR, WINDOW_NODE_SPLIT_STR, WindowNodeChild,
+    WindowNodeSplit,
 };
-use crate::misc::macros::{
-    DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, LAYER_ABOVE, LAYER_AUTO, LAYER_BELOW, LAYER_NORMAL,
-    MAXLEN, ResizeHandle, STACK, TYPE_ABS, TYPE_REL, in_range_ei, in_range_ii,
-};
-use crate::misc::regex::PosixRegex;
-use crate::misc::response::{FailurePiece, Response};
+use crate::layout::view::{view_clear, view_flush, view_update};
 use crate::mission_control::MissionControlMode;
-use crate::mouse_handler::{MOUSE_MOD_STR, MOUSE_MODE_STR, MouseMod, MouseMode};
+use crate::mouse::drag::MouseDragState;
+use crate::mouse::tap::{MOUSE_MOD_STR, MOUSE_MODE_STR, MOUSE_TAP_STATE, MouseMod, MouseMode};
 use crate::process_manager::ProcessManager;
 use crate::rule::{
     RULE_PROP_OFF, RULE_PROP_ON, Rule, RuleEffectsFlag, RuleFlag, rule_add, rule_apply,
     rule_reapply_all, rule_reapply_by_index, rule_reapply_by_label, rule_remove_by_index,
     rule_remove_by_label,
 };
-use crate::sa::{scripting_addition_is_sip_friendly, scripting_addition_order_window};
+use crate::scripting_addition::client::scripting_addition_order_window;
+use crate::scripting_addition::installer::scripting_addition_is_sip_friendly;
+use crate::signal::definition::{
+    SIGNAL_TYPE_COUNT, Signal, SignalProp, SignalType, event_signal_add, event_signal_remove,
+    event_signal_remove_by_index, signal_type_from_string,
+};
+use crate::signal::serialise::event_signal_list;
 use crate::space::{space_display_id, space_is_fullscreen, space_is_user};
 use crate::space_manager::{
     SpaceManager, SpaceOpError, space_manager_active_space, space_manager_add_space,
@@ -69,16 +70,18 @@ use crate::space_manager::{
     space_manager_set_right_padding_for_all_spaces, space_manager_set_split_type_for_all_spaces,
     space_manager_set_top_padding_for_all_spaces, space_manager_set_window_gap_for_all_spaces,
 };
-use crate::state::MouseDragState;
-use crate::view::{
-    AUTO_BALANCE_STR, NODE_MAX_WINDOW_COUNT, SPACE_PROPERTY_STR, SPACE_PROPERTY_VAL, VIEW_TYPE_STR, ViewFlag, ViewType, WINDOW_INSERTION_POINT_STR,
-    WINDOW_NODE_CHILD_STR, WINDOW_NODE_SPLIT_STR, WindowInsertionPoint, WindowNodeChild,
-    WindowNodeSplit, view_clear, view_flush, view_update,
-};
-use crate::window::{
-    WINDOW_PROPERTY_STR, WINDOW_PROPERTY_VAL, WindowFlag, window_check_flag, window_display_id,
-    window_serialize,
-};
+use crate::support::arithmetic::{in_range_ei, in_range_ii};
+use crate::support::color::rgba_color_from_hex;
+use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, STACK};
+use crate::support::easing::{ANIMATION_EASING_TYPE_STR, AnimationEasingType, EASING_TYPE_COUNT};
+use crate::support::layer::{LAYER_ABOVE, LAYER_AUTO, LAYER_BELOW, LAYER_NORMAL};
+use crate::support::regex::PosixRegex;
+use crate::support::resize_handle::ResizeHandle;
+use crate::support::response::{FailurePiece, Response};
+use crate::support::strings::{BOOL_STR, MAXLEN};
+use crate::support::type_of_change::{TYPE_ABS, TYPE_REL};
+use crate::window::model::{WindowFlag, window_check_flag, window_display_id};
+use crate::window::serialise::{WINDOW_PROPERTY_STR, WINDOW_PROPERTY_VAL, window_serialize};
 use crate::window_manager::{
     FFM_MODE_STR, FfmMode, PURIFY_MODE_STR, PurifyMode, WINDOW_ORIGIN_MODE_STR, WindowManager,
     WindowOpError, WindowOriginMode, window_manager_adjust_window_ratio, window_manager_apply_grid,

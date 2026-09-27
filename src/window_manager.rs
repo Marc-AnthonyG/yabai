@@ -60,20 +60,24 @@ use crate::ffi::skylight::{
 };
 use crate::globals::{BOOTSTRAP_PORT, CONNECTION, CV_HOST_CLOCK_FREQUENCY};
 use crate::handles::{DisplayId, NodeId, ProcessId, ROOT_NODE_ID, SpaceId, WindowId};
-use crate::misc::helpers::{
-    AnimationEasingType, RgbaColor, cgimage_restore_alpha, clampf_range, rgba_color_from_hex,
-    string_copy, string_equals,
+use crate::layout::area::area_make_pair;
+use crate::layout::insertion::{insert_feedback_destroy, insert_feedback_show};
+use crate::layout::settings::{
+    ViewFlag, ViewType, window_node_get_gap, window_node_get_ratio, window_node_get_split,
 };
-use crate::misc::log::{g_verbose, or_null};
-use crate::misc::macros::{
-    DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, LAYER_AUTO, LAYER_BELOW, LAYER_NORMAL, ResizeHandle,
-    TYPE_ABS, TYPE_REL, in_range_ii, lerp, max,
+use crate::layout::tree::{
+    NODE_MAX_WINDOW_COUNT, WindowNodeChild, WindowNodeSplit, view_add_window_node,
+    view_add_window_node_with_insertion_point, view_find_window_list, view_find_window_node,
+    view_find_window_node_in_direction, view_remove_window_node, view_stack_window_node,
+    window_node_capture_windows, window_node_contains_window, window_node_fence,
+    window_node_find_first_leaf, window_node_find_last_leaf, window_node_find_next_leaf,
+    window_node_find_prev_leaf, window_node_flush, window_node_is_leaf, window_node_is_left_child,
+    window_node_swap_window_list, window_node_update,
 };
-use crate::misc::regex::{RegexMatch, regex_match};
-use crate::misc::response::Response;
-use crate::misc::table::Table;
+use crate::layout::view::{view_flush, view_is_dirty, view_update};
 use crate::mission_control::MissionControlMode;
-use crate::mouse_handler::{
+use crate::mouse::drag::MouseDragState;
+use crate::mouse::tap::{
     MOUSE_EVENT_MASK, MOUSE_EVENT_MASK_FFM, mouse_handler_begin, mouse_handler_end,
 };
 use crate::process_manager::{PROCESS_TABLE, Process, ProcessManager};
@@ -81,7 +85,7 @@ use crate::rule::{
     RULE_PROP_OFF, RULE_PROP_ON, Rule, RuleEffects, RuleEffectsFlag, RuleFlag,
     rule_combine_effects, rule_serialize,
 };
-use crate::sa::{
+use crate::scripting_addition::client::{
     scripting_addition_order_window, scripting_addition_order_window_in,
     scripting_addition_scale_window, scripting_addition_set_layer, scripting_addition_set_opacity,
     scripting_addition_set_shadow, scripting_addition_set_sticky,
@@ -98,28 +102,32 @@ use crate::space_manager::{
     space_manager_tile_window_on_space, space_manager_tile_window_on_space_with_insertion_point,
     space_manager_untile_window,
 };
-use crate::state::MouseDragState;
-use crate::view::{
-    AnimationContext, NODE_MAX_WINDOW_COUNT, ViewFlag, ViewType, WindowAnimation, WindowCapture,
-    WindowNodeChild, WindowNodeSplit, WindowProxy, WindowProxyCoreGraphicsObjects, area_make_pair,
-    insert_feedback_destroy, insert_feedback_show, view_add_window_node,
-    view_add_window_node_with_insertion_point, view_find_window_list, view_find_window_node,
-    view_find_window_node_in_direction, view_flush, view_is_dirty, view_remove_window_node,
-    view_stack_window_node, view_update, window_node_capture_windows, window_node_contains_window,
-    window_node_fence, window_node_find_first_leaf, window_node_find_last_leaf,
-    window_node_find_next_leaf, window_node_find_prev_leaf, window_node_flush, window_node_get_gap,
-    window_node_get_ratio, window_node_get_split, window_node_is_leaf, window_node_is_left_child,
-    window_node_swap_window_list, window_node_update,
+use crate::support::arithmetic::{clampf_range, in_range_ii, lerp, max};
+use crate::support::color::{RgbaColor, rgba_color_from_hex};
+use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST};
+use crate::support::easing::AnimationEasingType;
+use crate::support::image::cgimage_restore_alpha;
+use crate::support::layer::{LAYER_AUTO, LAYER_BELOW, LAYER_NORMAL};
+use crate::support::log::{g_verbose, or_null};
+use crate::support::regex::{RegexMatch, regex_match};
+use crate::support::resize_handle::ResizeHandle;
+use crate::support::response::Response;
+use crate::support::strings::{string_copy, string_equals};
+use crate::support::table::Table;
+use crate::support::type_of_change::{TYPE_ABS, TYPE_REL};
+use crate::window::animation::{
+    AnimationContext, WindowAnimation, WindowCapture, WindowProxy, WindowProxyCoreGraphicsObjects,
 };
-use crate::window::{
+use crate::window::model::{
     Window, WindowFlag, WindowRuleFlag, window_ax_frame, window_can_minimize, window_can_move,
     window_can_resize, window_check_flag, window_check_rule_flag, window_clear_flag,
     window_clear_rule_flag, window_create, window_destroy, window_display_id, window_is_fullscreen,
     window_is_real, window_is_standard, window_is_sticky, window_is_undersized, window_is_unknown,
-    window_level, window_level_is_standard, window_nonax_serialize, window_observe, window_role_ts,
-    window_serialize, window_set_flag, window_set_rule_flag, window_space, window_sub_level,
-    window_subrole_ts, window_title_ts, window_unobserve,
+    window_level, window_level_is_standard, window_role_ts, window_set_flag, window_set_rule_flag,
+    window_space, window_sub_level, window_subrole_ts, window_title_ts,
 };
+use crate::window::notifications::{window_observe, window_unobserve};
+use crate::window::serialise::{window_nonax_serialize, window_serialize};
 use crate::workspace::{
     WORKSPACE_CONTEXT, workspace_application_is_observable,
     workspace_application_observe_activation_policy, workspace_is_macos_monterey,

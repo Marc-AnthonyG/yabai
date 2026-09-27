@@ -25,10 +25,6 @@ use crate::display_manager::{
     display_manager_point_display_id, display_manager_remove_label_for_display,
     display_manager_set_active_display_id,
 };
-use crate::event_signal::{
-    PendingSignal, SIGNAL_TYPE_COUNT, Signal, SignalContext, SignalType, event_signal_flush,
-    event_signal_push,
-};
 use crate::ffi::accessibility::{
     AXUIElement, AXUIElementRef, ax_window_id, ax_window_pid, kAXDrawerRole, kAXSheetRole,
 };
@@ -53,32 +49,37 @@ use crate::ffi::skylight::{
     SLSSetMenuBarInsetAndAlpha, SLSSpaceGetType, SLSSpaceSetFrontPSN,
 };
 use crate::globals::{
-    CONNECTION, LAST_CMD_TAB_TIME, LAST_GESTURE_TIME, MOUSE_TAP_STATE, PENDING_GESTURE,
-    PENDING_WINDOW_FOCUS,
+    CONNECTION, LAST_CMD_TAB_TIME, LAST_GESTURE_TIME, PENDING_GESTURE, PENDING_WINDOW_FOCUS,
 };
 use crate::handles::{DisplayId, ProcessId, ROOT_NODE_ID, SpaceId, WindowId};
-use crate::message::handle_message;
-use crate::misc::helpers::{cgrect_contains_point, socket_close};
-use crate::misc::log::{debug_message, or_null};
-use crate::misc::macros::{
-    DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, LAYER_BELOW, LAYER_NORMAL, ResizeHandle, STACK,
+use crate::layout::area::ax_diff;
+use crate::layout::insertion::{insert_feedback_destroy, insert_feedback_show};
+use crate::layout::settings::{ViewFlag, ViewType};
+use crate::layout::tree::{
+    WindowNodeChild, WindowNodeSplit, view_add_window_node_with_insertion_point,
+    view_find_window_node, view_remove_window_node, window_node_flush,
 };
-use crate::misc::response::Response;
+use crate::layout::view::{view_destroy, view_is_dirty, view_is_invalid, view_update};
+use crate::message::handle_message;
 use crate::mission_control::{
     MissionControlMode, mission_control_is_active, mission_control_observe,
     mission_control_unobserve,
 };
-use crate::mouse_handler::{
-    MouseDropAction, MouseMod, MouseMode, MouseWindowInfo, mouse_determine_drop_action,
-    mouse_drop_action_stack, mouse_drop_action_swap, mouse_drop_action_warp, mouse_drop_no_target,
-    mouse_drop_try_adjust_bsp_grid, mouse_window_info_populate,
+use crate::mouse::drag::{MouseDragState, MouseWindowInfo, mouse_window_info_populate};
+use crate::mouse::drop::{
+    MouseDropAction, mouse_determine_drop_action, mouse_drop_action_stack, mouse_drop_action_swap,
+    mouse_drop_action_warp, mouse_drop_no_target, mouse_drop_try_adjust_bsp_grid,
 };
+use crate::mouse::tap::{MOUSE_TAP_STATE, MouseMod, MouseMode};
 use crate::process_manager::{
     Process, ProcessManager, process_destroy, process_manager_active_space_for_psn,
     process_manager_find_process,
 };
 use crate::rule::RuleFlag;
-use crate::sa::scripting_addition_move_window;
+use crate::scripting_addition::client::scripting_addition_move_window;
+use crate::signal::definition::{SIGNAL_TYPE_COUNT, Signal, SignalType};
+use crate::signal::exec::event_signal_flush;
+use crate::signal::queue::{PendingSignal, SignalContext, event_signal_push};
 use crate::space::{
     space_display_id, space_is_fullscreen, space_is_user, space_is_visible, space_window_list,
 };
@@ -90,19 +91,21 @@ use crate::space_manager::{
     space_manager_remove_label_for_space, space_manager_tile_window_on_space,
     space_manager_tile_window_on_space_with_insertion_point, space_manager_untile_window,
 };
-use crate::state::{EventLoopOwnedState, MouseDragState};
-use crate::view::{
-    ViewFlag, ViewType, WindowNodeChild, WindowNodeSplit, ax_diff, insert_feedback_destroy,
-    insert_feedback_show, view_add_window_node_with_insertion_point, view_destroy,
-    view_find_window_node, view_is_dirty, view_is_invalid, view_remove_window_node, view_update,
-    window_node_flush,
-};
-use crate::window::{
+use crate::state::EventLoopOwnedState;
+use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, STACK};
+use crate::support::geometry::cgrect_contains_point;
+use crate::support::layer::{LAYER_BELOW, LAYER_NORMAL};
+use crate::support::log::{debug_message, or_null};
+use crate::support::resize_handle::ResizeHandle;
+use crate::support::response::Response;
+use crate::support::sockets::socket_close;
+use crate::window::model::{
     WindowFlag, window_ax_can_move, window_ax_can_resize, window_ax_frame, window_ax_origin,
     window_ax_role, window_ax_subrole, window_check_flag, window_clear_flag, window_destroy,
     window_is_fullscreen, window_level, window_role, window_set_flag, window_space,
-    window_sub_level, window_title, window_unobserve,
+    window_sub_level, window_title,
 };
+use crate::window::notifications::window_unobserve;
 use crate::window_manager::{
     FfmMode, WindowManager, WindowOriginMode, window_manager_add_application,
     window_manager_add_application_windows, window_manager_add_existing_application_windows,

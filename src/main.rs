@@ -1,13 +1,14 @@
 
 mod ffi;
-mod misc;
+mod service;
+mod support;
 mod handles;
 mod globals;
 mod state;
-mod view;
-mod sa;
+mod layout;
+mod scripting_addition;
 mod event_loop;
-mod event_signal;
+mod signal;
 mod workspace;
 mod rule;
 mod message;
@@ -19,7 +20,7 @@ mod application;
 mod display_manager;
 mod space_manager;
 mod window_manager;
-mod mouse_handler;
+mod mouse;
 mod mission_control;
 
 use core::ffi::{c_int, c_void};
@@ -50,24 +51,29 @@ use crate::globals::{
     SOCKET_FILE,
 };
 use crate::handles::{ProcessId, SpaceId, WindowId};
+use crate::layout::insertion::WindowInsertionPoint;
+use crate::layout::settings::ViewType;
+use crate::layout::tree::{WindowNodeChild, WindowNodeSplit};
 use crate::message::message_loop_begin;
-use crate::misc::helpers::{
-    AnimationEasingType, RgbaColor, exec_config_file, is_root, socket_close, socket_connect,
-    socket_open, string_equals,
-};
-use crate::misc::log::set_g_verbose;
-use crate::misc::macros::{FAILURE_MESSAGE, LAYER_ABOVE, LAYER_BELOW, LAYER_NORMAL};
-use crate::misc::service::{
-    service_install, service_restart, service_start, service_stop, service_uninstall,
-};
-use crate::misc::table::Table;
 use crate::mission_control::{MissionControlMode, connection_handler, mission_control_observe};
-use crate::mouse_handler::{MOUSE_EVENT_MASK, MouseMode, mouse_handler_begin, mouse_state_init};
+use crate::mouse::drag::MouseDragState;
+use crate::mouse::tap::{MOUSE_EVENT_MASK, MouseMode, mouse_handler_begin, mouse_state_init};
 use crate::process_manager::{ProcessManager, process_manager_begin};
-use crate::sa::{scripting_addition_load, scripting_addition_uninstall};
+use crate::scripting_addition::installer::{scripting_addition_load, scripting_addition_uninstall};
+use crate::service::launchctl::{service_restart, service_start, service_stop};
+use crate::service::plist::{service_install, service_uninstall};
 use crate::space_manager::{SpaceManager, hash_view_key, space_manager_begin};
-use crate::state::{EventLoopOwnedState, MouseDragState};
-use crate::view::{ViewType, WindowInsertionPoint, WindowNodeChild, WindowNodeSplit};
+use crate::state::EventLoopOwnedState;
+use crate::support::color::RgbaColor;
+use crate::support::config_file::exec_config_file;
+use crate::support::easing::AnimationEasingType;
+use crate::support::layer::{LAYER_ABOVE, LAYER_BELOW, LAYER_NORMAL};
+use crate::support::log::set_g_verbose;
+use crate::support::privilege::is_root;
+use crate::support::response::FAILURE_MESSAGE;
+use crate::support::sockets::{socket_close, socket_connect, socket_open};
+use crate::support::strings::string_equals;
+use crate::support::table::Table;
 use crate::window_manager::{
     FfmMode, PurifyMode, WindowManager, WindowOriginMode, hash_wm_process_id, hash_wm_window_id,
     window_manager_begin, window_manager_init,

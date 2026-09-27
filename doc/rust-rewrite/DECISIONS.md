@@ -190,3 +190,22 @@ elaborates these decisions; none may reopen them.
 51. `src/support/timer.rs` does not exist: its only live functions are `read_os_timer` and
     `read_os_freq` in `src/ffi/carbon_core.rs`. `Cargo.lock` is kept.
 52. A re-export is added by the first unit that uses it, since an unused `pub use` is a warning.
+
+## Changes to behaviour after the rewrite
+
+These are deliberate improvements the user asked for. For the features they name they replace
+decision 3's "behaviour identical to the C".
+
+53. The insertion preview (`window --insert` and the drop target of a mouse drag) is a ghost of
+    the exact frame the new or dropped window will occupy, computed with the same split, ratio and
+    gap rules the tree applies when it inserts: a translucent rounded rectangle with a thin border,
+    drawn only over that frame. Its colour follows the macOS accent colour until
+    `insert_feedback_color` is set.
+54. A pending insertion point is cleared when focus moves to a different window yabai already
+    tracks. The next new window still consumes it, and repeating the same `--insert` still clears it.
+55. One animator drives every window animation: one display link and one SkyLight connection.
+    A window that is already moving keeps its proxy, and a new target is added as an additive layer,
+    so the displayed frame is the target minus each layer's delta scaled by `1 - ease(t)` of that
+    layer. `window_animation_duration` and `window_animation_easing` keep their meaning. Nothing
+    on the display-link path blocks: the proxy swap-out, the JankyBorders notification and the
+    proxy release run off it.

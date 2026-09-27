@@ -11,6 +11,7 @@ use crate::ffi::skylight::{
     _SLPSGetFrontProcess, _SLPSSetFrontProcessWithOptions, SLPSPostEventRecordTo,
     SLSGetCurrentCursorLocation,
 };
+use crate::layout::insertion::clear_every_pending_insertion_point_other_than_the_window;
 use crate::layout::tree::view_find_window_node;
 use crate::mouse::drag::MouseDragState;
 use crate::notifications::mouse::{
@@ -252,6 +253,13 @@ pub(crate) fn window_did_receive_focus(
     window_id: WindowId,
     space_manager: &mut SpaceManager,
 ) {
+    clear_every_pending_insertion_point_other_than_the_window(
+        window_id,
+        window_manager,
+        space_manager,
+        mouse_drag_state,
+    );
+
     let focused_window =
         window_manager_find_window(window_manager, window_manager.focused_window_id);
     if let Some(focused_window) = focused_window {

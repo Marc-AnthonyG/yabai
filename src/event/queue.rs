@@ -7,6 +7,7 @@ use crate::ffi::core_foundation::SendCFRetained;
 use crate::ffi::core_graphics::CGEvent;
 use crate::mouse::tap::MouseMod;
 use crate::process::model::Process;
+use crate::support::color::RgbaColor;
 use crate::support::handles::{DisplayId, ProcessId, SpaceId, WindowId};
 
 pub(crate) enum Event {
@@ -59,6 +60,8 @@ pub(crate) enum Event {
     MenuBarHiddenChanged,
     DockDidChangePref,
     SystemWoke,
+    SystemAccentColorChanged(RgbaColor),
+    InsertFeedbackFadeInStep,
     DaemonMessage(UnixStream),
 }
 

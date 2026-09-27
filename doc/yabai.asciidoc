@@ -211,8 +211,10 @@ Global Settings
     See https://easings.net for details.
 
 *insert_feedback_color* ['0xAARRGGBB']::
-    Color of the *window --insert* message and mouse_drag selection. +
-    The purpose is to provide a visual preview of the new window frame.
+    Color of the preview shown by *window --insert* and by a mouse_drag selection. +
+    The preview is a translucent ghost with a thin border, drawn over exactly the frame the new or dropped window will occupy. +
+    Follows the macOS accent color until it is set; the color given here is used from then on. +
+    Without a value, prints the color in effect.
 
 *split_ratio* ['<FLOAT_SEL>']::
     Specify the size distribution when a window is split.
@@ -406,7 +408,10 @@ COMMAND
 
 *--insert* '<DIR_SEL>|stack'::
     Set the splitting mode of the selected window. +
-    If the current splitting mode matches the selected mode, the action will be undone.
+    The next window to be tiled splits the selected window in the given direction, or is stacked on it, and a preview shows the frame it will occupy. +
+    With *auto_balance* enabled, frames may still be rebalanced after the window is inserted. +
+    If the current splitting mode matches the selected mode, the action will be undone. +
+    The splitting mode is also undone when focus moves to a different window.
 
 *--grid* '<rows>:<cols>:<start-x>:<start-y>:<width>:<height>'::
     Set the frame of the selected window based on a self-defined grid.

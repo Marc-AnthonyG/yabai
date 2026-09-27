@@ -14,18 +14,23 @@ use objc2::{AnyThread, DefinedClass, define_class, msg_send, sel};
 use crate::debug;
 use crate::event::queue::{EVENT_SENDER, Event};
 use crate::ffi::appkit::{
+    APPLE_COLOR_PREFERENCES_CHANGED_NOTIFICATION,
     APPLE_INTERFACE_MENU_BAR_HIDING_CHANGED_NOTIFICATION, COM_APPLE_DOCK_PREFCHANGED,
     NS_APPLICATION_DOCK_DID_RESTART_NOTIFICATION,
-    NS_WORKSPACE_ACTIVE_DISPLAY_DID_CHANGE_NOTIFICATION, NSRunningApplication, NSWorkspace,
-    NSWorkspaceActiveSpaceDidChangeNotification, NSWorkspaceApplicationKey,
-    NSWorkspaceDidHideApplicationNotification, NSWorkspaceDidUnhideApplicationNotification,
-    NSWorkspaceDidWakeNotification,
+    NS_WORKSPACE_ACTIVE_DISPLAY_DID_CHANGE_NOTIFICATION, NSRunningApplication,
+    NSSystemColorsDidChangeNotification, NSWorkspace, NSWorkspaceActiveSpaceDidChangeNotification,
+    NSWorkspaceApplicationKey, NSWorkspaceDidHideApplicationNotification,
+    NSWorkspaceDidUnhideApplicationNotification, NSWorkspaceDidWakeNotification,
 };
 use crate::ffi::dispatch::dispatch_after_on_main_queue;
 use crate::ffi::foundation::{
     NSDictionary, NSDistributedNotificationCenter, NSKeyValueChangeNewKey,
     NSKeyValueObservingOptions, NSNotification, NSNotificationCenter, NSObject,
     NSObjectNSKeyValueObserverRegistration, NSProcessInfo, NSString,
+};
+use crate::notifications::accent_color::{
+    post_the_system_accent_color_once_every_other_observer_has_seen_the_change,
+    post_the_system_accent_color_to_the_event_loop,
 };
 use crate::process::model::Process;
 use crate::support::handles::ProcessId;
@@ -164,6 +169,16 @@ define_class!(
             let _ = self.ivars().event_sender.send(Event::DockDidChangePref);
         }
 
+        #[unsafe(method(systemColorsDidChange:))]
+        fn systemColorsDidChange(&self, notification: &NSNotification) {
+            post_the_system_accent_color_to_the_event_loop();
+        }
+
+        #[unsafe(method(colorPreferencesDidChange:))]
+        fn colorPreferencesDidChange(&self, notification: &NSNotification) {
+            post_the_system_accent_color_once_every_other_observer_has_seen_the_change();
+        }
+
         #[unsafe(method(activeDisplayDidChange:))]
         fn activeDisplayDidChange(&self, notification: &NSNotification) {
             let _ = self.ivars().event_sender.send(Event::DisplayChanged);
@@ -279,6 +294,22 @@ impl WorkspaceContext {
                 Some(&NSString::from_str(COM_APPLE_DOCK_PREFCHANGED)),
                 None,
             );
+
+            NSNotificationCenter::defaultCenter().addObserver_selector_name_object(
+                &this,
+                sel!(systemColorsDidChange:),
+                Some(NSSystemColorsDidChangeNotification),
+                None,
+            );
+
+            NSDistributedNotificationCenter::defaultCenter().addObserver_selector_name_object(
+                &this,
+                sel!(colorPreferencesDidChange:),
+                Some(&NSString::from_str(
+                    APPLE_COLOR_PREFERENCES_CHANGED_NOTIFICATION,
+                )),
+                None,
+            );
         }
 
         this
@@ -313,6 +344,7 @@ pub(crate) fn workspace_event_handler_begin() -> bool {
 
     let workspace_context = WorkspaceContext::init(workspace_context);
     let _ = WORKSPACE_CONTEXT.set(workspace_context);
+    post_the_system_accent_color_to_the_event_loop();
 
     true
 }

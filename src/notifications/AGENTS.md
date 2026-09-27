@@ -4,7 +4,8 @@ How macOS tells the daemon that something happened: registering and removing the
 applications, on their windows and on the Dock for Mission Control, asking SkyLight for window
 notifications, the SkyLight connection notifications, the Carbon process events, the display
 reconfiguration callback, the event tap on the mouse, and the NSWorkspace, notification-center
-and key-value observers, each with the callback it installs.
+and key-value observers, each with the callback it installs. It also reads the system accent colour
+in sRGB, at start-up and whenever the colour preferences change, and posts it to the event loop.
 
 ## Notes
 
@@ -28,6 +29,9 @@ and key-value observers, each with the callback it installs.
   running under a debugger are ignored (decision 3).
 - The exception AppKit throws when removing a key-value observation that it claims is not
   registered is caught and swallowed on purpose (decision 7).
+- The accent colour is read on the main thread. The distributed colour-preferences notification
+  reads it one main-queue turn later, so AppKit's own observers have refreshed the colour first;
+  AppKit's system-colours notification reads it at once.
 - The SkyLight notification numbers, the event tap mask and the Dock gesture field numbers are
   the platform's values and must not change. The tap re-enables itself when macOS disables it by
   timeout or user input.

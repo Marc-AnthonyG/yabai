@@ -1,3 +1,4 @@
+pub mod accent_color;
 pub mod application;
 pub mod display;
 pub mod mission_control;

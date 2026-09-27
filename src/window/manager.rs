@@ -94,6 +94,7 @@ pub(crate) struct WindowManager {
     pub(crate) window_animation_duration: f32,
     pub(crate) window_animation_easing: AnimationEasingType,
     pub(crate) insert_feedback_color: RgbaColor,
+    pub(crate) insert_feedback_color_follows_the_system_accent_color: bool,
     pub(crate) scratchpad_window: Vec<Scratchpad>,
 }
 
@@ -324,6 +325,7 @@ pub(crate) fn window_manager_init(window_manager: &mut WindowManager) {
     window_manager.window_animation_duration = 0.0f32;
     window_manager.window_animation_easing = AnimationEasingType::EaseOutCirc;
     window_manager.insert_feedback_color = rgba_color_from_hex(0xffd75f5f);
+    window_manager.insert_feedback_color_follows_the_system_accent_color = true;
 
     window_manager.application = Table::new(150, hash_wm_process_id);
     window_manager.window = Table::new(150, hash_wm_window_id);

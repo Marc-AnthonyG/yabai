@@ -93,6 +93,7 @@ pub(crate) fn start_the_daemon_and_enter_the_main_run_loop() {
                 blue: 0.0,
                 alpha: 0.0,
             },
+            insert_feedback_color_follows_the_system_accent_color: true,
             scratchpad_window: Vec::new(),
         },
         space_manager: SpaceManager {

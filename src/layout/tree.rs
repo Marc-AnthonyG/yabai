@@ -4,8 +4,9 @@ use crate::display::manager::DisplayManager;
 use crate::layout::area::{
     Area, area_distance_in_direction, area_is_in_direction, area_make_pair, area_max_point,
 };
+use crate::layout::feedback_window::FeedbackWindow;
 use crate::layout::insertion::{
-    FeedbackWindow, WindowInsertionPoint, insert_feedback_destroy, insert_feedback_show,
+    WindowInsertionPoint, insert_feedback_destroy, insert_feedback_show,
 };
 use crate::layout::settings::{
     ViewType, window_node_get_child, window_node_get_gap, window_node_get_ratio,

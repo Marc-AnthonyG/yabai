@@ -4,8 +4,8 @@ What the daemon does when each event arrives, one file per subject: applications
 terminating, switching to the front, hiding and unhiding; windows appearing, disappearing,
 gaining focus, moving, resizing, minimizing and changing title; spaces and displays changing;
 mouse clicks, drags and moves; Mission Control; menus opening and closing; system-wide changes
-(the Dock restarting or changing preferences, the menu bar hiding, the machine waking); and client
-messages.
+(the Dock restarting or changing preferences, the menu bar hiding, the machine waking, the accent
+colour changing); the steps of the insertion preview's fade-in; and client messages.
 
 ## Notes
 

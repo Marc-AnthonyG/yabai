@@ -658,6 +658,7 @@ pub(crate) fn handle_domain_config(
                 && u32_value != 0
             {
                 window_manager.insert_feedback_color = rgba_color_from_hex(u32_value);
+                window_manager.insert_feedback_color_follows_the_system_accent_color = false;
             } else {
                 daemon_fail_with_unknown_value_given_to_command_for_domain(
                     response,

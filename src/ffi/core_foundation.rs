@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 pub use objc2_core_foundation::{
     CFArray, CFBoolean, CFComparisonResult, CFData, CFDictionary, CFIndex, CFMachPort,
     CFMutableData, CFNumber, CFNumberType, CFRange, CFRetained, CFRunLoopSource, CFString,
-    CFStringEncoding, CFType, CGFloat, CGPoint, CGRect, CGSize, Type,
+    CFStringEncoding, CFType, CGAffineTransform, CGFloat, CGPoint, CGRect, CGSize, Type,
 };
 
 pub use objc2_core_foundation::{

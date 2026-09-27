@@ -1,12 +1,11 @@
 use core::ffi::{c_char, c_void};
-use std::sync::atomic::Ordering;
 
 use crate::ffi::skylight::SLSWindowIsOrderedIn;
 use crate::scripting_addition::frame::{SA_SOCKET_BUFF_LEN, SaOpcode, pack, sa_payload_send};
 use crate::state::process_wide::{CONNECTION, SA_SOCKET_FILE};
 use crate::support::handles::{SpaceId, WindowId};
 use crate::support::sockets::{socket_close, socket_connect, socket_open};
-use crate::window::animation::WindowAnimation;
+use crate::window::proxy_pairing::WindowProxyPairing;
 
 pub(crate) fn scripting_addition_request_handshake(
     version: &mut String,
@@ -286,57 +285,35 @@ pub(crate) fn scripting_addition_scale_window(
     sa_payload_send(&mut bytes, length, SaOpcode::WindowScale)
 }
 
-pub(crate) fn scripting_addition_swap_window_proxy_in(animation_list: &[WindowAnimation]) -> bool {
-    let dummy_window_id: u32 = 0;
+pub(crate) fn scripting_addition_swap_window_proxy_in(pairing_list: &[WindowProxyPairing]) -> bool {
     let mut bytes = [0u8; SA_SOCKET_BUFF_LEN];
     let mut length: i16 = 1 + 2;
-    if !pack(&mut bytes, &mut length, &(animation_list.len() as i32).to_ne_bytes()) {
+    if !pack(&mut bytes, &mut length, &(pairing_list.len() as i32).to_ne_bytes()) {
         return false;
     }
-    for animation in animation_list {
-        if animation.skip.load(Ordering::Relaxed) {
-            if !pack(&mut bytes, &mut length, &dummy_window_id.to_ne_bytes()) {
-                return false;
-            }
-        } else {
-            if !pack(&mut bytes, &mut length, &animation.window_id.0.to_ne_bytes()) {
-                return false;
-            }
-            if !pack(
-                &mut bytes,
-                &mut length,
-                &animation.proxy.id.load(Ordering::Relaxed).to_ne_bytes(),
-            ) {
-                return false;
-            }
+    for pairing in pairing_list {
+        if !pack(&mut bytes, &mut length, &pairing.real_window_id.0.to_ne_bytes()) {
+            return false;
+        }
+        if !pack(&mut bytes, &mut length, &pairing.proxy_window_id.to_ne_bytes()) {
+            return false;
         }
     }
     sa_payload_send(&mut bytes, length, SaOpcode::WindowSwapProxyIn)
 }
 
-pub(crate) fn scripting_addition_swap_window_proxy_out(animation_list: &[WindowAnimation]) -> bool {
-    let dummy_window_id: u32 = 0;
+pub(crate) fn scripting_addition_swap_window_proxy_out(pairing_list: &[WindowProxyPairing]) -> bool {
     let mut bytes = [0u8; SA_SOCKET_BUFF_LEN];
     let mut length: i16 = 1 + 2;
-    if !pack(&mut bytes, &mut length, &(animation_list.len() as i32).to_ne_bytes()) {
+    if !pack(&mut bytes, &mut length, &(pairing_list.len() as i32).to_ne_bytes()) {
         return false;
     }
-    for animation in animation_list {
-        if animation.skip.load(Ordering::Relaxed) {
-            if !pack(&mut bytes, &mut length, &dummy_window_id.to_ne_bytes()) {
-                return false;
-            }
-        } else {
-            if !pack(&mut bytes, &mut length, &animation.window_id.0.to_ne_bytes()) {
-                return false;
-            }
-            if !pack(
-                &mut bytes,
-                &mut length,
-                &animation.proxy.id.load(Ordering::Relaxed).to_ne_bytes(),
-            ) {
-                return false;
-            }
+    for pairing in pairing_list {
+        if !pack(&mut bytes, &mut length, &pairing.real_window_id.0.to_ne_bytes()) {
+            return false;
+        }
+        if !pack(&mut bytes, &mut length, &pairing.proxy_window_id.to_ne_bytes()) {
+            return false;
         }
     }
     sa_payload_send(&mut bytes, length, SaOpcode::WindowSwapProxyOut)

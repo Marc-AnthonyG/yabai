@@ -18,10 +18,6 @@ pub(crate) fn in_range_ei<T: PartialOrd>(value: T, low: T, high: T) -> bool {
     value > low && value <= high
 }
 
-pub(crate) fn lerp(start: f64, interpolant: f32, end: f32) -> f64 {
-    ((1.0f64 - interpolant as f64) * start) + (interpolant * end) as f64
-}
-
 pub fn clampf_range(value: f32, minimum: f32, maximum: f32) -> f32 {
     if value < minimum {
         return minimum;

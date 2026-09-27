@@ -1,6 +1,6 @@
 use core::ptr::null_mut;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use objc2::MainThreadMarker;
 
@@ -37,6 +37,7 @@ use crate::support::macos_version::{
     workspace_is_macos_tahoe, workspace_is_macos_ventura,
 };
 use crate::support::table::Table;
+use crate::window::animator::WindowAnimator;
 use crate::window::discovery::window_manager_begin;
 use crate::window::manager::{
     FfmMode, PurifyMode, WindowManager, WindowOriginMode, hash_wm_process_id, hash_wm_window_id,
@@ -65,7 +66,7 @@ pub(crate) fn start_the_daemon_and_enter_the_main_run_loop() {
             managed_window: Table::new(0, hash_wm_window_id),
             window_lost_focused_event: Table::new(0, hash_wm_window_id),
             application_lost_front_switched_event: Table::new(0, hash_wm_process_id),
-            window_animations_table: Arc::new(Mutex::new(Table::new(0, hash_wm_window_id))),
+            window_animator: Arc::new(WindowAnimator::new()),
             insert_feedback: Table::new(0, hash_wm_window_id),
             rules: Vec::new(),
             applications_to_refresh: Vec::new(),

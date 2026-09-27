@@ -1,12 +1,11 @@
 use core::ffi::c_void;
 use std::sync::Mutex;
-use std::sync::atomic::Ordering;
 
 use crate::ffi::libsystem::{PROC_PIDPATHINFO_MAXSIZE, proc_name};
 use crate::ffi::mach_port::{bootstrap_look_up, mach_port_deallocate, mach_send, mach_task_self};
 use crate::ffi::skylight::SLSConnectionGetPID;
 use crate::state::process_wide::BOOTSTRAP_PORT;
-use crate::window::animation::WindowAnimation;
+use crate::window::proxy_pairing::WindowProxyPairing;
 
 #[repr(C)]
 pub(crate) struct JankyBordersEvent {
@@ -19,9 +18,8 @@ pub(crate) struct JankyBordersEvent {
 const _: () = assert!(core::mem::size_of::<JankyBordersEvent>() == 4104);
 
 pub(crate) fn window_manager_notify_jankyborders(
-    animation_list: &[WindowAnimation],
+    pairing_list: &[WindowProxyPairing],
     event: u32,
-    skip: bool,
     wait: bool,
 ) {
     let bootstrap_port = *BOOTSTRAP_PORT.get().unwrap_or(&0);
@@ -37,18 +35,13 @@ pub(crate) fn window_manager_notify_jankyborders(
             real_window_id: [0; 512],
         };
 
-        for index in 0..animation_list.len() {
-            if skip && animation_list[index].skip.load(Ordering::Relaxed) {
-                continue;
-            }
-
+        for pairing in pairing_list {
             if data.count as usize >= data.proxy_window_id.len() {
                 break;
             }
 
-            data.proxy_window_id[data.count as usize] =
-                animation_list[index].proxy.id.load(Ordering::Relaxed);
-            data.real_window_id[data.count as usize] = animation_list[index].window_id.0;
+            data.proxy_window_id[data.count as usize] = pairing.proxy_window_id;
+            data.real_window_id[data.count as usize] = pairing.real_window_id.0;
 
             data.count += 1;
         }

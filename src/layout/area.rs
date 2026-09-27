@@ -154,8 +154,11 @@ pub(crate) fn ax_diff(first: f64, second: f64) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{Area, area_distance_in_direction, area_is_in_direction, area_max_point};
+    use super::{
+        Area, area_distance_in_direction, area_is_in_direction, area_make_pair, area_max_point,
+    };
     use crate::ffi::core_foundation::CGPoint;
+    use crate::layout::tree::WindowNodeSplit;
     use crate::support::direction::{DIR_EAST, DIR_WEST};
 
     struct TestArea {
@@ -294,5 +297,153 @@ mod tests {
 
         best_index = closest_display_in_direction(&display_list, display_count, 2, DIR_EAST);
         assert_eq!(best_index, -1);
+    }
+
+    fn area_at(x: f32, y: f32, width: f32, height: f32) -> Area {
+        Area {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+
+    fn x_y_width_height(area: Area) -> (f32, f32, f32, f32) {
+        (area.x, area.y, area.width, area.height)
+    }
+
+    fn assert_pair_is(
+        split: WindowNodeSplit,
+        gap: i32,
+        ratio: f32,
+        parent_area: Area,
+        expected_first_area: (f32, f32, f32, f32),
+        expected_second_area: (f32, f32, f32, f32),
+    ) {
+        let (first_area, second_area) = area_make_pair(split, gap, ratio, parent_area);
+
+        assert_eq!(
+            (x_y_width_height(first_area), x_y_width_height(second_area)),
+            (expected_first_area, expected_second_area),
+            "gap {gap} ratio {ratio} parent {:?}",
+            x_y_width_height(parent_area)
+        );
+    }
+
+    #[test]
+    fn area_make_pair_for_a_y_split_truncates_both_widths_and_rounds_the_offset_of_the_second_area()
+    {
+        assert_pair_is(
+            WindowNodeSplit::Y,
+            10,
+            0.5,
+            area_at(0.0, 0.0, 1001.0, 500.0),
+            (0.0, 0.0, 495.0, 500.0),
+            (506.0, 0.0, 495.0, 500.0),
+        );
+        assert_pair_is(
+            WindowNodeSplit::Y,
+            10,
+            0.6,
+            area_at(0.0, 25.0, 1001.0, 500.0),
+            (0.0, 25.0, 594.0, 500.0),
+            (605.0, 25.0, 396.0, 500.0),
+        );
+        assert_pair_is(
+            WindowNodeSplit::Y,
+            7,
+            0.3333,
+            area_at(-1728.0, 38.0, 1728.0, 1079.0),
+            (-1728.0, 38.0, 573.0, 1079.0),
+            (-1147.0, 38.0, 1147.0, 1079.0),
+        );
+    }
+
+    #[test]
+    fn area_make_pair_for_a_y_split_keeps_a_fractional_origin_of_the_parent() {
+        assert_pair_is(
+            WindowNodeSplit::Y,
+            0,
+            0.5,
+            area_at(100.25, 30.0, 1439.0, 900.0),
+            (100.25, 30.0, 719.0, 900.0),
+            (820.25, 30.0, 719.0, 900.0),
+        );
+    }
+
+    #[test]
+    fn area_make_pair_for_an_x_split_truncates_both_heights_and_rounds_the_offset_of_the_second_area()
+     {
+        assert_pair_is(
+            WindowNodeSplit::X,
+            10,
+            0.5,
+            area_at(0.0, 0.0, 800.0, 1001.0),
+            (0.0, 0.0, 800.0, 495.0),
+            (0.0, 506.0, 800.0, 495.0),
+        );
+        assert_pair_is(
+            WindowNodeSplit::X,
+            10,
+            0.6,
+            area_at(50.0, 25.0, 800.0, 1001.0),
+            (50.0, 25.0, 800.0, 594.0),
+            (50.0, 630.0, 800.0, 396.0),
+        );
+        assert_pair_is(
+            WindowNodeSplit::X,
+            12,
+            0.1,
+            area_at(0.0, 38.5, 1512.0, 944.0),
+            (0.0, 38.5, 1512.0, 93.0),
+            (0.0, 143.5, 1512.0, 838.0),
+        );
+        assert_pair_is(
+            WindowNodeSplit::X,
+            0,
+            0.9,
+            area_at(0.0, 0.0, 1512.0, 945.0),
+            (0.0, 0.0, 1512.0, 850.0),
+            (0.0, 851.0, 1512.0, 94.0),
+        );
+    }
+
+    #[test]
+    fn area_make_pair_splits_along_x_for_every_split_other_than_y() {
+        for split in [
+            WindowNodeSplit::X,
+            WindowNodeSplit::Auto,
+            WindowNodeSplit::None,
+        ] {
+            assert_pair_is(
+                split,
+                4,
+                0.5,
+                area_at(0.0, 0.0, 300.0, 301.0),
+                (0.0, 0.0, 300.0, 148.0),
+                (0.0, 153.0, 300.0, 148.0),
+            );
+        }
+    }
+
+    #[test]
+    fn area_max_point_is_the_last_pixel_inside_the_area_computed_in_f32() {
+        let expected_max_points = [
+            (area_at(10.0, 20.0, 100.0, 50.0), (109.0, 69.0)),
+            (area_at(0.5, -10.25, 3.0, 1.0), (2.5, -10.25)),
+            (area_at(16777216.0, 0.0, 1.0, 1.0), (16777215.0, 0.0)),
+            (area_at(-1728.0, 0.0, 1728.0, 1117.0), (-1.0, 1116.0)),
+            (area_at(0.0, 0.0, 0.0, 0.0), (-1.0, -1.0)),
+        ];
+
+        for (area, (expected_x, expected_y)) in expected_max_points {
+            let max_point = area_max_point(area);
+            assert_eq!(
+                (max_point.x, max_point.y),
+                (expected_x, expected_y),
+                "area {:?}",
+                x_y_width_height(area)
+            );
+        }
     }
 }

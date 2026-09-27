@@ -173,3 +173,55 @@ unsafe fn restore_alpha_four_pixels(pixel: *mut u32) {
         vst1q_s32(pixel.cast::<i32>(), masked_color);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::restore_alpha_four_pixels;
+
+    fn restore_alpha_of(mut pixels: [u32; 4]) -> [u32; 4] {
+        unsafe { restore_alpha_four_pixels(pixels.as_mut_ptr()) };
+        pixels
+    }
+
+    #[test]
+    fn restore_alpha_leaves_opaque_and_fully_transparent_pixels_unchanged() {
+        assert_eq!(
+            restore_alpha_of([0xff102030, 0xff000000, 0x00000000, 0x00123456]),
+            [0xff102030, 0xff000000, 0x00000000, 0x00123456]
+        );
+    }
+
+    #[test]
+    fn restore_alpha_divides_premultiplied_channels_by_alpha_and_makes_the_pixel_opaque() {
+        let expected_restorations = [
+            (
+                [0xff102030, 0x80402010, 0x00000000, 0x00123456],
+                [0xff102030, 0xff804020, 0x00000000, 0x00123456],
+            ),
+            (
+                [0x01010101, 0x7f7f7f7f, 0x80808080, 0xfe010203],
+                [0xffffffff, 0xffffffff, 0xffffffff, 0xff010203],
+            ),
+            (
+                [0x40404040, 0x10080402, 0xc0603010, 0x02010000],
+                [0xffffffff, 0xff804020, 0xff804015, 0xff800000],
+            ),
+        ];
+
+        for (pixels, expected_pixels) in expected_restorations {
+            assert_eq!(
+                restore_alpha_of(pixels),
+                expected_pixels,
+                "pixels {pixels:08x?}"
+            );
+        }
+    }
+
+    #[test]
+    fn restore_alpha_lets_a_channel_above_its_alpha_spill_into_the_next_channel_as_the_c_does() {
+        assert_eq!(
+            restore_alpha_of([0x55555555, 0xaa2a1500, 0x33332211, 0x0301ff01]),
+            [0xffffffff, 0xff3f2000, 0xffffaa55, 0xff55ab55]
+        );
+    }
+}

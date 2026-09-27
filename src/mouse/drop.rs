@@ -57,6 +57,28 @@ pub(crate) fn mouse_determine_drop_action(
     else {
         return MouseDropAction::None;
     };
+    let source_node_window_count = space_manager
+        .view
+        .find(&source_space_id)
+        .and_then(|view| view.find_node(source_node_id))
+        .map(|node| node.window_count);
+    let drop_action_setting =
+        MouseMode::from_discriminant(MOUSE_TAP_STATE.drop_action.load(Ordering::Relaxed));
+
+    mouse_drop_action_for_point_over_window_frame(
+        destination_window_frame,
+        point,
+        source_node_window_count,
+        drop_action_setting,
+    )
+}
+
+fn mouse_drop_action_for_point_over_window_frame(
+    destination_window_frame: CGRect,
+    point: CGPoint,
+    source_node_window_count: Option<i32>,
+    drop_action_setting: MouseMode,
+) -> MouseDropAction {
     let point_relative_to_frame_origin = CGPoint {
         x: point.x - destination_window_frame.origin.x,
         y: point.y - destination_window_frame.origin.y,
@@ -128,16 +150,10 @@ pub(crate) fn mouse_determine_drop_action(
         },
     ];
 
-    let source_node_window_count = space_manager
-        .view
-        .find(&source_space_id)
-        .and_then(|view| view.find_node(source_node_id))
-        .map(|node| node.window_count);
-
     if (CGRectContainsPoint(center_rect, point_relative_to_frame_origin))
         && (source_node_window_count == Some(1))
     {
-        return if MOUSE_TAP_STATE.drop_action.load(Ordering::Relaxed) == MouseMode::Stack as u8 {
+        return if drop_action_setting == MouseMode::Stack {
             MouseDropAction::Stack
         } else {
             MouseDropAction::Swap
@@ -573,5 +589,180 @@ pub(crate) fn mouse_drop_try_adjust_bsp_grid(
         if let Some(node) = node {
             window_node_flush(space_id, node, window_manager, space_manager);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MouseDropAction, mouse_drop_action_for_point_over_window_frame};
+    use crate::ffi::core_foundation::{CGPoint, CGRect, CGSize};
+    use crate::mouse::tap::MouseMode;
+
+    fn name_of_drop_action(action: MouseDropAction) -> &'static str {
+        match action {
+            MouseDropAction::None => "none",
+            MouseDropAction::Stack => "stack",
+            MouseDropAction::Swap => "swap",
+            MouseDropAction::WarpTop => "warp top",
+            MouseDropAction::WarpRight => "warp right",
+            MouseDropAction::WarpBottom => "warp bottom",
+            MouseDropAction::WarpLeft => "warp left",
+        }
+    }
+
+    fn drop_action_over_an_800_by_600_window_at_100_200(
+        x: f64,
+        y: f64,
+        source_node_window_count: Option<i32>,
+        drop_action_setting: MouseMode,
+    ) -> &'static str {
+        let destination_window_frame = CGRect {
+            origin: CGPoint { x: 100.0, y: 200.0 },
+            size: CGSize {
+                width: 800.0,
+                height: 600.0,
+            },
+        };
+        name_of_drop_action(mouse_drop_action_for_point_over_window_frame(
+            destination_window_frame,
+            CGPoint { x, y },
+            source_node_window_count,
+            drop_action_setting,
+        ))
+    }
+
+    fn assert_each_point_yields(
+        points_and_expected_actions: &[(f64, f64, &str)],
+        source_node_window_count: Option<i32>,
+        drop_action_setting: MouseMode,
+    ) {
+        for (x, y, expected_action) in points_and_expected_actions {
+            assert_eq!(
+                drop_action_over_an_800_by_600_window_at_100_200(
+                    *x,
+                    *y,
+                    source_node_window_count,
+                    drop_action_setting
+                ),
+                *expected_action,
+                "point ({x}, {y}) with a dragged node of {source_node_window_count:?} windows"
+            );
+        }
+    }
+
+    #[test]
+    fn a_point_in_each_triangle_outside_the_centre_warps_toward_that_edge() {
+        let points_and_expected_actions = [
+            (500.0, 250.0, "warp top"),
+            (850.0, 500.0, "warp right"),
+            (500.0, 750.0, "warp bottom"),
+            (150.0, 500.0, "warp left"),
+        ];
+
+        for source_node_window_count in [Some(1), Some(2)] {
+            for drop_action_setting in [MouseMode::Swap, MouseMode::Stack] {
+                assert_each_point_yields(
+                    &points_and_expected_actions,
+                    source_node_window_count,
+                    drop_action_setting,
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_point_in_the_centre_swaps_a_single_window_node_when_the_drop_action_is_swap() {
+        assert_each_point_yields(
+            &[
+                (500.0, 500.0, "swap"),
+                (300.0, 350.0, "swap"),
+                (699.5, 649.5, "swap"),
+                (500.0, 400.0, "swap"),
+            ],
+            Some(1),
+            MouseMode::Swap,
+        );
+    }
+
+    #[test]
+    fn a_point_in_the_centre_stacks_a_single_window_node_when_the_drop_action_is_stack() {
+        assert_each_point_yields(
+            &[
+                (500.0, 500.0, "stack"),
+                (300.0, 350.0, "stack"),
+                (699.5, 649.5, "stack"),
+            ],
+            Some(1),
+            MouseMode::Stack,
+        );
+    }
+
+    #[test]
+    fn a_point_in_the_centre_swaps_for_every_drop_action_setting_other_than_stack() {
+        for drop_action_setting in [MouseMode::None, MouseMode::Move, MouseMode::Resize] {
+            assert_each_point_yields(&[(500.0, 500.0, "swap")], Some(1), drop_action_setting);
+        }
+    }
+
+    #[test]
+    fn a_stacked_dragged_node_over_the_centre_falls_through_to_the_triangles() {
+        assert_each_point_yields(&[(500.0, 400.0, "warp top")], Some(2), MouseMode::Swap);
+        assert_each_point_yields(&[(500.0, 500.0, "none")], Some(2), MouseMode::Swap);
+        assert_each_point_yields(&[(500.0, 500.0, "none")], Some(3), MouseMode::Stack);
+        assert_each_point_yields(&[(500.0, 500.0, "none")], Some(0), MouseMode::Swap);
+    }
+
+    #[test]
+    fn a_dragged_node_that_cannot_be_found_falls_through_to_the_triangles() {
+        assert_each_point_yields(
+            &[(500.0, 400.0, "warp top"), (500.0, 500.0, "none")],
+            None,
+            MouseMode::Stack,
+        );
+    }
+
+    #[test]
+    fn the_centre_rectangle_includes_its_minimum_edges_and_excludes_its_maximum_edges() {
+        assert_each_point_yields(
+            &[
+                (300.0, 350.0, "swap"),
+                (700.0, 500.0, "warp right"),
+                (500.0, 650.0, "warp bottom"),
+            ],
+            Some(1),
+            MouseMode::Swap,
+        );
+    }
+
+    #[test]
+    fn points_on_a_diagonal_between_two_triangles_yield_no_action() {
+        assert_each_point_yields(
+            &[
+                (200.0, 275.0, "none"),
+                (800.0, 275.0, "none"),
+                (200.0, 725.0, "none"),
+                (800.0, 725.0, "none"),
+            ],
+            Some(1),
+            MouseMode::Swap,
+        );
+    }
+
+    #[test]
+    fn points_on_the_window_edges_or_outside_the_window_yield_no_action() {
+        assert_each_point_yields(
+            &[
+                (100.0, 500.0, "none"),
+                (900.0, 500.0, "none"),
+                (500.0, 200.0, "none"),
+                (500.0, 800.0, "none"),
+                (100.0, 200.0, "none"),
+                (900.0, 800.0, "none"),
+                (99.0, 500.0, "none"),
+                (500.0, 801.0, "none"),
+            ],
+            Some(1),
+            MouseMode::Swap,
+        );
     }
 }

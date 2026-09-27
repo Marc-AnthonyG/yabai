@@ -177,3 +177,182 @@ pub fn ease_in_out_circ(interpolant: f32) -> f32 {
         ((1.0 - (-2.0 * interpolant + 2.0).powf(2.0)).sqrt() + 1.0) / 2.0
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ANIMATION_EASING_TYPE_STR, AnimationEasingType, EASING_TYPE_COUNT};
+
+    const INTERPOLANTS_WHERE_EVERY_C_BUILD_AGREES: [f32; 6] = [0.0, 0.25, 0.3333, 0.5, 0.75, 1.0];
+
+    const C_EASING_RESULT_BITS_IN_ENUM_ORDER: [(&str, [u32; 6]); EASING_TYPE_COUNT] = [
+        (
+            "ease_in_sine",
+            [
+                0x00000000, 0x3d9be510, 0x3e0929c4, 0x3e95f61a, 0x3f1e0876, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_out_sine",
+            [
+                0x00000000, 0x3ec3ef16, 0x3efffa0e, 0x3f3504f3, 0x3f6c835e, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_in_out_sine",
+            [
+                0x80000000, 0x3e15f61a, 0x3e7ff41c, 0x3f000000, 0x3f5a827a, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_in_quad",
+            [
+                0x00000000, 0x3d800000, 0x3de38292, 0x3e800000, 0x3f100000, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_out_quad",
+            [
+                0x00000000, 0x3ee00000, 0x3f0e35fa, 0x3f400000, 0x3f700000, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_in_out_quad",
+            [
+                0x00000000, 0x3e000000, 0x3e638292, 0x3f000000, 0x3f600000, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_in_cubic",
+            [
+                0x00000000, 0x3c800000, 0x3d17a87f, 0x3e000000, 0x3ed80000, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_out_cubic",
+            [
+                0x00000000, 0x3f140000, 0x3f342303, 0x3f600000, 0x3f7c0000, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_in_out_cubic",
+            [
+                0x00000000, 0x3d800000, 0x3e17a87f, 0x3f000000, 0x3f700000, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_in_quart",
+            [
+                0x00000000, 0x3b800000, 0x3c4a30d1, 0x3d800000, 0x3ea20000, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_out_quart",
+            [
+                0x00000000, 0x3f2f0000, 0x3f4d6c07, 0x3f700000, 0x3f7f0000, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_in_out_quart",
+            [
+                0x00000000, 0x3d000000, 0x3dca30d1, 0x3f000000, 0x3f780000, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_in_quint",
+            [
+                0x00000000, 0x3a800000, 0x3b86c7c2, 0x3d000000, 0x3e730000, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_out_quint",
+            [
+                0x00000000, 0x3f434000, 0x3f5e4796, 0x3f780000, 0x3f7fc000, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_in_out_quint",
+            [
+                0x00000000, 0x3c800000, 0x3d86c7c2, 0x3f000000, 0x3f7c0000, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_in_expo",
+            [
+                0x00000000, 0x3bb504f3, 0x3c213b8f, 0x3d000000, 0x3e3504f3, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_out_expo",
+            [
+                0x00000000, 0x3f52bec3, 0x3f669881, 0x3f780000, 0x3f7e95f6, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_in_out_expo",
+            [
+                0x00000000, 0x3c800000, 0x3d4b17ec, 0x3f000000, 0x3f7c0000, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_in_circ",
+            [
+                0x00000000, 0x3d0210a0, 0x3d6a34b0, 0x3e0930a4, 0x3ead5806, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_out_circ",
+            [
+                0x00000000, 0x3f2953fd, 0x3f3ecdb2, 0x3f5db3d7, 0x3f77def6, 0x3f800000,
+            ],
+        ),
+        (
+            "ease_in_out_circ",
+            [
+                0x00000000, 0x3d8930a4, 0x3e0258e2, 0x3f000000, 0x3f6ed9ec, 0x3f800000,
+            ],
+        ),
+    ];
+
+    #[test]
+    fn easing_names_follow_the_c_enum_order_and_spelling() {
+        let c_names: Vec<&str> = C_EASING_RESULT_BITS_IN_ENUM_ORDER
+            .iter()
+            .map(|(name, _)| *name)
+            .collect();
+
+        assert_eq!(ANIMATION_EASING_TYPE_STR.to_vec(), c_names);
+    }
+
+    #[test]
+    fn each_easing_returns_the_same_f32_bits_as_the_c_function_of_the_same_index() {
+        for (index, (name, expected_bits)) in C_EASING_RESULT_BITS_IN_ENUM_ORDER.iter().enumerate()
+        {
+            let easing = AnimationEasingType::from_index(index)
+                .unwrap_or_else(|| panic!("easing index {index} should exist"));
+
+            let result_bits: Vec<u32> = INTERPOLANTS_WHERE_EVERY_C_BUILD_AGREES
+                .iter()
+                .map(|interpolant| easing.apply(*interpolant).to_bits())
+                .collect();
+
+            assert_eq!(result_bits, expected_bits.to_vec(), "{name}");
+        }
+    }
+
+    #[test]
+    fn from_index_knows_exactly_the_twenty_one_c_easings() {
+        assert_eq!(EASING_TYPE_COUNT, 21);
+        assert!(AnimationEasingType::from_index(EASING_TYPE_COUNT - 1).is_some());
+        assert!(AnimationEasingType::from_index(EASING_TYPE_COUNT).is_none());
+    }
+
+    #[test]
+    fn each_easing_index_round_trips_through_its_discriminant() {
+        for index in 0..EASING_TYPE_COUNT {
+            let easing = AnimationEasingType::from_index(index)
+                .unwrap_or_else(|| panic!("easing index {index} should exist"));
+
+            assert_eq!(easing as usize, index);
+        }
+    }
+}

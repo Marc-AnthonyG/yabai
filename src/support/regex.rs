@@ -49,3 +49,113 @@ pub fn regex_match(regex: Option<&PosixRegex>, subject: &std::ffi::CStr) -> Rege
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::CStr;
+
+    use super::{PosixRegex, RegexMatch, regex_match};
+
+    fn compile_or_panic(pattern: &CStr) -> PosixRegex {
+        PosixRegex::compile(pattern)
+            .unwrap_or_else(|| panic!("{pattern:?} should compile as an extended regex"))
+    }
+
+    fn pattern_matches_subject(pattern: &CStr, subject: &CStr) -> bool {
+        compile_or_panic(pattern).matches(subject)
+    }
+
+    #[test]
+    fn regex_match_without_a_regex_is_undefined() {
+        assert!(regex_match(None, c"Safari") == RegexMatch::Undefined);
+    }
+
+    #[test]
+    fn regex_match_is_yes_when_the_subject_matches() {
+        let regex = compile_or_panic(c"^Safari$");
+
+        assert!(regex_match(Some(&regex), c"Safari") == RegexMatch::Yes);
+    }
+
+    #[test]
+    fn regex_match_is_no_when_the_subject_does_not_match() {
+        let regex = compile_or_panic(c"^Safari$");
+
+        assert!(regex_match(Some(&regex), c"Safari Technology Preview") == RegexMatch::No);
+    }
+
+    #[test]
+    fn regex_match_results_keep_the_c_values() {
+        assert_eq!(RegexMatch::Undefined as i32, 0);
+        assert_eq!(RegexMatch::Yes as i32, 1);
+        assert_eq!(RegexMatch::No as i32, 2);
+    }
+
+    #[test]
+    fn an_unanchored_pattern_matches_anywhere_in_the_subject() {
+        assert!(pattern_matches_subject(
+            c"Safari",
+            c"Safari Technology Preview"
+        ));
+        assert!(pattern_matches_subject(
+            c"Preview",
+            c"Safari Technology Preview"
+        ));
+    }
+
+    #[test]
+    fn matching_is_case_sensitive() {
+        assert!(!pattern_matches_subject(c"safari", c"Safari"));
+    }
+
+    #[test]
+    fn backslash_d_is_a_literal_d_and_not_a_digit_class_as_with_regcomp() {
+        assert!(!pattern_matches_subject(c"\\d", c"5"));
+        assert!(pattern_matches_subject(c"\\d", c"d"));
+    }
+
+    #[test]
+    fn backslash_w_is_a_literal_w_and_not_a_word_class_as_with_regcomp() {
+        assert!(pattern_matches_subject(c"\\w+", c"w"));
+        assert!(!pattern_matches_subject(c"\\w+", c"abc"));
+    }
+
+    #[test]
+    fn posix_bracket_classes_and_ranges_match_digits() {
+        assert!(pattern_matches_subject(c"[[:digit:]]+", c"abc123"));
+        assert!(!pattern_matches_subject(c"[0-9]+", c"abc"));
+    }
+
+    #[test]
+    fn extended_syntax_supports_alternation_groups_and_intervals_without_escaping() {
+        assert!(pattern_matches_subject(c"^(Finder|Safari)$", c"Finder"));
+        assert!(!pattern_matches_subject(c"^(Finder|Safari)$", c"Terminal"));
+        assert!(pattern_matches_subject(
+            c"System Settings|System Preferences",
+            c"System Preferences"
+        ));
+        assert!(pattern_matches_subject(c"a{2}", c"caab"));
+        assert!(!pattern_matches_subject(c"a{2}", c"cab"));
+    }
+
+    #[test]
+    fn an_escaped_dot_matches_only_a_dot() {
+        assert!(pattern_matches_subject(c"\\.", c"a.b"));
+        assert!(!pattern_matches_subject(c"\\.", c"ab"));
+    }
+
+    #[test]
+    fn an_anchored_empty_pattern_matches_an_empty_subject() {
+        assert!(pattern_matches_subject(c"^$", c""));
+    }
+
+    #[test]
+    fn compile_rejects_the_patterns_regcomp_rejects() {
+        for pattern in [c"(", c"[", c"a**", c"a+?", c"(?i)safari", c"a|*b", c""] {
+            assert!(
+                PosixRegex::compile(pattern).is_none(),
+                "{pattern:?} should not compile as an extended regex"
+            );
+        }
+    }
+}

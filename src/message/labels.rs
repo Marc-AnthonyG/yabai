@@ -128,3 +128,168 @@ pub(crate) fn parse_label(
 
     true
 }
+
+#[cfg(test)]
+mod tests {
+    use std::io::Read;
+    use std::os::unix::net::UnixStream;
+
+    use super::{LabelType, parse_label};
+    use crate::message::token::MessageCursor;
+    use crate::support::response::Response;
+
+    struct ParsedLabel {
+        accepted: bool,
+        label: Option<String>,
+        response_bytes: Vec<u8>,
+    }
+
+    fn parse_the_label_argument(argument: &str, label_type: LabelType) -> ParsedLabel {
+        let mut message = argument.as_bytes().to_vec();
+        message.extend_from_slice(b"\0\0");
+        let token = MessageCursor::new(&mut message).get_token();
+        let (daemon_side, mut client_side) = UnixStream::pair().expect("a connected socket pair");
+        let mut label = Some("old".to_string());
+
+        let accepted = {
+            let mut response = Response::to_client(daemon_side);
+            parse_label(&mut response, &message, token, label_type, &mut label)
+        };
+        let mut response_bytes = Vec::new();
+        client_side
+            .read_to_end(&mut response_bytes)
+            .expect("the response to be readable");
+
+        ParsedLabel {
+            accepted,
+            label,
+            response_bytes,
+        }
+    }
+
+    fn assert_accepted_as(argument: &str, label_type: LabelType, expected_label: Option<&str>) {
+        let parsed = parse_the_label_argument(argument, label_type);
+
+        assert!(parsed.accepted, "{argument:?} should be accepted");
+        assert_eq!(
+            parsed.label.as_deref(),
+            expected_label,
+            "label for {argument:?}"
+        );
+        assert_eq!(parsed.response_bytes, b"", "response for {argument:?}");
+    }
+
+    fn assert_rejected_with(argument: &str, label_type: LabelType, expected_response: &str) {
+        let parsed = parse_the_label_argument(argument, label_type);
+
+        assert!(!parsed.accepted, "{argument:?} should be rejected");
+        assert_eq!(
+            parsed.label.as_deref(),
+            Some("old"),
+            "label after rejecting {argument:?}"
+        );
+        assert_eq!(
+            String::from_utf8_lossy(&parsed.response_bytes),
+            expected_response,
+            "response for {argument:?}"
+        );
+    }
+
+    const EVERY_LABEL_TYPE: [LabelType; 3] =
+        [LabelType::Display, LabelType::Space, LabelType::Window];
+
+    #[test]
+    fn an_empty_label_clears_the_label_and_is_accepted() {
+        for label_type in EVERY_LABEL_TYPE {
+            assert_accepted_as("", label_type, None);
+        }
+    }
+
+    #[test]
+    fn a_word_that_is_not_reserved_becomes_the_label() {
+        for label_type in EVERY_LABEL_TYPE {
+            assert_accepted_as("main", label_type, Some("main"));
+            assert_accepted_as("Main", label_type, Some("Main"));
+            assert_accepted_as("stack", label_type, Some("stack"));
+        }
+    }
+
+    #[test]
+    fn a_number_cannot_be_used_as_a_label() {
+        for label_type in EVERY_LABEL_TYPE {
+            for argument in ["5", "0x1f", "1.5", " 2"] {
+                assert_rejected_with(
+                    argument,
+                    label_type,
+                    &format!("\u{7}'{argument}' cannot be used as a label.\n"),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_display_label_cannot_be_a_display_selector_word() {
+        for argument in [
+            "north", "east", "south", "west", "prev", "next", "first", "last", "recent", "mouse",
+        ] {
+            assert_rejected_with(
+                argument,
+                LabelType::Display,
+                &format!(
+                    "\u{7}'{argument}' is a reserved keyword and cannot be used as a label.\n"
+                ),
+            );
+        }
+    }
+
+    #[test]
+    fn a_space_label_cannot_be_a_space_selector_word_but_may_be_a_direction() {
+        for argument in ["prev", "next", "first", "last", "recent", "mouse"] {
+            assert_rejected_with(
+                argument,
+                LabelType::Space,
+                &format!(
+                    "\u{7}'{argument}' is a reserved keyword and cannot be used as a label.\n"
+                ),
+            );
+        }
+        assert_accepted_as("north", LabelType::Space, Some("north"));
+    }
+
+    #[test]
+    fn a_scratchpad_cannot_be_a_window_toggle_word_but_may_be_a_selector_word() {
+        for argument in [
+            "float",
+            "sticky",
+            "shadow",
+            "split",
+            "zoom-parent",
+            "zoom-fullscreen",
+            "windowed-fullscreen",
+            "native-fullscreen",
+            "expose",
+            "pip",
+            "recover",
+        ] {
+            assert_rejected_with(
+                argument,
+                LabelType::Window,
+                &format!(
+                    "\u{7}'{argument}' is a reserved keyword and cannot be used as a scratchpad.\n"
+                ),
+            );
+        }
+        for argument in ["north", "prev", "mouse"] {
+            assert_accepted_as(argument, LabelType::Window, Some(argument));
+        }
+    }
+
+    #[test]
+    fn window_toggle_words_are_accepted_as_display_and_space_labels() {
+        for label_type in [LabelType::Display, LabelType::Space] {
+            for argument in ["float", "recover", "zoom-parent"] {
+                assert_accepted_as(argument, label_type, Some(argument));
+            }
+        }
+    }
+}

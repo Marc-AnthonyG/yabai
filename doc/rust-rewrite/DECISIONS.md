@@ -102,7 +102,7 @@ elaborates these decisions; none may reopen them.
 23. `g_mouse_state` splits in two: the half the event tap reads (`modifier`, the two actions,
     the drop action, the tap handle, the click-consumption flags) is a static of atomics; the
     drag half is owned by `EventLoopOwnedState`.
-24. Animation: `Arc<AnimationContext>` shared with the CVDisplayLink callback, `skip` as
+24. Superseded by 55. Animation: `Arc<AnimationContext>` shared with the CVDisplayLink callback, `skip` as
     `AtomicBool`, the raced `tx/ty/tw/th` as `AtomicU32` holding `f32` bits,
     `window_animations_table` behind an `Arc<Mutex<_>>` held for exactly the C lock scope,
     proxy builders under `std::thread::scope`.
@@ -174,7 +174,7 @@ elaborates these decisions; none may reopen them.
 45. `hash_wm` becomes two functions with the C body, `hash_wm_window_id(&WindowId)` and
     `hash_wm_process_id(&ProcessId)`, because `Table::new` takes a `fn(&K) -> u64` and the seven
     tables have two key types.
-46. `AnimationContext` carries its own clone of the `Arc<Mutex<_>>` holding
+46. Superseded by 55. `AnimationContext` carries its own clone of the `Arc<Mutex<_>>` holding
     `window_animations_table`. The display-link callback reaches the table through it and takes
     no manager.
 47. `Process::policy` is an `AtomicI32`, the third atomic of decision 22: it is written from the

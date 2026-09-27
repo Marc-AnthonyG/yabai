@@ -54,15 +54,15 @@ pub(crate) fn populate_plist_path() -> String {
 }
 
 fn populate_plist() -> String {
-    let user = match std::env::var("USER") {
-        Ok(user) => user,
-        Err(_) => error!("yabai: 'env USER' not set! abort..\n"),
+    let Some(user) = std::env::var_os("USER") else {
+        error!("yabai: 'env USER' not set! abort..\n");
     };
+    let user = user.to_string_lossy();
 
-    let path_env = match std::env::var("PATH") {
-        Ok(path_env) => path_env,
-        Err(_) => error!("yabai: 'env PATH' not set! abort..\n"),
+    let Some(path_env) = std::env::var_os("PATH") else {
+        error!("yabai: 'env PATH' not set! abort..\n");
     };
+    let path_env = path_env.to_string_lossy();
 
     let mut executable_path_buffer = [0u8; 4096];
     let mut executable_path_size: u32 = executable_path_buffer.len() as u32;

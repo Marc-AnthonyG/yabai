@@ -1,8 +1,13 @@
+use std::io::Write;
+
 #[macro_export]
 macro_rules! debug {
     ($($argument:tt)*) => {{
         if $crate::support::log::g_verbose() {
-            print!($($argument)*);
+            let _ = std::io::Write::write_fmt(
+                &mut std::io::stdout(),
+                format_args!($($argument)*),
+            );
         }
     }};
 }
@@ -10,14 +15,20 @@ macro_rules! debug {
 #[macro_export]
 macro_rules! warn {
     ($($argument:tt)*) => {{
-        eprint!($($argument)*);
+        let _ = std::io::Write::write_fmt(
+            &mut std::io::stderr(),
+            format_args!($($argument)*),
+        );
     }};
 }
 
 #[macro_export]
 macro_rules! error {
     ($($argument:tt)*) => {{
-        eprint!($($argument)*);
+        let _ = std::io::Write::write_fmt(
+            &mut std::io::stderr(),
+            format_args!($($argument)*),
+        );
         std::process::exit(libc::EXIT_FAILURE)
     }};
 }
@@ -25,7 +36,10 @@ macro_rules! error {
 #[macro_export]
 macro_rules! require {
     ($($argument:tt)*) => {{
-        eprint!($($argument)*);
+        let _ = std::io::Write::write_fmt(
+            &mut std::io::stderr(),
+            format_args!($($argument)*),
+        );
         std::process::exit(libc::EXIT_SUCCESS)
     }};
 }
@@ -50,13 +64,14 @@ pub fn debug_message(prefix: &str, message: &str) {
         return;
     }
 
-    print!("{}:", prefix);
+    let mut standard_output = std::io::stdout().lock();
+    let _ = write!(standard_output, "{}:", prefix);
     for token in message.split('\0') {
         if token.is_empty() {
             break;
         }
-        print!(" {}", token);
+        let _ = write!(standard_output, " {}", token);
     }
-    print!("\n");
-    let _ = std::io::Write::flush(&mut std::io::stdout());
+    let _ = standard_output.write_all(b"\n");
+    let _ = standard_output.flush();
 }

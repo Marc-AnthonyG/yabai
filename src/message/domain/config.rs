@@ -42,6 +42,7 @@ use crate::support::arithmetic::{in_range_ei, in_range_ii};
 use crate::support::color::rgba_color_from_hex;
 use crate::support::easing::{ANIMATION_EASING_TYPE_STR, AnimationEasingType, EASING_TYPE_COUNT};
 use crate::support::handles::SpaceId;
+use crate::support::printf_float_format::format_float_with_decimals_as_printf_does;
 use crate::support::response::{FailurePiece, Response};
 use crate::support::strings::BOOL_STR;
 use crate::window::focus::window_manager_set_focus_follows_mouse;
@@ -437,7 +438,10 @@ pub(crate) fn handle_domain_config(
             if let TokenType::Invalid = value.type_of_value {
                 response.write(format_args!(
                     "{}\n",
-                    format_float_with_six_decimals_as_printf_does(window_manager.window_opacity_duration as f64)
+                    format_float_with_decimals_as_printf_does(
+                        window_manager.window_opacity_duration as f64,
+                        6
+                    )
                 ));
             } else if let TokenType::Float(float_value) = value.type_of_value {
                 window_manager.window_opacity_duration = float_value;
@@ -459,9 +463,15 @@ pub(crate) fn handle_domain_config(
             if let TokenType::Invalid = value.type_of_value {
                 response.write(format_args!(
                     "{}\n",
-                    format_float_with_six_decimals_as_printf_does(window_manager.window_animation_duration as f64)
+                    format_float_with_decimals_as_printf_does(
+                        window_manager.window_animation_duration as f64,
+                        6
+                    )
                 ));
-            } else if let TokenType::Float(float_value) = value.type_of_value {
+            } else if let TokenType::Float(float_value) = value.type_of_value
+                && float_value.is_finite()
+                && float_value >= 0.0f32
+            {
                 if float_value == 0.0f32 {
                     window_manager.window_animation_duration = float_value;
                 } else if !scripting_addition_is_sip_friendly() {
@@ -560,8 +570,11 @@ pub(crate) fn handle_domain_config(
             let value = token_to_value(message_cursor.get_token(), message_cursor.bytes());
             if let TokenType::Invalid = value.type_of_value {
                 response.write(format_args!(
-                    "{:.4}\n",
-                    window_manager.menubar_opacity as f64
+                    "{}\n",
+                    format_float_with_decimals_as_printf_does(
+                        window_manager.menubar_opacity as f64,
+                        4
+                    )
                 ));
             } else if let TokenType::Float(float_value) = value.type_of_value
                 && in_range_ii(float_value, 0.0f32, 1.0f32)
@@ -584,8 +597,11 @@ pub(crate) fn handle_domain_config(
             let value = token_to_value(message_cursor.get_token(), message_cursor.bytes());
             if let TokenType::Invalid = value.type_of_value {
                 response.write(format_args!(
-                    "{:.4}\n",
-                    window_manager.active_window_opacity as f64
+                    "{}\n",
+                    format_float_with_decimals_as_printf_does(
+                        window_manager.active_window_opacity as f64,
+                        4
+                    )
                 ));
             } else if let TokenType::Float(float_value) = value.type_of_value
                 && in_range_ei(float_value, 0.0f32, 1.0f32)
@@ -608,8 +624,11 @@ pub(crate) fn handle_domain_config(
             let value = token_to_value(message_cursor.get_token(), message_cursor.bytes());
             if let TokenType::Invalid = value.type_of_value {
                 response.write(format_args!(
-                    "{:.4}\n",
-                    window_manager.normal_window_opacity as f64
+                    "{}\n",
+                    format_float_with_decimals_as_printf_does(
+                        window_manager.normal_window_opacity as f64,
+                        4
+                    )
                 ));
             } else if let TokenType::Float(float_value) = value.type_of_value
                 && in_range_ei(float_value, 0.0f32, 1.0f32)
@@ -1006,7 +1025,10 @@ pub(crate) fn handle_domain_config(
         } else if token_equals(command, message_cursor.bytes(), COMMAND_CONFIG_SPLIT_RATIO) {
             let value = token_to_value(message_cursor.get_token(), message_cursor.bytes());
             if let TokenType::Invalid = value.type_of_value {
-                response.write(format_args!("{:.4}\n", space_manager.split_ratio as f64));
+                response.write(format_args!(
+                    "{}\n",
+                    format_float_with_decimals_as_printf_does(space_manager.split_ratio as f64, 4)
+                ));
             } else if let TokenType::Float(float_value) = value.type_of_value
                 && in_range_ii(float_value, 0.1f32, 0.9f32)
             {
@@ -1380,11 +1402,4 @@ pub(crate) fn handle_domain_config(
 
         command = message_cursor.get_token();
     }
-}
-
-pub(crate) fn format_float_with_six_decimals_as_printf_does(value: f64) -> String {
-    if value.is_nan() {
-        return "nan".to_string();
-    }
-    format!("{:.6}", value)
 }

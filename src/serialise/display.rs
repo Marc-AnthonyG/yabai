@@ -8,6 +8,7 @@ use crate::ffi::core_graphics::CGDisplayBounds;
 use crate::space::lookup::space_manager_mission_control_index;
 use crate::support::handles::DisplayId;
 use crate::support::json::json_bool;
+use crate::support::printf_float_format::format_float_with_decimals_as_printf_does;
 use crate::support::response::Response;
 
 macro_rules! display_property_list {
@@ -108,8 +109,11 @@ pub(crate) fn display_serialize(
 
         let frame = CGDisplayBounds(display_id.0);
         response.write(format_args!(
-            "\t\"frame\":{{\n\t\t\"x\":{:.4},\n\t\t\"y\":{:.4},\n\t\t\"w\":{:.4},\n\t\t\"h\":{:.4}\n\t}}",
-            frame.origin.x, frame.origin.y, frame.size.width, frame.size.height
+            "\t\"frame\":{{\n\t\t\"x\":{},\n\t\t\"y\":{},\n\t\t\"w\":{},\n\t\t\"h\":{}\n\t}}",
+            format_float_with_decimals_as_printf_does(frame.origin.x, 4),
+            format_float_with_decimals_as_printf_does(frame.origin.y, 4),
+            format_float_with_decimals_as_printf_does(frame.size.width, 4),
+            format_float_with_decimals_as_printf_does(frame.size.height, 4)
         ));
         did_output = true;
     }

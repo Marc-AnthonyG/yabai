@@ -67,7 +67,7 @@ pub(crate) unsafe extern "C-unwind" fn mouse_handler(
 
     match event_type {
         CGEventType::TapDisabledByTimeout | CGEventType::TapDisabledByUserInput => {
-            let handle = mouse_state.handle.load(Ordering::Relaxed);
+            let handle = mouse_state.handle.load(Ordering::Acquire);
             if let Some(handle) = unsafe { handle.as_ref() } {
                 CGEventTapEnable(handle, true);
             }

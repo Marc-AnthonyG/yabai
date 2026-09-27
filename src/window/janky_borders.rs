@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 
 use crate::ffi::libsystem::{PROC_PIDPATHINFO_MAXSIZE, proc_name};
-use crate::ffi::mach_port::{bootstrap_look_up, mach_send};
+use crate::ffi::mach_port::{bootstrap_look_up, mach_port_deallocate, mach_send, mach_task_self};
 use crate::ffi::skylight::SLSConnectionGetPID;
 use crate::state::process_wide::BOOTSTRAP_PORT;
 use crate::window::animation::WindowAnimation;
@@ -58,6 +58,7 @@ pub(crate) fn window_manager_notify_jankyborders(
             (&mut data as *mut JankyBordersEvent).cast::<c_void>(),
             core::mem::size_of::<JankyBordersEvent>() as u32,
         );
+        unsafe { mach_port_deallocate(mach_task_self(), port) };
         if wait {
             unsafe { libc::usleep(20000) };
         }

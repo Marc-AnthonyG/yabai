@@ -560,8 +560,20 @@ pub(crate) fn event_handler_mouse_dragged(
                 {
                     node.insert_direction = insert_direction;
                 }
-                insert_feedback_show(destination_view, b_node, window_manager, space_manager);
-                mouse_drag_state.feedback_node = Some((destination_view, b_node));
+                if insert_direction == 0 {
+                    insert_feedback_destroy(
+                        destination_view,
+                        b_node,
+                        window_manager,
+                        space_manager,
+                    );
+                    if mouse_drag_state.feedback_node == Some((destination_view, b_node)) {
+                        mouse_drag_state.feedback_node = None;
+                    }
+                } else {
+                    insert_feedback_show(destination_view, b_node, window_manager, space_manager);
+                    mouse_drag_state.feedback_node = Some((destination_view, b_node));
+                }
             }
         } else if b_node.is_none() {
             if let Some((feedback_space_id, feedback_node_id)) = mouse_drag_state.feedback_node {

@@ -3,6 +3,7 @@ use crate::display::manager::DisplayManager;
 use crate::space::lookup::space_manager_mission_control_index;
 use crate::support::json::{json_bool, json_optional_bool, ts_string_escape};
 use crate::support::layer::LAYER_STR;
+use crate::support::printf_float_format::format_float_with_decimals_as_printf_does;
 use crate::support::response::Response;
 use crate::window::manager::WindowManager;
 use crate::window::rule::{Rule, RuleEffectsFlag, RuleFlag};
@@ -50,7 +51,7 @@ pub(crate) fn rule_serialize(
          \t\"display\":{},\n\
          \t\"space\":{},\n\
          \t\"follow_space\":{},\n\
-         \t\"opacity\":{:.4},\n\
+         \t\"opacity\":{},\n\
          \t\"manage\":{},\n\
          \t\"sticky\":{},\n\
          \t\"mouse_follows_focus\":{},\n\
@@ -78,7 +79,7 @@ pub(crate) fn rule_serialize(
             0
         },
         json_bool(effects_flags.contains(RuleEffectsFlag::FOLLOW_SPACE)),
-        rule.effects.opacity as f64,
+        format_float_with_decimals_as_printf_does(rule.effects.opacity as f64, 4),
         json_optional_bool(rule.effects.manage),
         json_optional_bool(rule.effects.sticky),
         json_optional_bool(rule.effects.mff),

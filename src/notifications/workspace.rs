@@ -321,7 +321,9 @@ pub(crate) fn workspace_application_destroy_running_ns_application(
     workspace_context: &WorkspaceContext,
     process: &Arc<Process>,
 ) {
-    let application = process.ns_application.load(Ordering::Relaxed);
+    let application = process
+        .ns_application
+        .swap(core::ptr::null_mut(), Ordering::AcqRel);
 
     if let Some(application) =
         unsafe { Retained::from_raw(application.cast::<NSRunningApplication>()) }
@@ -372,7 +374,7 @@ pub(crate) fn workspace_application_observe_finished_launching(
     context: &WorkspaceContext,
     process: &Arc<Process>,
 ) {
-    let application = process.ns_application.load(Ordering::Relaxed);
+    let application = process.ns_application.load(Ordering::Acquire);
     if let Some(application) = unsafe { application.cast::<NSRunningApplication>().as_ref() } {
         let refcon = Arc::into_raw(Arc::clone(process)) as *mut c_void;
         unsafe {
@@ -397,7 +399,7 @@ pub(crate) fn workspace_application_observe_activation_policy(
     context: &WorkspaceContext,
     process: &Arc<Process>,
 ) {
-    let application = process.ns_application.load(Ordering::Relaxed);
+    let application = process.ns_application.load(Ordering::Acquire);
     if let Some(application) = unsafe { application.cast::<NSRunningApplication>().as_ref() } {
         let refcon = Arc::into_raw(Arc::clone(process)) as *mut c_void;
         unsafe {
@@ -422,7 +424,7 @@ pub(crate) fn workspace_application_unobserve(
     workspace_context: &WorkspaceContext,
     process: &Arc<Process>,
 ) {
-    let application = process.ns_application.load(Ordering::Relaxed);
+    let application = process.ns_application.load(Ordering::Acquire);
     if let Some(application) = unsafe { application.cast::<NSRunningApplication>().as_ref() } {
         if remove_observer_swallowing_exception(
             application,

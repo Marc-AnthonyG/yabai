@@ -88,6 +88,17 @@ unsafe extern "C" {
     ) -> libc::kern_return_t;
 
     pub fn mig_get_special_reply_port() -> libc::mach_port_t;
+
+    pub fn mach_port_deallocate(
+        task: libc::mach_port_t,
+        name: libc::mach_port_t,
+    ) -> libc::kern_return_t;
+
+    static mach_task_self_: libc::mach_port_t;
+}
+
+pub fn mach_task_self() -> libc::mach_port_t {
+    unsafe { mach_task_self_ }
 }
 
 #[repr(C, packed(4))]

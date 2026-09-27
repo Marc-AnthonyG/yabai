@@ -92,7 +92,7 @@ pub(crate) fn event_handler_application_launched(
         return;
     }
 
-    if process.ns_application.load(Ordering::Relaxed).is_null() {
+    if process.ns_application.load(Ordering::Acquire).is_null() {
         debug!(
             "{}: {} ({}) missing ns_application. fetching..\n",
             "EVENT_HANDLER_APPLICATION_LAUNCHED", process.name, process.process_id.0
@@ -102,7 +102,7 @@ pub(crate) fn event_handler_application_launched(
             Ordering::Release,
         );
 
-        if process.ns_application.load(Ordering::Relaxed).is_null() {
+        if process.ns_application.load(Ordering::Acquire).is_null() {
             debug!(
                 "{}: {} ({}) unable to fetch ns_application..\n",
                 "EVENT_HANDLER_APPLICATION_LAUNCHED", process.name, process.process_id.0
@@ -136,7 +136,7 @@ pub(crate) fn event_handler_application_launched(
         //
 
         if workspace_application_is_finished_launching(&process) {
-            let ns_application = process.ns_application.load(Ordering::Relaxed);
+            let ns_application = process.ns_application.load(Ordering::Acquire);
             let application = unsafe { ns_application.cast::<NSRunningApplication>().as_ref() };
             if let Some(application) = application {
                 let observation_info: *mut c_void =
@@ -171,7 +171,7 @@ pub(crate) fn event_handler_application_launched(
         //
 
         if workspace_application_is_observable(&process) {
-            let ns_application = process.ns_application.load(Ordering::Relaxed);
+            let ns_application = process.ns_application.load(Ordering::Acquire);
             let application = unsafe { ns_application.cast::<NSRunningApplication>().as_ref() };
             if let Some(application) = application {
                 let observation_info: *mut c_void =

@@ -1133,6 +1133,9 @@ pub(crate) fn view_remove_window_node(
         window_manager
             .insert_feedback
             .add(parent_first_window_id, (space_id, parent_id));
+        if mouse_drag_state.feedback_node == Some((space_id, child_id)) {
+            mouse_drag_state.feedback_node = Some((space_id, parent_id));
+        }
         insert_feedback_show(space_id, parent_id, window_manager, space_manager);
     }
 

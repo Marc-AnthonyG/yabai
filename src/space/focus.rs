@@ -20,7 +20,7 @@ use crate::space::managed_space::space_display_id;
 use crate::space::manager::SpaceManager;
 use crate::space::operations::{SpaceOpError, space_manager_swap_space_with_space_on_display};
 use crate::state::mission_control_mode::{MissionControlMode, mission_control_is_active};
-use crate::support::handles::{DisplayId, SpaceId};
+use crate::support::handles::{DisplayId, SpaceId, WindowId};
 use crate::window::focus::window_manager_focused_window;
 use crate::window::manager::WindowManager;
 use crate::window::model::window_display_id;
@@ -50,6 +50,20 @@ pub(crate) fn space_manager_active_space(window_manager: &mut WindowManager) -> 
     if let Some(window_id) = window {
         display_id = window_display_id(window_id);
     }
+    if display_id == DisplayId(0) {
+        display_id = display_manager_active_display_id();
+    }
+    if display_id == DisplayId(0) {
+        return SpaceId(0);
+    }
+
+    display_space_id(display_id)
+}
+
+pub(crate) fn space_manager_active_space_of_the_display_holding_window(
+    window_id: WindowId,
+) -> SpaceId {
+    let mut display_id = window_display_id(window_id);
     if display_id == DisplayId(0) {
         display_id = display_manager_active_display_id();
     }

@@ -20,10 +20,12 @@ pub(crate) fn space_manager_get_space_for_label<'space_manager>(
     space_manager: &'space_manager mut SpaceManager,
     label: &[u8],
 ) -> Option<&'space_manager mut SpaceLabel> {
+    let label = String::from_utf8_lossy(label);
+
     space_manager
         .labels
         .iter_mut()
-        .find(|space_label| space_label.label.as_bytes() == label)
+        .find(|space_label| space_label.label == label)
 }
 
 pub(crate) fn space_manager_remove_label_for_space(

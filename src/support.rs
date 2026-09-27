@@ -11,6 +11,7 @@ pub mod layer;
 pub mod log;
 pub mod macos_version;
 pub mod notify;
+pub mod printf_float_format;
 pub mod privilege;
 pub mod regex;
 pub mod resize_handle;

@@ -26,6 +26,7 @@ use crate::space::managed_space::{space_display_id, space_is_fullscreen};
 use crate::state::process_wide::CONNECTION;
 use crate::support::handles::{SpaceId, WindowId};
 use crate::support::json::{json_bool, ts_string_escape};
+use crate::support::printf_float_format::format_float_with_decimals_as_printf_does;
 use crate::support::response::Response;
 use crate::window::model::{
     window_is_sticky, window_level, window_opacity, window_parent, window_property_title_ts,
@@ -154,8 +155,11 @@ pub(crate) fn window_nonax_serialize(
         unsafe { SLSGetWindowBounds(connection_id, window_id.0, &mut frame) };
 
         response.write(format_args!(
-            "\t\"frame\":{{\n\t\t\"x\":{:.4},\n\t\t\"y\":{:.4},\n\t\t\"w\":{:.4},\n\t\t\"h\":{:.4}\n\t}}",
-            frame.origin.x, frame.origin.y, frame.size.width, frame.size.height
+            "\t\"frame\":{{\n\t\t\"x\":{},\n\t\t\"y\":{},\n\t\t\"w\":{},\n\t\t\"h\":{}\n\t}}",
+            format_float_with_decimals_as_printf_does(frame.origin.x, 4),
+            format_float_with_decimals_as_printf_does(frame.origin.y, 4),
+            format_float_with_decimals_as_printf_does(frame.size.width, 4),
+            format_float_with_decimals_as_printf_does(frame.size.height, 4)
         ));
         did_output = true;
     }
@@ -256,7 +260,10 @@ pub(crate) fn window_nonax_serialize(
         }
 
         let opacity = window_opacity(window_id);
-        response.write(format_args!("\t\"opacity\":{:.4}", opacity as f64));
+        response.write(format_args!(
+            "\t\"opacity\":{}",
+            format_float_with_decimals_as_printf_does(opacity as f64, 4)
+        ));
         did_output = true;
     }
 

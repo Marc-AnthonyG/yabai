@@ -17,7 +17,7 @@ pub(crate) fn workspace_application_create_running_ns_application(
 }
 
 pub(crate) fn workspace_application_is_observable(process: &Arc<Process>) -> bool {
-    let application = process.ns_application.load(Ordering::Relaxed);
+    let application = process.ns_application.load(Ordering::Acquire);
     if let Some(application) = unsafe { application.cast::<NSRunningApplication>().as_ref() } {
         process
             .policy
@@ -33,7 +33,7 @@ pub(crate) fn workspace_application_is_observable(process: &Arc<Process>) -> boo
 }
 
 pub(crate) fn workspace_application_is_finished_launching(process: &Arc<Process>) -> bool {
-    let application = process.ns_application.load(Ordering::Relaxed);
+    let application = process.ns_application.load(Ordering::Acquire);
     if let Some(application) = unsafe { application.cast::<NSRunningApplication>().as_ref() } {
         application.isFinishedLaunching()
     } else {

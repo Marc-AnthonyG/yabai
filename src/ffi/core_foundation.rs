@@ -93,6 +93,9 @@ pub fn cfarray_count(array: &CFArray) -> CFIndex {
 }
 
 pub unsafe fn cfarray_borrow_value_at_index<T>(array: &CFArray, index: CFIndex) -> Option<&T> {
+    if index < 0 || index >= CFArrayGetCount(array) {
+        return None;
+    }
     let pointer: *const c_void = unsafe { CFArrayGetValueAtIndex(array, index) };
     unsafe { pointer.cast::<T>().as_ref() }
 }

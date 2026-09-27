@@ -216,7 +216,10 @@ pub(crate) fn insert_feedback_show(
             clip_width = INSERT_FEEDBACK_WIDTH;
             clip_height = INSERT_FEEDBACK_WIDTH;
         }
-        _ => unreachable!(),
+        _ => {
+            drop(unsafe { take_create_rule_result(frame_region.cast_const()) });
+            return;
+        }
     }
 
     let rect = CGRect {

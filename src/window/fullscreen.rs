@@ -1,5 +1,7 @@
 #![allow(deprecated)]
 
+use std::time::{Duration, Instant};
+
 use crate::display::bounds::display_bounds_constrained;
 use crate::display::manager::DisplayManager;
 use crate::display::spaces::{display_manager_display_is_animating, display_space_id};
@@ -8,7 +10,7 @@ use crate::ffi::core_foundation::{as_cftype, kCFBooleanFalse, kCFBooleanTrue};
 use crate::layout::settings::{ViewFlag, ViewType};
 use crate::layout::tree::{view_find_window_node, window_node_flush};
 use crate::scripting_addition::client::scripting_addition_scale_window;
-use crate::space::focus::space_manager_active_space;
+use crate::space::focus::space_manager_active_space_of_the_display_holding_window;
 use crate::space::managed_space::{space_is_user, space_is_visible};
 use crate::space::manager::{SpaceManager, space_manager_find_view};
 use crate::support::handles::{ROOT_NODE_ID, WindowId};
@@ -24,17 +26,20 @@ use crate::window::model::{
     window_set_flag, window_space,
 };
 
-pub(crate) fn window_manager_wait_for_native_fullscreen_transition(
-    window_id: WindowId,
-    window_manager: &mut WindowManager,
-) {
+const LONGEST_WAIT_FOR_A_SPACE_TRANSITION_BEFORE_GIVING_UP: Duration = Duration::from_secs(2);
+
+pub(crate) fn window_manager_wait_for_native_fullscreen_transition(window_id: WindowId) {
     if workspace_is_macos_monterey()
         || workspace_is_macos_ventura()
         || workspace_is_macos_sonoma()
         || workspace_is_macos_sequoia()
         || workspace_is_macos_tahoe()
     {
-        while !space_is_user(space_manager_active_space(window_manager)) {
+        let deadline = Instant::now() + LONGEST_WAIT_FOR_A_SPACE_TRANSITION_BEFORE_GIVING_UP;
+        while !space_is_user(space_manager_active_space_of_the_display_holding_window(
+            window_id,
+        )) && Instant::now() < deadline
+        {
             //
             // NOTE(asmvik): Window has exited native-fullscreen mode.
             // We need to spin lock until the display is finished animating
@@ -77,7 +82,10 @@ pub(crate) fn window_manager_toggle_window_native_fullscreen(
     //
 
     window_manager_focus_window_with_raise_resolving_its_application(window_manager, window_id);
-    while space_id as u64 != space_manager_active_space(window_manager).0 {
+    let deadline = Instant::now() + LONGEST_WAIT_FOR_A_SPACE_TRANSITION_BEFORE_GIVING_UP;
+    while space_id as u64 != space_manager_active_space_of_the_display_holding_window(window_id).0
+        && Instant::now() < deadline
+    {
         unsafe { libc::usleep(100000) };
     }
 
@@ -106,7 +114,7 @@ pub(crate) fn window_manager_toggle_window_native_fullscreen(
     // now spin lock until the post-exit space animation has finished.
     //
 
-    window_manager_wait_for_native_fullscreen_transition(window_id, window_manager);
+    window_manager_wait_for_native_fullscreen_transition(window_id);
 }
 
 pub(crate) fn window_manager_toggle_window_zoom_parent(

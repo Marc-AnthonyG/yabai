@@ -287,12 +287,12 @@ pub(crate) fn window_manager_apply_manage_rules_to_window(
                 window_manager,
             ) {
                 if rules[index].effects.manage == RULE_PROP_ON {
-                    if !RuleFlag(rules[index].flags).contains(RuleFlag::ROLE_VALID)
+                    if rules[index].role_regex.is_none()
                         && !string_equals(Some(window_role), Some("AXWindow"))
                     {
                         continue;
                     }
-                    if !RuleFlag(rules[index].flags).contains(RuleFlag::SUBROLE_VALID)
+                    if rules[index].subrole_regex.is_none()
                         && !string_equals(Some(window_subrole), Some("AXStandardWindow"))
                     {
                         continue;
@@ -358,12 +358,12 @@ pub(crate) fn window_manager_apply_rules_to_window(
                     .find(&window_id)
                     .is_some_and(|window| window_check_rule_flag(window, WindowRuleFlag::MANAGED));
                 if !window_is_managed_by_rule {
-                    if !RuleFlag(rules[index].flags).contains(RuleFlag::ROLE_VALID)
+                    if rules[index].role_regex.is_none()
                         && !string_equals(Some(window_role), Some("AXWindow"))
                     {
                         continue;
                     }
-                    if !RuleFlag(rules[index].flags).contains(RuleFlag::SUBROLE_VALID)
+                    if rules[index].subrole_regex.is_none()
                         && !string_equals(Some(window_subrole), Some("AXStandardWindow"))
                     {
                         continue;

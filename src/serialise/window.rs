@@ -15,6 +15,7 @@ use crate::state::process_wide::{
 use crate::support::handles::{NodeId, ROOT_NODE_ID, SpaceId, WindowId};
 use crate::support::json::{json_bool, ts_string_escape};
 use crate::support::layer::{LAYER_ABOVE, LAYER_BELOW, LAYER_NORMAL, LAYER_STR};
+use crate::support::printf_float_format::format_float_with_decimals_as_printf_does;
 use crate::support::response::Response;
 use crate::window::manager::{WindowManager, window_manager_find_managed_window};
 use crate::window::model::{
@@ -226,11 +227,11 @@ pub(crate) fn window_serialize(
         }
 
         response.write(format_args!(
-            "\t\"frame\":{{\n\t\t\"x\":{:.4},\n\t\t\"y\":{:.4},\n\t\t\"w\":{:.4},\n\t\t\"h\":{:.4}\n\t}}",
-            window.frame.origin.x,
-            window.frame.origin.y,
-            window.frame.size.width,
-            window.frame.size.height
+            "\t\"frame\":{{\n\t\t\"x\":{},\n\t\t\"y\":{},\n\t\t\"w\":{},\n\t\t\"h\":{}\n\t}}",
+            format_float_with_decimals_as_printf_does(window.frame.origin.x, 4),
+            format_float_with_decimals_as_printf_does(window.frame.origin.y, 4),
+            format_float_with_decimals_as_printf_does(window.frame.size.width, 4),
+            format_float_with_decimals_as_printf_does(window.frame.size.height, 4)
         ));
         did_output = true;
     }
@@ -332,7 +333,10 @@ pub(crate) fn window_serialize(
         }
 
         let opacity = window_opacity(window.id);
-        response.write(format_args!("\t\"opacity\":{:.4}", opacity as f64));
+        response.write(format_args!(
+            "\t\"opacity\":{}",
+            format_float_with_decimals_as_printf_does(opacity as f64, 4)
+        ));
         did_output = true;
     }
 

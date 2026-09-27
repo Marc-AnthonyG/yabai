@@ -8,6 +8,7 @@ pub struct Table<K, V> {
 
 impl<K: PartialEq, V> Table<K, V> {
     pub fn new(capacity: i32, hash: fn(&K) -> u64) -> Table<K, V> {
+        let capacity = capacity.max(1);
         let mut buckets = Vec::with_capacity(capacity as usize);
         for _ in 0..capacity {
             buckets.push(Vec::new());

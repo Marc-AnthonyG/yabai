@@ -572,7 +572,7 @@ pub(crate) fn event_handler_window_resized(
             window_manager_purify_window(window_manager, window);
         }
     } else if was_fullscreen && !is_fullscreen {
-        window_manager_wait_for_native_fullscreen_transition(window, window_manager);
+        window_manager_wait_for_native_fullscreen_transition(window);
 
         if window_manager_should_manage_window(window, window_manager)
             && window_manager_find_managed_window(window_manager, window).is_none()

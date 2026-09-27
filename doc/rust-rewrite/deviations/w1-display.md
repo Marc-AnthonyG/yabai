@@ -1,0 +1,5 @@
+# Deviations — `w1-display` (W1-display, `src/display.h` + `src/display.c` → `src/display.rs`)
+
+`src/display.c:190`, `src/display.h:43` | `display_space_count` was defined and declared but called from nowhere in `src/` | not translated (`DECISIONS.md` 5, `state-access/display.md` §3); `src/display.rs` declares eight functions, the count `TRANSLATION_PLAN.md` §3.3 sizes the unit at
+
+`src/display.h:7-14` | `DISPLAY_PROPERTY_LIST` was expanded three times by redefining `DISPLAY_PROPERTY_ENTRY` around each `#include`-style use | one `macro_rules! display_property_list` invoked three times, each invocation handing the whole entry list to a callback macro that emits the seven `u64` constants, `DISPLAY_PROPERTY_VAL` or `DISPLAY_PROPERTY_STR`; the per-entry `$entry!(..)` shape sketched in `patterns/idioms-and-conventions.md` §4.1 does not compile, because a macro in array-element position must expand to a single expression and one in item position must be brace-delimited or semicolon-terminated

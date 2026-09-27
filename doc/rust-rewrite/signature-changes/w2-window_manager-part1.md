@@ -1,0 +1,6 @@
+# Signature changes — `w2-window_manager-part1` (part of W2-window_manager)
+
+No frozen signature was changed, and no other module was asked for one. One item was **added** to
+`src/window_manager.rs`, private to the module:
+
+`src/window_manager.c:507`, `:585`, `:652`, `:663` | — | `fn window_animation_in_batch_at_index(animation_context: &Arc<AnimationContext>, index: usize) -> &mut WindowAnimation` | the C hands out interior `&context->animation_list[i]` pointers to the builder threads (`:666`), to the supersede branch (`:652`, `:663`) and to the display-link callback (`:585`), and every one of those sites writes `proxy.id`, `proxy.context`, `proxy.image`, `proxy.frame`, `proxy.level` or `proxy.sub_level`; `GLOSSARY.md` §3.13 (binding over `THREADS.md` §8.1 by `DECISIONS.md` 41) keeps those six `WindowProxy` fields plain rather than interior-mutable, and `AnimationContext::animation_list` lives behind the `Arc` that `window_animations_table` and the display-link refcon share, so the `&mut` the three frozen signatures (`window_manager_build_window_proxy_thread_proc`, `window_manager_create_window_proxy`, `window_manager_destroy_window_proxy`) require can only be reached through `Arc::as_ptr(..).cast_mut()`

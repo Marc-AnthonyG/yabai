@@ -1,0 +1,5 @@
+# Deviations — `w1-repair-src-mission-control-rs` (`src/mission_control.c` → `src/mission_control.rs`, wave 1 repair)
+
+`src/mission_control.c:59` | `mission_control_notification_handler` was a `static` (file-private) `OBSERVER_CALLBACK` | `pub(crate)`, because `DECISIONS.md` 48 makes every phase-2 function `pub(crate)` and phase 3 tightens visibility; this matches `application_notification_handler` (`src/application.rs:74`), the other `OBSERVER_CALLBACK` already on disk
+
+`src/mission_control.c:29-36` | `enum mission_control_mode` had no zero value of its own; `g_mission_control_mode` (`yabai.c:37`) was a zero-initialised global, so `MISSION_CONTROL_MODE_INACTIVE` was its start-up value | `MissionControlMode` derives `Default` with `#[default]` on `Inactive`, because `patterns/state-and-ownership.md` §1.4 step 3 creates `EventLoopOwnedState::default()` and the other zero-initialised field enums on disk (`FfmMode` `src/window_manager.rs:50`, `MouseMode` `src/mouse_handler.rs:37`) derive it the same way

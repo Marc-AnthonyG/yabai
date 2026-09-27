@@ -1,0 +1,13 @@
+# Deviations — `w1-display_manager` (W1-display_manager, `src/display_manager.h` + `src/display_manager.c` → `src/display_manager.rs`)
+
+`src/display_manager.c:80`, `src/display_manager.h:61` | `display_manager_main_display_uuid` was defined and declared but called from nowhere in `src/` | not translated (`DECISIONS.md` 5, `state-access/display.md` §3); `display_manager_main_display_id` is the live one
+
+`src/display_manager.c:355`, `src/display_manager.h:83` | `display_manager_active_display_is_animating` was defined and declared but called from nowhere in `src/` | not translated (`DECISIONS.md` 5, `state-access/display.md` §3); the live twin `display_manager_display_is_animating` (`:373`) carries the C comment at `:370`, and `src/display_manager.rs` declares the 36 functions `TRANSLATION_PLAN.md` §3.3 sizes the unit at
+
+`src/display_manager.c:35` | `display_manager_get_display_for_label` returned a `struct display_label *` into `dm->labels` while also taking `char *label` | the Rust gains an explicit lifetime, `display_manager: &'display_manager mut DisplayManager` and `-> Option<&'display_manager mut DisplayLabel>`; the row in `state-access/display.md` §2 has two input lifetimes and no `self`, so elision has no candidate and the row as written does not compile
+
+`src/display_manager.c:398-403` | `display_manager_active_display_list` returned a `ts_alloc_list` buffer plus an `int *count` out-parameter | returns `Vec<DisplayId>`, the count being the vector's length (`DECISIONS.md` 17, `STATE_ACCESS.md` §3: there is no NULL return, so it is `Vec<DisplayId>` and not `Option<Vec<DisplayId>>`)
+
+`src/display_manager.c:498-505`, `src/yabai.c:29` | `g_display_manager` was a zero-initialised file-scope global, and `display_manager_begin` assigns every field except `dm->labels` | `DisplayManager` derives `Default`, so `labels` starts as an empty `Vec` and `order` / `mode` start at their zero variants `DisplayArrangementOrder::Default` and `ExternalBarMode::Off` (`state-access/display.md` §2 row note); `DisplayArrangementOrder` and `ExternalBarMode` therefore derive `Default` as well as the `Clone, Copy, PartialEq, Eq` a C enum carries for free
+
+`src/display_manager.c:91`, `:107`, `:124`, `:140`, `:199`, `:391`, `:406` | seven functions have no caller outside `display_manager.c` — `:140` and `:406` are `static`, the other five are declared in the header but reached only from within the file — and `state-access/display.md` §2 marks all seven `private` | all 36 functions are `pub(crate)` (`DECISIONS.md` 48, which settles the disagreement with the table's visibility column)

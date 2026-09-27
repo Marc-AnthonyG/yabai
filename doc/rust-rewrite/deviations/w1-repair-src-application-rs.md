@@ -1,0 +1,7 @@
+# Deviations — `w1-repair-src-application-rs` (wave 1 repair, `src/application.rs`)
+
+No deviation remains from this repair.
+
+`src/application.h:57-66` | `static CFStringRef ax_application_notification[]`, seven designated entries over the `kAX*` constants | `static AX_APPLICATION_NOTIFICATION: OnceLock<[CFStringOwned; 7]>`, the spelling `GLOSSARY.md` §9 gives. Rounds 1 and 2 of this repair spelled the element type `SendCFRetained<CFString>` because `crate::ffi` defined no `CFStringOwned` (`DECISIONS.md` 42) and `CFRetained<CFString>` is neither `Send` nor `Sync`. `src/ffi.rs:18` now defines `pub type CFStringOwned = core_foundation::SendCFRetained<core_foundation::CFString>;`, so the glossary spelling resolves to the same type and the entry recorded in `w1-application.md` for this line is superseded — the resolution belongs in `DEVIATIONS.md` as "none" when the two files are merged
+
+`src/application.c:4-5,41` | `#pragma clang diagnostic push` / `ignored "-Wunused-parameter"` / `pop` wrapped `application_notification_handler` so its four ABI-fixed parameters raised no warning | no attribute is written. `rustc` reports twelve `unused_variable` warnings across the file while every body is `todo!()` — the four handler parameters `state-access/window-application-process.md` §3 fixes and the eight `application` / `process` parameters of the other functions. The names are the ones `GLOSSARY.md` and that signature table spell, so none is underscore-prefixed and no `#[allow]` is added; the warnings go away when W2-application writes the bodies

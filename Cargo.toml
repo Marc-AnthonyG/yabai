@@ -1,0 +1,135 @@
+[package]
+name         = "yabai"
+version      = "7.1.25"
+edition      = "2024"
+rust-version = "1.85"
+publish      = false
+autoexamples = false
+autobenches  = false
+build        = "build.rs"
+
+[[bin]]
+name = "yabai"
+path = "src/main.rs"
+
+[dependencies]
+objc2 = { version = "0.6.4", default-features = false, features = [
+    "std",
+    "exception",
+] }
+
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "NSArray",
+    "NSBundle",
+    "NSDictionary",
+    "NSDistributedNotificationCenter",
+    "NSEnumerator",
+    "NSGeometry",
+    "NSKeyValueCoding",
+    "NSKeyValueObserving",
+    "NSNotification",
+    "NSObjCRuntime",
+    "NSObject",
+    "NSPathUtilities",
+    "NSProcessInfo",
+    "NSString",
+    "NSUserNotification",
+    "NSValue",
+    "objc2-core-foundation",
+] }
+
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "NSApplication",
+    "NSGraphics",
+    "NSImage",
+    "NSResponder",
+    "NSRunningApplication",
+    "NSScreen",
+    "NSWorkspace",
+    "libc",
+    "objc2-core-foundation",
+    "objc2-core-graphics",
+] }
+
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "CFArray",
+    "CFCGTypes",
+    "CFData",
+    "CFDate",
+    "CFDictionary",
+    "CFMachPort",
+    "CFNumber",
+    "CFRunLoop",
+    "CFString",
+    "CFUUID",
+    "objc2",
+] }
+
+objc2-core-graphics = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "CGAffineTransform",
+    "CGBase",
+    "CGBitmapContext",
+    "CGColorSpace",
+    "CGContext",
+    "CGDirectDisplay",
+    "CGDisplayConfiguration",
+    "CGError",
+    "CGEvent",
+    "CGEventSource",
+    "CGEventTypes",
+    "CGGeometry",
+    "CGImage",
+    "CGPath",
+    "CGRemoteOperation",
+    "CGWindow",
+    "CGWindowLevel",
+    "libc",
+    "objc2",
+] }
+
+objc2-application-services = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "AXError",
+    "AXUIElement",
+    "AXValue",
+    "HIServices",
+    "libc",
+    "objc2",
+] }
+
+objc2-core-video = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "CVBase",
+    "CVDisplayLink",
+    "CVHostTime",
+    "CVReturn",
+    "objc2-core-graphics",
+] }
+
+block2 = { version = "0.6.2", default-features = false, features = ["std"] }
+
+dispatch2 = { version = "0.3.1", default-features = false, features = [
+    "std",
+    "block2",
+] }
+
+libc = { version = "0.2.189", default-features = false, features = ["std"] }
+
+[profile.dev]
+opt-level       = 0
+debug           = true
+overflow-checks = false
+panic           = "unwind"
+
+[profile.release]
+opt-level        = 3
+debug            = false
+debug-assertions = false
+overflow-checks  = false
+lto              = "fat"
+codegen-units    = 1
+panic            = "unwind"

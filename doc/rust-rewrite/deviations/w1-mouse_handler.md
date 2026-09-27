@@ -1,0 +1,17 @@
+# Deviations — `w1-mouse_handler` (W1-mouse_handler, `src/mouse_handler.h` + `src/mouse_handler.c` → `src/mouse_handler.rs`)
+
+`src/mouse_handler.h:4-19` | `MOUSE_EVENT_MASK_FFM` and `MOUSE_EVENT_MASK` shift by `kCGEventMouseMoved`, `kCGEventLeftMouseDown`, `kCGEventLeftMouseUp`, `kCGEventLeftMouseDragged`, `kCGEventRightMouseDown`, `kCGEventRightMouseUp` and `kCGEventRightMouseDragged` | `src/ffi/core_graphics.rs` re-exports the `objc2` newtype `CGEventType` and defines no `kCGEvent*` alias, so each term is `(1 << CGEventType::MouseMoved.0)` and so on (`DECISIONS.md` 42); the bare `30` and its `/* kCGSEventDockControl */` comment are kept verbatim as `GLOSSARY.md` §7.2 directs, even though `src/ffi/core_graphics.rs` also defines `kCGSEventDockControl`
+
+`src/mouse_handler.h:62-81` | the unit assignment named `src/mouse_handler.rs` as the file that declares `MouseDragState`, the event-loop half of the `struct mouse_state` split of `DECISIONS.md` 23 | not declared here: `src/state.rs` already declares `MouseDragState`, which `DECISIONS.md` 42 makes ground truth, `GLOSSARY.md` §2.5 gives its module as `crate::state`, `TRANSLATION_PLAN.md` §3.3 says only that the drag half is a field of `EventLoopOwnedState`, and `src/event_loop.rs`, `src/view.rs`, `src/rule.rs` and `src/window_manager.rs` already `use crate::state::MouseDragState`; a second declaration would be a distinct type and every cross-module signature would stop matching. `src/mouse_handler.rs` imports it and declares only `MouseWindowInfo`, `MouseDropAction`, `MouseMod` and `MouseMode`
+
+`src/mouse_handler.h:62-81` | `MouseTapState` and `MOUSE_TAP_STATE`, which `GLOSSARY.md` §2.5 places in `crate::mouse_handler` | not declared here either: `src/globals.rs` already declares both (`DECISIONS.md` 42), so `crate::globals::MOUSE_TAP_STATE` is what the four `MOUSE_TAP_STATE`-only functions read in wave 2
+
+`src/mouse_handler.h:21` | `MOUSE_HANDLER(name)` was a macro expanding the four-parameter event-tap callback signature, expanded once | not translated as a macro: its one expansion, `mouse_handler`, is written out, with `event_type` for the C `type` (`GLOSSARY.md` §11) and with the `objc2` callback spelling `NonNull<CGEvent>` / `-> *mut CGEvent` that `CGEventTapCallBack` fixes
+
+`src/mouse_handler.c:18-20`, `:88` | the two `#pragma clang diagnostic` blocks around `mouse_handler` suppress `-Wswitch` and `-Wdeprecated-declarations` | no Rust analogue, nothing suppressed (`state-access/signal-rule-mouse.md` §6)
+
+`src/event_loop.c:1175`, `:1281` | `struct mouse_window_info info;` was left uninitialised and then fully written by `mouse_window_info_populate` | `MouseWindowInfo` derives `Default` so the two callers can name a value (`DECISIONS.md` 4); the out-parameter itself is kept, per `state-access/signal-rule-mouse.md` judgement call 5
+
+`src/mouse_handler.h:83-91` | `mouse_mod_str` was a `char *[]` with designated initialisers at the six bit values, leaving indices 0, 3, 5-7, 9-15 and 17-31 NULL, so any other flag combination read a NULL `char *` | `MOUSE_MOD_STR: [Option<&str>; 33]`, the sparse shape `GLOSSARY.md` §9 fixes, `None` at every index the C leaves NULL
+
+`src/mouse_handler.c:293-303` | `mouse_handler_end` releases the `CFMachPort` at `:301` before storing NULL into `handle` at `:302`, so the relaxed load on the main thread at `:28` can observe a released port | the sequence and both orderings are kept exactly, because reordering them changes when the tap stops firing; the hazard is recorded rather than silently fixed (`THREADS.md` §7.2)

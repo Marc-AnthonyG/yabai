@@ -1,0 +1,15 @@
+# Deviations — `w1-application` (W1-application, `src/application.h` + `src/application.c` → `src/application.rs`)
+
+`src/application.c:79`, `src/application.h:84` | `application_main_window` was defined and declared but called from nowhere in `src/` | not translated (`DECISIONS.md` 5, `state-access/window-application-process.md` §5); `src/application.rs` declares the nine functions `TRANSLATION_PLAN.md` §3.3 sizes the unit at
+
+`src/application.h:5` | `OBSERVER_CALLBACK(name)` and the `observer_callback` typedef it defines | not redeclared; `crate::ffi::accessibility::ObserverCallback`, the alias over `objc2_application_services::AXObserverCallback`, is the one spelling (`DECISIONS.md` 42, `TRANSLATION_PLAN.md` §3.3 `W1-application`)
+
+`src/application.h:26-44` | `static const char *ax_error_str[]`, indexed `-result` | not redeclared; `crate::ffi::accessibility::ax_error_str(AXError) -> &'static str` is the one spelling (`DECISIONS.md` 42, `TRANSLATION_PLAN.md` §3.3 `W1-application`); the out-of-range read it replaces is already recorded by `w0-ffi-apple-frameworks`
+
+`src/application.h:57-66` | `static CFStringRef ax_application_notification[]`, seven designated entries over the `kAX*` constants | `static AX_APPLICATION_NOTIFICATION: OnceLock<[SendCFRetained<CFString>; 7]>`. `GLOSSARY.md` §9 writes the element type `CFStringOwned`, which `STATE_ACCESS.md` defines as `CFRetained<CFString>`; that type is neither `Send` nor `Sync`, so a `static OnceLock` of it does not compile. `SendCFRetained<CFString>` is the owned-`CFString` wrapper `src/ffi/core_foundation.rs` already defines and the one every `OnceLock<CFString…>` on disk uses (`DECISIONS.md` 42)
+
+`src/application.c:142-143` | `application_destroy` ran `CFRelease(application->ref)` and then `free(application)` | `impl Drop for Application`, per the `application_destroy` row of `state-access/window-application-process.md` §3; `application_destroy` takes the `Application` by value and the release is its drop
+
+`STATE_ACCESS.md` visibility column | `application_notification_handler` and `application_is_hidden` are listed `private` | both are `pub(crate)`, as are the other seven, because `DECISIONS.md` 48 makes every phase-2 function `pub(crate)` and it postdates the state-access tables
+
+`THREADS.md:§5.4` | the main-queue trampoline of `application_unobserve` is sketched as a `struct ApplicationUnobserveRequest` plus an `application_unobserve_on_main_queue` callback, over `Application::observer_ref: Option<SendCFRetained<AXObserver>>` and `Application::reference` | neither type nor function is declared. `GLOSSARY.md` §3.3 types the two fields `AXUIElementRef` and `AXObserverRef`, §2.5 does not list `ApplicationUnobserveRequest`, and `TRANSLATION_PLAN.md` §3.3 sizes the unit at nine functions; the glossary outranks `THREADS.md` (`DECISIONS.md` 41). The split of `DECISIONS.md` 20 is W2-application's to introduce, with the request type and the `dispatch_async_f` binding `src/ffi/dispatch.rs` does not yet hold

@@ -1,0 +1,21 @@
+# Deviations — `w1-event_signal` (W1-event_signal, `src/event_signal.h` + `src/event_signal.c` → `src/event_signal.rs`)
+
+`src/event_signal.c:402`, `:433` | `event_signal_serialize` and `event_signal_list` opened with `TIME_FUNCTION`, the `PROFILE` anchor of `src/misc/timer.h` | not translated (`DECISIONS.md` 5, 51); `src/misc/timer.rs` does not exist and neither function has a profiling prologue
+
+`src/event_signal.h:4-45` | `SIGNAL_TYPE_COUNT` was the terminating enumerator of `enum signal_type`, so it was a value of the type and it sized `g_signal_event[SIGNAL_TYPE_COUNT]` (`src/yabai.c:27`) | `pub(crate) const SIGNAL_TYPE_COUNT: usize = 30;` declared in `src/event_signal.rs`, not a variant of `SignalType` (ruling 50, `GLOSSARY.md` §4.1); `src/state.rs:1` still holds the wave-0 copy of the constant and the placeholder `Signal` / `PendingSignal` structs, which `W1-main` removes in favour of these
+
+`src/event_signal.h:104-117` | `struct signal` carried `app_regex_valid` / `title_regex_valid` beside `regex_t app_regex` / `title_regex`, so an uncompiled `regex_t` was readable whenever the flag was consulted wrongly | one `Option<PosixRegex>` per pair and the two `bool`s gone (ruling 44, `GLOSSARY.md` §3.21); `app_regex_exclude` and `title_regex_exclude` stay
+
+`src/event_signal.c:358-366` | `event_signal_destroy` was a declared, publicly called function that freed the two regexes and the four strings without clearing the flags or NULLing the pointers, so a second call is a double free | `impl Drop for Signal` (`state-access/signal-rule-mouse.md` §2); it is not a callable function in Rust and the double free is unrepresentable
+
+`src/event_signal.h:94-102` | `struct event_signal` stored borrowed `char *` for `arg_name[4]`, `arg_value[4]`, `app` and `title` — eight `ts_alloc_unaligned(128)` allocations plus `application->name` / `window->application->name` — all dangling after the next `ts_reset` | `PendingSignal` owns `arguments: [Option<(String, String)>; 4]`, `app: Option<String>` and `title: Option<String>` (`DECISIONS.md` 17, "queued signals own their strings"; `GLOSSARY.md` §3.22)
+
+`src/event_signal.c:107-108` | `g_signal_storage.used` was bumped with a bare `__sync_fetch_and_add` and the record written at `memory + used`, which runs off the end of the 256 KiB pool into the guard page once enough signals queue between two flushes | `signal_storage: Vec<PendingSignal>` pushed and cleared (`DECISIONS.md` 4, 17); no ceiling and no guard-page fault
+
+`src/event_signal.h:119` | `event_signal_push` took `void *context`, a pointer reinterpreted by the `type` argument as `struct application *`, `struct window *`, a `uint64_t` space id, a `uint32_t` display id or an `enum mission_control_mode` | `context: SignalContext`, a tagged enum over `ProcessId`, `WindowId`, `SpaceId`, `DisplayId` and `MissionControlMode` (`DECISIONS.md` 14, 39; `state-access/signal-rule-mouse.md` §7)
+
+`src/event_signal.c:64-96` | the intermediate forked child ran `buf_len`, `debug`, `event_signal_filter` and four `setenv` calls before `execvp`, none of which is async-signal-safe after a `fork` from a multi-threaded process | `event_signal_prepare_commands` and `PreparedSignalCommand` are declared beside `event_signal_flush`, so the subscriber count, the `debug!` line, the regex verdict, `argv` and `envp` are computed in the parent (`DECISIONS.md` 25, `THREADS.md` §9.1)
+
+`src/event_signal.h:47-88` | `signal_type_str[]` was a `const char *[]` designated by `enum signal_type` with a 31st entry at `[SIGNAL_TYPE_COUNT]` | `SIGNAL_TYPE_STR: [&str; 31]`, dense, the 31st entry `"signal_type_count"` kept (`GLOSSARY.md` §9, `patterns/idioms-and-conventions.md` §5.3); `enum signal_type` is not one of the six X-macro lists, so it stays a plain enum with explicit discriminants and a separate table rather than a `macro_rules!` (`DECISIONS.md` 31, `patterns/idioms-and-conventions.md` §4)
+
+`src/event_signal.h:90-92` | `SIGNAL_PROP_UD`, `SIGNAL_PROP_YES` and `SIGNAL_PROP_NO` were three `#define`s compared against an `int` field | `SignalProp::Undefined` / `Yes` / `No`, a `#[repr(i32)]` enum (`GLOSSARY.md` §4.12, `patterns/message-and-serialisation.md` §10.4); `PendingSignal::active` stays `i32` because it holds 0 or 1 from a comparison, not a `SignalProp`

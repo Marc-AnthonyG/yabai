@@ -1,0 +1,19 @@
+# Deviations — `w2-event_signal-part1` (W2-event_signal, bodies of `src/event_signal.c:1-454` + `src/event_signal.h` → `src/event_signal.rs`)
+
+`src/event_signal.c:77` | the `debug` line was printed by the intermediate forked child, from its copy-on-write snapshot of `g_signal_event` | printed by the parent inside `event_signal_prepare_commands`, so under `-V` it interleaves with the event loop's own output instead of the child's (`DECISIONS.md` 25, `THREADS.md` §9.1 deviation 4); the text, the `__FUNCTION__` literal `event_signal_flush` and the subscriber count are unchanged
+
+`src/event_signal.c:86-89` | the grandchild called `setenv(name, value, 1)` up to four times between `fork` and `execvp` | the parent builds the whole `envp` — the daemon's current `environ` with each `YABAI_*` entry replacing the first entry of the same name, appended when absent — and the grandchild only stores that array into `*_NSGetEnviron()` (`DECISIONS.md` 25, `THREADS.md` §9.1, §9.2 deviation 2)
+
+`src/event_signal.c:92`, `:96` | `exit(execvp(exec[0], exec))` and `exit(EXIT_SUCCESS)` ran `atexit` handlers and flushed the stdio buffers inherited from the parent a second time | `libc::_exit` with the same status in both places — `execvp`'s return value is passed through, so a failed exec is still wait status 255 (`DECISIONS.md` 25, `THREADS.md` §9.2 deviation 3)
+
+`src/event_signal.c:104`, `:129-130` | every environment name and value was `snprintf`ed into a 128-byte `ts_alloc_unaligned` block and silently truncated at that cap | owned `String`s formatted with no cap (`patterns/message-and-serialisation.md` §11.3); no value in the twelve-variable table can reach 128 bytes, so no emitted text changes
+
+`src/event_signal.c:110-118` | `event_signal_push` zeroed only `type` and the eight `arg_*` slots, leaving `app`, `title` and `active` uninitialised for the fourteen signal types that `event_signal_filter`'s `default:` arm never reads | `PendingSignal` is built with `app: None`, `title: None`, `active: 0` (`DECISIONS.md` 4; `files/signals-and-rules.md` §1.2)
+
+`src/event_signal.c:18`, `:24`, `:35`, `:38`, `:47`, `:50` | `regex_match` handed `es->app` / `es->title` straight to `regexec`, which dereferences NULL when `window_title_ts` returned NULL, and stopped at the first NUL of a `char *` otherwise | the subject is a `CString` built from the stored text truncated at its first NUL, and a missing subject is matched as the empty string (`DECISIONS.md` 4, `patterns/message-and-serialisation.md` §10.2)
+
+`src/event_signal.c:127`, `:138`, `:175`, `:189`, `:201`, `:216` | `context` was cast to `struct application *` or `struct window *` and dereferenced on the caller's promise that the pointer is live | the handle carried by `SignalContext` is resolved in `WindowManager::application` / `WindowManager::window`, and a lookup miss — or a `SignalContext` variant that does not match the signal type — returns without queuing the record instead of dereferencing (`DECISIONS.md` 4, 14)
+
+`src/event_signal.c:197`, `:224` | `es->app = window->application->name` dereferenced `window->application` unconditionally, although `src/event_loop.c:279` can have NULLed it | the `window_created` / `window_focused` / `window_deminimized` and `window_moved` / `window_resized` / `window_minimized` / `window_title_changed` arms return without queuing the record when the window has no application; `src/event_signal.c:209` keeps its own `"<unknown>"` fallback (`DECISIONS.md` 4)
+
+`src/event_signal.c:346`, `:446` | the loop counter was an `int` converted implicitly to `enum signal_type` on `return i` and on the `event_signal_serialize` argument | a private `SIGNAL_TYPE_BY_DISCRIMINANT: [SignalType; SIGNAL_TYPE_COUNT]` table maps the index back to the variant, because Rust has no implicit integer-to-enum conversion and `DECISIONS.md` 39 does not allow a transmute here

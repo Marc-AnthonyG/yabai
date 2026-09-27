@@ -1,7 +1,4 @@
 FRAMEWORK_PATH = -F/System/Library/PrivateFrameworks
-FRAMEWORK      = -framework Carbon -framework Cocoa -framework CoreServices -framework CoreVideo -framework SkyLight
-CLI_FLAGS      =
-BUILD_FLAGS    = -std=c11 -Wall -Wextra -g -O0 -fvisibility=hidden -mmacosx-version-min=11.0 -fno-objc-arc -arch x86_64 -arch arm64 -sectcreate __TEXT __info_plist $(INFO_PLIST)
 BUILD_PATH     = ./bin
 DOC_PATH       = ./doc
 SCRIPT_PATH    = ./scripts
@@ -9,23 +6,30 @@ ASSET_PATH     = ./assets
 SMP_PATH       = ./examples
 ARCH_PATH      = ./archive
 OSAX_SRC       = ./src/osax/payload_bin.c ./src/osax/loader_bin.c
-YABAI_SRC      = ./src/manifest.m $(OSAX_SRC)
 OSAX_PATH      = ./src/osax
-INFO_PLIST     = $(ASSET_PATH)/Info.plist
-BINS           = $(BUILD_PATH)/yabai
+HOST_TARGET    = $(shell rustc -vV | sed -n 's/^host: //p')
+ARM_TARGET     = aarch64-apple-darwin
+X64_TARGET     = x86_64-apple-darwin
+
+CARGO          = cargo
+CARGO_FLAGS    =
+PROFILE_DIR    = debug
 
 .PHONY: all asan tsan install man icon archive publish sign clean-build clean
 
-all: clean-build $(BINS)
+all: clean-build $(BUILD_PATH)/yabai
 
-asan: BUILD_FLAGS=-std=c11 -Wall -Wextra -g -O0 -fvisibility=hidden -fsanitize=address,undefined -mmacosx-version-min=11.0 -fno-objc-arc -arch x86_64 -arch arm64 -sectcreate __TEXT __info_plist $(INFO_PLIST)
-asan: clean-build $(BINS)
+install: CARGO_FLAGS = --release
+install: PROFILE_DIR = release
+install: clean-build $(BUILD_PATH)/yabai
 
-tsan: BUILD_FLAGS=-std=c11 -Wall -Wextra -g -O0 -fvisibility=hidden -fsanitize=thread,undefined -mmacosx-version-min=11.0 -fno-objc-arc -arch x86_64 -arch arm64 -sectcreate __TEXT __info_plist $(INFO_PLIST)
-tsan: clean-build $(BINS)
+asan: CARGO       = RUSTFLAGS="-Zsanitizer=address" cargo +nightly
+asan: CARGO_FLAGS = -Zbuild-std --target $(HOST_TARGET)
+asan: clean-build $(BUILD_PATH)/yabai-host
 
-install: BUILD_FLAGS=-std=c11 -Wall -Wextra -DNDEBUG -O3 -fvisibility=hidden -mmacosx-version-min=11.0 -fno-objc-arc -arch x86_64 -arch arm64 -sectcreate __TEXT __info_plist $(INFO_PLIST)
-install: clean-build $(BINS)
+tsan: CARGO       = RUSTFLAGS="-Zsanitizer=thread" cargo +nightly
+tsan: CARGO_FLAGS = -Zbuild-std --target $(HOST_TARGET)
+tsan: clean-build $(BUILD_PATH)/yabai-host
 
 $(OSAX_SRC): $(OSAX_PATH)/loader.m $(OSAX_PATH)/payload.m
 	xcrun clang $(OSAX_PATH)/payload.m -shared -fPIC -O3 -mmacosx-version-min=11.0 -arch x86_64 -arch arm64e -o $(OSAX_PATH)/payload $(FRAMEWORK_PATH) -framework SkyLight -framework Foundation -framework Carbon
@@ -57,12 +61,21 @@ archive: man install sign icon
 sign:
 	codesign -fs "yabai-cert" $(BUILD_PATH)/yabai
 
+$(BUILD_PATH)/yabai:
+	mkdir -p $(BUILD_PATH)
+	$(CARGO) build $(CARGO_FLAGS) --target $(ARM_TARGET)
+	$(CARGO) build $(CARGO_FLAGS) --target $(X64_TARGET)
+	lipo -create -output $@ \
+	    ./target/$(ARM_TARGET)/$(PROFILE_DIR)/yabai \
+	    ./target/$(X64_TARGET)/$(PROFILE_DIR)/yabai
+
+$(BUILD_PATH)/yabai-host:
+	mkdir -p $(BUILD_PATH)
+	$(CARGO) build $(CARGO_FLAGS)
+	cp ./target/$(HOST_TARGET)/$(PROFILE_DIR)/yabai $(BUILD_PATH)/yabai
+
 clean-build:
 	rm -rf $(BUILD_PATH)
 
 clean: clean-build
-	rm -f $(OSAX_SRC)
-
-$(BUILD_PATH)/yabai: $(YABAI_SRC)
-	mkdir -p $(BUILD_PATH)
-	xcrun clang $^ $(BUILD_FLAGS) $(CLI_FLAGS) $(FRAMEWORK_PATH) $(FRAMEWORK) -o $@
+	cargo clean

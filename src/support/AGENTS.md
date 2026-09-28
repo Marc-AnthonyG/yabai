@@ -1,19 +1,19 @@
 # support
 
 The bottom layer of the daemon: small building blocks that know nothing of windows, spaces or
-displays as state. Text, JSON, geometry and arithmetic helpers, sockets and files, the pattern
-filter rules and signals share, the client response, logging and user notifications, which macOS
-version the daemon runs on, the handles that name windows, processes, spaces, displays and tree
-nodes, and the small value vocabularies (window layers, directions, resize handles, easing curves,
+displays as state. Text, JSON, geometry and arithmetic helpers, files, the pattern filter rules
+and signals share, the response the untyped command handlers write, logging and user
+notifications, which macOS version the daemon runs on, the handles that name windows, processes,
+spaces, displays and tree nodes, and the small value vocabularies (window layers, directions, resize handles, easing curves,
 colours) that several modules share.
 
 ## Notes
 
 - Nothing here depends on a manager or on `EventLoopOwnedState`; the only crate modules it
   reaches are `ffi` and the process-wide statics. Any thread may call into it.
-- The client tells a failure from a reply by the failure prefix byte. Layer and easing values
-  index their name tables.
-- The response owns the failure prefix and the "no response wanted" case.
+- Layer and easing values index their name tables.
+- The response collects standard output until the first failure is written, then everything as
+  failure text split into one failure per line; a silent response keeps no failure.
 - `error!` exits with a failure status and `require!` with success, so launchd does not restart the
   daemon after a `require!`; which one a call site uses is deliberate.
 - Handles are plain ids looked up at each use, never pointers. The tree root handle

@@ -2,6 +2,7 @@ use std::os::unix::net::UnixStream;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, OnceLock};
 
+use crate::command::DaemonCommand;
 use crate::ffi::accessibility::AXUIElement;
 use crate::ffi::core_foundation::CFRetainedAssumedSendAndSync;
 use crate::ffi::core_graphics::CGEvent;
@@ -65,7 +66,10 @@ pub(crate) enum Event {
     FocusFollowsMouseUnderTheStillCursor {
         new_window_that_keeps_its_focus: Option<WindowId>,
     },
-    DaemonMessage(UnixStream),
+    DaemonCommand {
+        command: DaemonCommand,
+        reply_to: UnixStream,
+    },
 }
 
 pub(crate) static EVENT_SENDER: OnceLock<Sender<Event>> = OnceLock::new();

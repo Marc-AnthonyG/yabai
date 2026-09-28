@@ -1,46 +1,33 @@
-pub(crate) const FAILURE_RESPONSE_MARKER: &[u8] = b"\x07";
-
-enum ResponseSink {
-    Client(std::io::BufWriter<std::os::unix::net::UnixStream>),
-    StandardOutput(std::io::Stdout),
-    Silent,
-}
-
 pub struct Response {
-    sink: ResponseSink,
+    standard_output: Vec<u8>,
+    failure_text: Vec<u8>,
+    has_begun_writing_failures: bool,
+    is_silent: bool,
 }
 
 impl Response {
-    pub fn to_client(stream: std::os::unix::net::UnixStream) -> Response {
+    pub fn collecting() -> Response {
         Response {
-            sink: ResponseSink::Client(std::io::BufWriter::new(stream)),
-        }
-    }
-
-    pub fn to_standard_output() -> Response {
-        Response {
-            sink: ResponseSink::StandardOutput(std::io::stdout()),
+            standard_output: Vec::new(),
+            failure_text: Vec::new(),
+            has_begun_writing_failures: false,
+            is_silent: false,
         }
     }
 
     pub fn silent() -> Response {
         Response {
-            sink: ResponseSink::Silent,
+            is_silent: true,
+            ..Response::collecting()
         }
     }
 
-    fn is_silent(&self) -> bool {
-        matches!(self.sink, ResponseSink::Silent)
-    }
-
     pub fn write_bytes(&mut self, bytes: &[u8]) {
-        let _ = match &mut self.sink {
-            ResponseSink::Client(stream) => std::io::Write::write_all(stream, bytes),
-            ResponseSink::StandardOutput(standard_output) => {
-                std::io::Write::write_all(standard_output, bytes)
-            }
-            ResponseSink::Silent => Ok(()),
-        };
+        if self.has_begun_writing_failures {
+            self.failure_text.extend_from_slice(bytes);
+        } else {
+            self.standard_output.extend_from_slice(bytes);
+        }
     }
 
     pub fn write_bytes_stopping_at_first_null(&mut self, bytes: &[u8]) {
@@ -52,21 +39,15 @@ impl Response {
     }
 
     pub fn write(&mut self, arguments: std::fmt::Arguments) {
-        let _ = match &mut self.sink {
-            ResponseSink::Client(stream) => std::io::Write::write_fmt(stream, arguments),
-            ResponseSink::StandardOutput(standard_output) => {
-                std::io::Write::write_fmt(standard_output, arguments)
-            }
-            ResponseSink::Silent => Ok(()),
-        };
+        self.write_bytes(std::fmt::format(arguments).as_bytes());
     }
 
     pub fn write_failure_marker(&mut self) {
-        self.write_bytes(FAILURE_RESPONSE_MARKER);
+        self.has_begun_writing_failures = true;
     }
 
     pub fn write_failure_unless_silent(&mut self, arguments: std::fmt::Arguments) {
-        if self.is_silent() {
+        if self.is_silent {
             return;
         }
         self.write_failure_marker();
@@ -74,7 +55,7 @@ impl Response {
     }
 
     pub fn write_failure_pieces_unless_silent(&mut self, pieces: &[FailurePiece]) {
-        if self.is_silent() {
+        if self.is_silent {
             return;
         }
         self.write_failure_marker();
@@ -88,6 +69,15 @@ impl Response {
             }
         }
     }
+
+    pub fn into_standard_output_and_one_failure_per_line(self) -> (String, Vec<String>) {
+        let standard_output = String::from_utf8_lossy(&self.standard_output).into_owned();
+        let failures = String::from_utf8_lossy(&self.failure_text)
+            .lines()
+            .map(String::from)
+            .collect();
+        (standard_output, failures)
+    }
 }
 
 pub enum FailurePiece<'message> {
@@ -96,19 +86,46 @@ pub enum FailurePiece<'message> {
     BytesStoppingAtFirstNull(&'message [u8]),
 }
 
-impl Drop for Response {
-    fn drop(&mut self) {
-        let _ = match &mut self.sink {
-            ResponseSink::Client(stream) => std::io::Write::flush(stream),
-            ResponseSink::StandardOutput(standard_output) => std::io::Write::flush(standard_output),
-            ResponseSink::Silent => Ok(()),
-        };
-    }
-}
-
 #[macro_export]
 macro_rules! daemon_fail {
     ($response:expr, $($argument:tt)*) => {
         $response.write_failure_unless_silent(format_args!($($argument)*))
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FailurePiece, Response};
+
+    #[test]
+    fn output_before_a_failure_is_standard_output_and_each_failure_line_is_one_failure() {
+        let mut response = Response::collecting();
+        response.write(format_args!("[]\n"));
+        crate::daemon_fail!(response, "could not locate the selected window.\n");
+        response.write_failure_pieces_unless_silent(&[
+            FailurePiece::Text("value '"),
+            FailurePiece::Bytes(b"west"),
+            FailurePiece::Text("' is not a valid option for WINDOW_SEL\n"),
+        ]);
+
+        let (standard_output, failures) = response.into_standard_output_and_one_failure_per_line();
+
+        assert_eq!(standard_output, "[]\n");
+        assert_eq!(
+            failures,
+            [
+                "could not locate the selected window.",
+                "value 'west' is not a valid option for WINDOW_SEL"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_silent_response_keeps_no_failure() {
+        let mut response = Response::silent();
+        crate::daemon_fail!(response, "could not locate the selected window.\n");
+
+        let (_, failures) = response.into_standard_output_and_one_failure_per_line();
+        assert!(failures.is_empty());
+    }
 }

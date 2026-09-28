@@ -1,5 +1,3 @@
-use std::io::Write;
-
 #[macro_export]
 macro_rules! debug {
     ($($argument:tt)*) => {{
@@ -59,21 +57,4 @@ pub fn text_or_printf_null_placeholder(value: Option<&str>) -> &str {
         Some(text) => text,
         None => "(null)",
     }
-}
-
-pub fn print_message_arguments_when_verbose(prefix: &str, message: &str) {
-    if !is_verbose_debug_output_enabled() {
-        return;
-    }
-
-    let mut standard_output = std::io::stdout().lock();
-    let _ = write!(standard_output, "{}:", prefix);
-    for token in message.split('\0') {
-        if token.is_empty() {
-            break;
-        }
-        let _ = write!(standard_output, " {}", token);
-    }
-    let _ = standard_output.write_all(b"\n");
-    let _ = standard_output.flush();
 }

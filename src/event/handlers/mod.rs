@@ -1,5 +1,5 @@
 pub mod application;
-pub mod daemon_message;
+pub mod daemon_command;
 pub mod display;
 pub mod insert_feedback;
 pub mod menu;

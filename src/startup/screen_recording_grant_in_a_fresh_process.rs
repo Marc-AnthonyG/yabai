@@ -1,4 +1,4 @@
-use crate::cli::arguments::REPORT_SCREEN_RECORDING_PERMISSION_THROUGH_THE_EXIT_STATUS_OPTION;
+use crate::cli::screen_recording_permission_report::REPORT_SCREEN_RECORDING_PERMISSION_THROUGH_THE_EXIT_STATUS_OPTION;
 use crate::support::spawned_program_exit_status::{
     SpawnedProgramOutput, run_program_and_read_its_exit_status_even_while_child_exits_are_ignored,
 };

@@ -1,20 +1,19 @@
 # message
 
-The daemon side of `yabai -m`: the socket that accepts client connections, the cursor that walks a
-message's arguments, the selectors, labels, property lists and argument words the domains share,
-the failure texts they share, and the switch that hands a message to its domain.
+The daemon side of client commands: the socket that accepts clients and decodes their requests,
+the dispatch of a typed command to its domain and, until every domain is typed, the bridge that
+runs an old argument vector through the tokenizer, selectors, labels, argument words and failure
+texts the untyped domains share.
 
 ## Notes
 
-- The accept thread only posts each connection to the event loop as an event.
-  Reading, parsing and answering a message happen on the event-loop thread, which passes the
-  managers explicitly.
-- A message is the client's argument vector with every argument null-terminated. Tokens are
-  ranges over that buffer and the cursor's `take_next_token` reproduces the C `get_token` exactly,
-  including never stepping past the final terminator. Some parsers write nulls into
-  the buffer to split a token in place. Number parsing and the `sscanf` formats call libc rather
-  than reimplementing it.
-- Selector, label and argument spellings are the CLI. A reserved selector word can
-  never become a label.
-- A selector that parses but cannot be resolved has already written its failure; the caller acts
-  only on a resolved value. Failure texts and the failure prefix byte are part of the wire format.
+- The accept thread reads a request under a one-second timeout, decodes it and checks its
+  version, answering a failure itself. It posts a decoded command to the event loop together with
+  the stream to reply on; executing and replying happen on the event-loop thread, which passes
+  the managers explicitly.
+- The bridge rebuilds the old message: every argument null-terminated, then padding nulls. Tokens
+  are ranges over that buffer and `take_next_token` never steps past the final terminator. Some
+  parsers write nulls into the buffer to split a token in place, and some call libc's `sscanf`.
+- An untyped handler writes through `support::response::Response`; a selector that parses but
+  cannot be resolved has already written its failure, and the caller acts only on a resolved
+  value.

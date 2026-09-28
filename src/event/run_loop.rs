@@ -7,7 +7,7 @@ use crate::event::handlers::application::{
     handle_application_launched_event, handle_application_terminated_event,
     handle_application_visible_event,
 };
-use crate::event::handlers::daemon_message::handle_daemon_message_event;
+use crate::event::handlers::daemon_command::handle_daemon_command_event;
 use crate::event::handlers::display::{
     handle_display_added_event, handle_display_changed_event, handle_display_moved_event,
     handle_display_removed_event, handle_display_resized_event,
@@ -446,8 +446,9 @@ pub(crate) fn run_event_loop_flushing_signals_after_each_event(
                         mouse_drag_state,
                         mission_control_mode,
                     ),
-                    Event::DaemonMessage(stream) => handle_daemon_message_event(
-                        stream,
+                    Event::DaemonCommand { command, reply_to } => handle_daemon_command_event(
+                        command,
+                        reply_to,
                         signal_event,
                         process_manager,
                         display_manager,

@@ -21,6 +21,6 @@ it and how it is installed, loaded and validated, and the socket protocol yabai 
   executables with pointer-authentication ABI version 1, while Dock on macOS 15 runs version 0 and
   refuses a thread created from a version 1 loader ("could not spawn remote thread: (os/kern)
   protection failure"). build.rs fails the build if either binary's arm64e slice is stamped
-  anything but version 0. `--load-sa` only replaces an installed scripting addition whose version
-  string differs, so after a change to how these binaries are built, `sudo yabai --uninstall-sa`
-  must run before `sudo yabai --load-sa`.
+  anything but version 0. `scripting-addition load` only replaces an installed scripting addition
+  whose version string differs, so after a change to how these binaries are built,
+  `sudo yabai scripting-addition uninstall` must run before `sudo yabai scripting-addition load`.

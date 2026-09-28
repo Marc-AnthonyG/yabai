@@ -5,6 +5,7 @@ pub mod dispatch;
 pub mod domain;
 pub mod labels;
 pub mod listening_socket;
+pub mod not_yet_typed_bridge;
 pub mod properties;
 pub mod selectors;
 pub mod token;

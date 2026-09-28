@@ -5,7 +5,7 @@ terminating, switching to the front, hiding and unhiding; windows appearing, dis
 gaining focus, moving, resizing, minimizing and changing title; spaces and displays changing;
 mouse clicks, drags and moves; Mission Control; menus opening and closing; system-wide changes
 (the Dock restarting or changing preferences, the menu bar hiding, the machine waking, the accent
-colour changing); the steps of the insertion preview's fade-in; and client messages.
+colour changing); the steps of the insertion preview's fade-in; and client commands.
 
 ## Notes
 

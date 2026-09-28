@@ -7,6 +7,7 @@ use crate::ffi::mach_port::{TASK_BOOTSTRAP_PORT, task_get_special_port};
 use crate::ffi::skylight::SLSMainConnectionID;
 use crate::ffi::skylight_dynamic::resolve_dynamic_skylight_symbols;
 use crate::mouse::tap::set_default_mouse_modifier_and_actions;
+use crate::protocol::socket_path::message_socket_path_of_user;
 use crate::state::process_wide::{
     BOOTSTRAP_PORT, CORE_VIDEO_HOST_CLOCK_FREQUENCY, DAEMON_PROCESS_ID, LAYER_ABOVE_WINDOW_LEVEL,
     LAYER_BELOW_WINDOW_LEVEL, LAYER_NORMAL_WINDOW_LEVEL, LOCK_FILE_PATH, MESSAGE_SOCKET_PATH,
@@ -15,7 +16,6 @@ use crate::state::process_wide::{
 use crate::support::layer::{LAYER_ABOVE, LAYER_BELOW, LAYER_NORMAL};
 
 pub(crate) const SCRIPTING_ADDITION_SOCKET_PATH_FORMAT: &str = "/tmp/yabai-sa_%s.socket";
-pub(crate) const MESSAGE_SOCKET_PATH_FORMAT: &str = "/tmp/yabai_%s.socket";
 pub(crate) const LOCK_FILE_PATH_FORMAT: &str = "/tmp/yabai_%s.lock";
 
 #[allow(deprecated)]
@@ -27,7 +27,7 @@ pub(crate) fn configure_settings_and_acquire_lock() -> bool {
 
     let _ = SCRIPTING_ADDITION_SOCKET_PATH
         .set(SCRIPTING_ADDITION_SOCKET_PATH_FORMAT.replacen("%s", &user, 1));
-    let _ = MESSAGE_SOCKET_PATH.set(MESSAGE_SOCKET_PATH_FORMAT.replacen("%s", &user, 1));
+    let _ = MESSAGE_SOCKET_PATH.set(message_socket_path_of_user(&user));
     let _ = LOCK_FILE_PATH.set(LOCK_FILE_PATH_FORMAT.replacen("%s", &user, 1));
 
     crate::ffi::appkit::NSApplicationLoad();

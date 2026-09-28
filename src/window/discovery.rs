@@ -243,8 +243,7 @@ pub(crate) fn track_newly_discovered_window_applying_its_rules(
             //
 
             if is_verbose_debug_output_enabled() {
-                let mut response = Response::to_standard_output();
-                response.write(format_args!("window info: \n"));
+                let mut response = Response::collecting();
                 write_tracked_window_as_json_object(
                     &mut response,
                     window_id,
@@ -254,7 +253,9 @@ pub(crate) fn track_newly_discovered_window_applying_its_rules(
                     space_manager,
                     mouse_drag_state,
                 );
-                response.write(format_args!("\n"));
+                let (window_information, _) =
+                    response.into_standard_output_and_one_failure_per_line();
+                print!("window info: \n{window_information}\n");
             }
         }
     } else {
@@ -273,8 +274,7 @@ pub(crate) fn track_newly_discovered_window_applying_its_rules(
         //
 
         if is_verbose_debug_output_enabled() {
-            let mut response = Response::to_standard_output();
-            response.write(format_args!("window info: \n"));
+            let mut response = Response::collecting();
             write_tracked_window_as_json_object(
                 &mut response,
                 window_id,
@@ -284,7 +284,8 @@ pub(crate) fn track_newly_discovered_window_applying_its_rules(
                 space_manager,
                 mouse_drag_state,
             );
-            response.write(format_args!("\n"));
+            let (window_information, _) = response.into_standard_output_and_one_failure_per_line();
+            print!("window info: \n{window_information}\n");
         }
     }
 

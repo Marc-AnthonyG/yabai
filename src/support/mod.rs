@@ -17,7 +17,6 @@ pub mod privilege;
 pub mod regex;
 pub mod resize_handle;
 pub mod response;
-pub mod sockets;
 pub mod spawned_program_exit_status;
 pub mod strings;
 pub mod type_of_change;

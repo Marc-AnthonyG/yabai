@@ -2,11 +2,19 @@ use std::os::fd::{FromRawFd, OwnedFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixListener;
+use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::OnceLock;
+use std::time::Duration;
 
+use crate::command::DaemonCommand;
 use crate::event::queue::{Event, post_event_to_event_loop};
-use crate::message::token::null_terminated_bytes_starting_at;
+use crate::protocol::reply::{DaemonReply, write_reply};
+use crate::protocol::request::{
+    command_of_a_request_from_a_client_of_the_same_version, read_request_after_its_length,
+};
+
+const LONGEST_A_CLIENT_MAY_TAKE_TO_SEND_ITS_REQUEST: Duration = Duration::from_secs(1);
 
 pub(crate) struct MessageSocketListener {
     pub(crate) listener: UnixListener,
@@ -23,15 +31,29 @@ pub(crate) fn accept_message_connections_and_post_them_to_the_event_loop() {
             continue;
         };
 
-        post_event_to_event_loop(Event::DaemonMessage(stream));
+        match read_the_command_a_client_sends(&stream) {
+            Ok(command) => post_event_to_event_loop(Event::DaemonCommand {
+                command,
+                reply_to: stream,
+            }),
+            Err(failure) => {
+                let _ = write_reply(&stream, &DaemonReply::failing_with(failure));
+            }
+        }
     }
+}
+
+fn read_the_command_a_client_sends(stream: &UnixStream) -> Result<DaemonCommand, String> {
+    let _ = stream.set_read_timeout(Some(LONGEST_A_CLIENT_MAY_TAKE_TO_SEND_ITS_REQUEST));
+    let request = read_request_after_its_length(stream)?;
+    command_of_a_request_from_a_client_of_the_same_version(request)
 }
 
 pub(crate) fn start_listening_on_message_socket(socket_path: &Path) -> bool {
     let mut socket_address: libc::sockaddr_un = unsafe { std::mem::zeroed() };
     socket_address.sun_family = libc::AF_UNIX as libc::sa_family_t;
     let socket_path_bytes = socket_path.as_os_str().as_bytes();
-    let socket_path_length = null_terminated_bytes_starting_at(socket_path_bytes, 0)
+    let socket_path_length = socket_path_bytes
         .len()
         .min(socket_address.sun_path.len() - 1);
     for index in 0..socket_path_length {

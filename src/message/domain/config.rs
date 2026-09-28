@@ -1893,9 +1893,6 @@ fn move_the_windows_of_every_view_into_their_areas(
 
 #[cfg(test)]
 mod tests {
-    use std::io::Read;
-    use std::os::unix::net::UnixStream;
-
     use super::run_config_command;
     use crate::display::manager::DisplayManager;
     use crate::event::handlers::system::handle_system_accent_color_changed_event;
@@ -1923,25 +1920,23 @@ mod tests {
         window_manager: &mut WindowManager,
     ) -> String {
         let mut message = config_message(arguments);
-        let (mut client_end, daemon_end) = UnixStream::pair().unwrap();
-        {
-            let mut response = Response::to_client(daemon_end);
-            let mut message_cursor = MessageCursor::new(&mut message);
-            let domain = message_cursor.take_next_token();
-            run_config_command(
-                &mut response,
-                domain,
-                &mut message_cursor,
-                &mut DisplayManager::default(),
-                window_manager,
-                &mut create_space_manager_without_any_view_with_its_initial_settings(),
-                &mut mouse_drag_state_without_a_drag(),
-            );
-        }
+        let mut response = Response::collecting();
+        let mut message_cursor = MessageCursor::new(&mut message);
+        let domain = message_cursor.take_next_token();
+        run_config_command(
+            &mut response,
+            domain,
+            &mut message_cursor,
+            &mut DisplayManager::default(),
+            window_manager,
+            &mut create_space_manager_without_any_view_with_its_initial_settings(),
+            &mut mouse_drag_state_without_a_drag(),
+        );
 
-        let mut response_text = String::new();
-        client_end.read_to_string(&mut response_text).unwrap();
-        response_text
+        let (standard_output, failures) = response.into_standard_output_and_one_failure_per_line();
+        failures
+            .iter()
+            .fold(standard_output, |text, failure| text + failure + "\n")
     }
 
     #[test]
@@ -2007,7 +2002,7 @@ mod tests {
             assert_eq!(
                 response_text,
                 format!(
-                    "\x07unknown value '{refused_value}' given to command 'insert_feedback_color' for domain 'config'\n"
+                    "unknown value '{refused_value}' given to command 'insert_feedback_color' for domain 'config'\n"
                 )
             );
             assert_eq!(
@@ -2046,7 +2041,7 @@ mod tests {
 
         assert_eq!(
             response_text,
-            "\x07unknown value 'yes' given to command 'reload_config_file_on_change' for domain 'config'\n"
+            "unknown value 'yes' given to command 'reload_config_file_on_change' for domain 'config'\n"
         );
     }
 
@@ -2118,7 +2113,7 @@ mod tests {
             assert_eq!(
                 response_text,
                 format!(
-                    "\x07unknown value '{refused_value}' given to command '{setting}' for domain 'config'\n"
+                    "unknown value '{refused_value}' given to command '{setting}' for domain 'config'\n"
                 )
             );
         }

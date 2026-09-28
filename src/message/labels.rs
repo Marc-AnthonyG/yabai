@@ -134,9 +134,6 @@ pub(crate) fn parse_label_refusing_numbers_and_reserved_words(
 
 #[cfg(test)]
 mod tests {
-    use std::io::Read;
-    use std::os::unix::net::UnixStream;
-
     use super::{LabelType, parse_label_refusing_numbers_and_reserved_words};
     use crate::message::token::MessageCursor;
     use crate::support::response::Response;
@@ -144,35 +141,32 @@ mod tests {
     struct ParsedLabel {
         accepted: bool,
         label: Option<String>,
-        response_bytes: Vec<u8>,
+        response_text: String,
     }
 
     fn parse_the_label_argument(argument: &str, label_type: LabelType) -> ParsedLabel {
         let mut message = argument.as_bytes().to_vec();
         message.extend_from_slice(b"\0\0");
         let token = MessageCursor::new(&mut message).take_next_token();
-        let (daemon_side, mut client_side) = UnixStream::pair().expect("a connected socket pair");
         let mut label = Some("old".to_string());
+        let mut response = Response::collecting();
 
-        let accepted = {
-            let mut response = Response::to_client(daemon_side);
-            parse_label_refusing_numbers_and_reserved_words(
-                &mut response,
-                &message,
-                token,
-                label_type,
-                &mut label,
-            )
-        };
-        let mut response_bytes = Vec::new();
-        client_side
-            .read_to_end(&mut response_bytes)
-            .expect("the response to be readable");
+        let accepted = parse_label_refusing_numbers_and_reserved_words(
+            &mut response,
+            &message,
+            token,
+            label_type,
+            &mut label,
+        );
+        let (standard_output, failures) = response.into_standard_output_and_one_failure_per_line();
+        let response_text = failures
+            .iter()
+            .fold(standard_output, |text, failure| text + failure + "\n");
 
         ParsedLabel {
             accepted,
             label,
-            response_bytes,
+            response_text,
         }
     }
 
@@ -185,7 +179,7 @@ mod tests {
             expected_label,
             "label for {argument:?}"
         );
-        assert_eq!(parsed.response_bytes, b"", "response for {argument:?}");
+        assert_eq!(parsed.response_text, "", "response for {argument:?}");
     }
 
     fn assert_rejected_with(argument: &str, label_type: LabelType, expected_response: &str) {
@@ -198,8 +192,7 @@ mod tests {
             "label after rejecting {argument:?}"
         );
         assert_eq!(
-            String::from_utf8_lossy(&parsed.response_bytes),
-            expected_response,
+            parsed.response_text, expected_response,
             "response for {argument:?}"
         );
     }
@@ -230,7 +223,7 @@ mod tests {
                 assert_rejected_with(
                     argument,
                     label_type,
-                    &format!("\u{7}'{argument}' cannot be used as a label.\n"),
+                    &format!("'{argument}' cannot be used as a label.\n"),
                 );
             }
         }
@@ -244,9 +237,7 @@ mod tests {
             assert_rejected_with(
                 argument,
                 LabelType::Display,
-                &format!(
-                    "\u{7}'{argument}' is a reserved keyword and cannot be used as a label.\n"
-                ),
+                &format!("'{argument}' is a reserved keyword and cannot be used as a label.\n"),
             );
         }
     }
@@ -257,9 +248,7 @@ mod tests {
             assert_rejected_with(
                 argument,
                 LabelType::Space,
-                &format!(
-                    "\u{7}'{argument}' is a reserved keyword and cannot be used as a label.\n"
-                ),
+                &format!("'{argument}' is a reserved keyword and cannot be used as a label.\n"),
             );
         }
         assert_accepted_as("north", LabelType::Space, Some("north"));
@@ -284,7 +273,7 @@ mod tests {
                 argument,
                 LabelType::Window,
                 &format!(
-                    "\u{7}'{argument}' is a reserved keyword and cannot be used as a scratchpad.\n"
+                    "'{argument}' is a reserved keyword and cannot be used as a scratchpad.\n"
                 ),
             );
         }

@@ -89,9 +89,6 @@ pub(crate) fn parse_comma_separated_properties(
 
 #[cfg(test)]
 mod tests {
-    use std::io::Read;
-    use std::os::unix::net::UnixStream;
-
     use super::parse_comma_separated_properties;
     use crate::message::token::MessageCursor;
     use crate::support::response::Response;
@@ -111,22 +108,20 @@ mod tests {
         let mut message = argument.as_bytes().to_vec();
         message.extend_from_slice(b"\0\0");
         let token = MessageCursor::new(&mut message).take_next_token();
-        let (daemon_side, mut client_side) = UnixStream::pair().expect("a connected socket pair");
+        let mut response = Response::collecting();
 
-        let properties = {
-            let mut response = Response::to_client(daemon_side);
-            parse_comma_separated_properties(
-                &mut response,
-                &mut message,
-                token,
-                &PROPERTY_VALUES,
-                &PROPERTY_STRINGS,
-            )
-        };
-        let mut response_bytes = Vec::new();
-        client_side
-            .read_to_end(&mut response_bytes)
-            .expect("the response to be readable");
+        let properties = parse_comma_separated_properties(
+            &mut response,
+            &mut message,
+            token,
+            &PROPERTY_VALUES,
+            &PROPERTY_STRINGS,
+        );
+        let (standard_output, failures) = response.into_standard_output_and_one_failure_per_line();
+        let response_bytes = failures
+            .iter()
+            .fold(standard_output, |text, failure| text + failure + "\n")
+            .into_bytes();
 
         ParsedProperties {
             did_parse: properties.did_parse,
@@ -166,10 +161,7 @@ mod tests {
         assert!(parsed.did_parse);
         assert!(parsed.did_error);
         assert_eq!(parsed.flags, 0x5);
-        assert_eq!(
-            parsed.response_bytes,
-            b"\x07'bogus' is not a valid property.\n"
-        );
+        assert_eq!(parsed.response_bytes, b"'bogus' is not a valid property.\n");
         assert_eq!(parsed.message_after_parsing, b"id\0bogus\0app\0\0");
     }
 
@@ -182,7 +174,7 @@ mod tests {
         assert_eq!(parsed.flags, 0x1);
         assert_eq!(
             parsed.response_bytes,
-            b"\x07'title,' is not a valid property.\n"
+            b"'title,' is not a valid property.\n"
         );
         assert_eq!(parsed.message_after_parsing, b"id\0title,\0\0");
     }
@@ -193,15 +185,15 @@ mod tests {
 
         assert!(parsed.did_error);
         assert_eq!(parsed.flags, 0x5);
-        assert_eq!(parsed.response_bytes, b"\x07'' is not a valid property.\n");
+        assert_eq!(parsed.response_bytes, b"'' is not a valid property.\n");
         assert_eq!(parsed.message_after_parsing, b"id\0\0app\0\0");
     }
 
     #[test]
     fn parse_comma_separated_properties_rejects_a_prefix_or_an_extension_of_a_property_name() {
         for (argument, expected_response) in [
-            ("i", &b"\x07'i' is not a valid property.\n"[..]),
-            ("idx", b"\x07'idx' is not a valid property.\n"),
+            ("i", &b"'i' is not a valid property.\n"[..]),
+            ("idx", b"'idx' is not a valid property.\n"),
         ] {
             let parsed = parse_the_properties_argument(argument);
 

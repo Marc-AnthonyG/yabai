@@ -5,6 +5,16 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const LINK_ARM64E_WITH_THE_POINTER_AUTHENTICATION_ABI_DOCK_USES: &str = "-Wl,-no_mac_public_arm64e";
+const UNIVERSAL_BINARY_MAGIC: u32 = 0xcafe_babe;
+const UNIVERSAL_BINARY_HEADER_LENGTH: usize = 8;
+const UNIVERSAL_BINARY_SLICE_DESCRIPTION_LENGTH: usize = 20;
+const CPU_TYPE_ARM64: u32 = 0x0100_000c;
+const CPU_SUBTYPE_ARM64E: u32 = 2;
+const CPU_SUBTYPE_MASK_WITHOUT_CAPABILITIES: u32 = 0x00ff_ffff;
+const POINTER_AUTHENTICATION_ABI_VERSION_ZERO_CAPABILITIES: u32 = 0x80;
+const MACH_HEADER_CPU_SUBTYPE_OFFSET: usize = 8;
+
 fn main() {
     let manifest_directory = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let out_directory = PathBuf::from(env::var("OUT_DIR").unwrap());
@@ -47,6 +57,7 @@ fn main() {
                 "Foundation",
                 "-framework",
                 "Carbon",
+                LINK_ARM64E_WITH_THE_POINTER_AUTHENTICATION_ABI_DOCK_USES,
             ]),
     );
 
@@ -64,8 +75,18 @@ fn main() {
             ])
             .arg("-o")
             .arg(out_directory.join("loader"))
-            .args(["-framework", "Cocoa"]),
+            .args([
+                "-framework",
+                "Cocoa",
+                LINK_ARM64E_WITH_THE_POINTER_AUTHENTICATION_ABI_DOCK_USES,
+            ]),
     );
+
+    for scripting_addition_binary in ["payload", "loader"] {
+        fail_the_build_unless_every_arm64e_slice_uses_pointer_authentication_abi_version_zero(
+            &out_directory.join(scripting_addition_binary),
+        );
+    }
 
     generate_osax_common(&osax_directory.join("common.h"), &out_directory);
 
@@ -78,6 +99,65 @@ fn main() {
         "cargo:rustc-link-arg-bins=-Wl,-sectcreate,__TEXT,__info_plist,{}",
         manifest_directory.join("assets/Info.plist").display()
     );
+}
+
+fn fail_the_build_unless_every_arm64e_slice_uses_pointer_authentication_abi_version_zero(
+    universal_binary: &Path,
+) {
+    let bytes = match fs::read(universal_binary) {
+        Ok(bytes) => bytes,
+        Err(error) => panic!(
+            "build.rs: could not read {}: {error}",
+            universal_binary.display()
+        ),
+    };
+    let read_big_endian_u32 =
+        |offset: usize| u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap());
+    let read_little_endian_u32 =
+        |offset: usize| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+
+    if read_big_endian_u32(0) != UNIVERSAL_BINARY_MAGIC {
+        panic!(
+            "build.rs: {} is not a universal binary",
+            universal_binary.display()
+        );
+    }
+
+    let slice_count = read_big_endian_u32(4) as usize;
+    let mut arm64e_slices_checked = 0;
+    for slice_index in 0..slice_count {
+        let slice_description = UNIVERSAL_BINARY_HEADER_LENGTH
+            + slice_index * UNIVERSAL_BINARY_SLICE_DESCRIPTION_LENGTH;
+        let cpu_type = read_big_endian_u32(slice_description);
+        let cpu_subtype_in_universal_header = read_big_endian_u32(slice_description + 4);
+        if cpu_type != CPU_TYPE_ARM64
+            || cpu_subtype_in_universal_header & CPU_SUBTYPE_MASK_WITHOUT_CAPABILITIES
+                != CPU_SUBTYPE_ARM64E
+        {
+            continue;
+        }
+
+        let slice_offset = read_big_endian_u32(slice_description + 8) as usize;
+        let cpu_subtype_in_mach_header =
+            read_little_endian_u32(slice_offset + MACH_HEADER_CPU_SUBTYPE_OFFSET);
+        for cpu_subtype in [cpu_subtype_in_universal_header, cpu_subtype_in_mach_header] {
+            let capabilities = cpu_subtype >> 24;
+            if capabilities != POINTER_AUTHENTICATION_ABI_VERSION_ZERO_CAPABILITIES {
+                panic!(
+                    "build.rs: the arm64e slice of {} has capabilities {capabilities:#x}, but Dock only accepts a thread from the pointer authentication ABI version zero ({POINTER_AUTHENTICATION_ABI_VERSION_ZERO_CAPABILITIES:#x})",
+                    universal_binary.display()
+                );
+            }
+        }
+        arm64e_slices_checked += 1;
+    }
+
+    if arm64e_slices_checked == 0 {
+        panic!(
+            "build.rs: {} has no arm64e slice",
+            universal_binary.display()
+        );
+    }
 }
 
 fn run_or_fail_the_build(command: &mut Command) {
@@ -141,11 +221,8 @@ fn generate_osax_common(common_header: &Path, out_directory: &Path) {
     let opcodes = parse_sa_opcode_enum(&header_text, common_header);
 
     let socket_path_format = require_string_define(&defines, "SA_SOCKET_PATH_FMT", common_header);
-    let socket_buffer_length = require_hexadecimal_define(
-        &defines,
-        "SA_SOCKET_BUFF_LEN",
-        common_header,
-    );
+    let socket_buffer_length =
+        require_hexadecimal_define(&defines, "SA_SOCKET_BUFF_LEN", common_header);
     let osax_version = require_string_define(&defines, "OSAX_VERSION", common_header);
 
     let mut generated = String::new();
@@ -244,10 +321,7 @@ fn parse_defines(header_text: &str, common_header: &Path) -> HashMap<String, Str
     }
 
     if defines.is_empty() {
-        panic!(
-            "build.rs: no #define found in {}",
-            common_header.display()
-        );
+        panic!("build.rs: no #define found in {}", common_header.display());
     }
 
     defines
@@ -307,7 +381,10 @@ fn require_hexadecimal_define(
 
 fn parse_c_integer(value: &str) -> Option<u32> {
     let value = value.trim();
-    match value.strip_prefix("0x").or_else(|| value.strip_prefix("0X")) {
+    match value
+        .strip_prefix("0x")
+        .or_else(|| value.strip_prefix("0X"))
+    {
         Some(digits) => u32::from_str_radix(digits, 16).ok(),
         None => value.parse::<u32>().ok(),
     }

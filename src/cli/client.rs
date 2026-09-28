@@ -26,7 +26,8 @@ pub(crate) fn send_message_to_daemon_and_print_its_response(
     let mut argument_lengths: Vec<c_int> = vec![0; argument_count as usize];
 
     for index in 1..argument_count as usize {
-        argument_lengths[index] = std::os::unix::ffi::OsStrExt::as_bytes(arguments[index].as_os_str()).len() as c_int;
+        argument_lengths[index] =
+            std::os::unix::ffi::OsStrExt::as_bytes(arguments[index].as_os_str()).len() as c_int;
         message_length += argument_lengths[index];
     }
 
@@ -35,7 +36,8 @@ pub(crate) fn send_message_to_daemon_and_print_its_response(
     message.extend_from_slice(&message_length.to_ne_bytes());
     for index in 1..argument_count as usize {
         message.extend_from_slice(
-            &std::os::unix::ffi::OsStrExt::as_bytes(arguments[index].as_os_str())[..argument_lengths[index] as usize],
+            &std::os::unix::ffi::OsStrExt::as_bytes(arguments[index].as_os_str())
+                [..argument_lengths[index] as usize],
         );
         message.push(b'\0');
     }

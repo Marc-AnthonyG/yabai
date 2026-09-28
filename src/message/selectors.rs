@@ -583,7 +583,10 @@ pub(crate) fn parse_window_selector(
                 if let Some(area_window) = area_window {
                     result.outcome = SelectorOutcome::Resolved(area_window);
                 } else {
-                    daemon_fail!(response, "could not locate window with the smallest area.\n");
+                    daemon_fail!(
+                        response,
+                        "could not locate window with the smallest area.\n"
+                    );
                 }
             } else if is_token_equal_to(
                 result.token,

@@ -144,10 +144,9 @@ pub(crate) fn stop_observing_mission_control_through_the_dock() {
 }
 
 pub(crate) fn find_dock_process_id() -> ProcessId {
-    let list =
-        NSRunningApplication::runningApplicationsWithBundleIdentifier(&NSString::from_str(
-            "com.apple.dock",
-        ));
+    let list = NSRunningApplication::runningApplicationsWithBundleIdentifier(&NSString::from_str(
+        "com.apple.dock",
+    ));
 
     if list.count() == 1 {
         let dock = list.objectAtIndexedSubscript(0);

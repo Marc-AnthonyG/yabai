@@ -155,8 +155,9 @@ pub(crate) fn set_window_rule_flag(window: &mut Window, flag: WindowRuleFlag) {
 pub(crate) fn copy_uuid_of_display_holding_window(window_id: WindowId) -> Option<CFStringOwned> {
     let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
 
-    let uuid =
-        unsafe { take_create_rule_result(SLSCopyManagedDisplayForWindow(connection_id, window_id.0)) };
+    let uuid = unsafe {
+        take_create_rule_result(SLSCopyManagedDisplayForWindow(connection_id, window_id.0))
+    };
     if uuid.is_none() {
         let mut frame = CGRect::ZERO;
         unsafe { SLSGetWindowBounds(connection_id, window_id.0, &mut frame) };
@@ -200,7 +201,11 @@ pub(crate) fn query_space_holding_window(window_id: WindowId) -> SpaceId {
     let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
     let window_list_ref = create_cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
     let space_list_ref = unsafe {
-        take_create_rule_result(SLSCopySpacesForWindows(connection_id, 0x7, &*window_list_ref))
+        take_create_rule_result(SLSCopySpacesForWindows(
+            connection_id,
+            0x7,
+            &*window_list_ref,
+        ))
     };
 
     if let Some(space_list_ref) = space_list_ref {
@@ -228,7 +233,11 @@ pub(crate) fn query_every_space_holding_window(window_id: WindowId) -> Vec<Space
     let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
     let window_list_ref = create_cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
     let Some(space_list_ref) = (unsafe {
-        take_create_rule_result(SLSCopySpacesForWindows(connection_id, 0x7, &*window_list_ref))
+        take_create_rule_result(SLSCopySpacesForWindows(
+            connection_id,
+            0x7,
+            &*window_list_ref,
+        ))
     }) else {
         return space_list;
     };
@@ -437,9 +446,8 @@ pub(crate) fn is_window_minimized_according_to_accessibility(window: &Window) ->
     } == kAXErrorSuccess
     {
         if let Some(value) = unsafe { take_create_rule_result(value) } {
-            result = cfboolean_get_value(unsafe {
-                &*((&*value as *const CFType).cast::<CFBoolean>())
-            });
+            result =
+                cfboolean_get_value(unsafe { &*((&*value as *const CFType).cast::<CFBoolean>()) });
             drop(value);
         }
     }
@@ -460,9 +468,8 @@ pub(crate) fn is_window_in_native_fullscreen_according_to_accessibility(window: 
     } == kAXErrorSuccess
     {
         if let Some(value) = unsafe { take_create_rule_result(value) } {
-            result = cfboolean_get_value(unsafe {
-                &*((&*value as *const CFType).cast::<CFBoolean>())
-            });
+            result =
+                cfboolean_get_value(unsafe { &*((&*value as *const CFType).cast::<CFBoolean>()) });
             drop(value);
         }
     }
@@ -770,7 +777,10 @@ pub(crate) fn is_window_a_standard_floating_or_dialog_window(window: &Window) ->
             ) || CFEqual(
                 Some(as_cftype(subrole)),
                 Some(as_cftype(kAXFloatingWindowSubrole())),
-            ) || CFEqual(Some(as_cftype(subrole)), Some(as_cftype(kAXDialogSubrole()))));
+            ) || CFEqual(
+                Some(as_cftype(subrole)),
+                Some(as_cftype(kAXDialogSubrole())),
+            ));
     }
 
     is_window

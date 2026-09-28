@@ -115,8 +115,7 @@ pub fn accessibility_error_constant_name(error: AXError) -> &'static str {
 pub fn query_accessibility_trust_prompting_the_user_if_untrusted() -> bool {
     let mut keys: [*const c_void; 1] =
         [(unsafe { kAXTrustedCheckOptionPrompt } as *const CFString).cast::<c_void>()];
-    let mut values: [*const c_void; 1] =
-        [(kCFBooleanTrue() as *const CFBoolean).cast::<c_void>()];
+    let mut values: [*const c_void; 1] = [(kCFBooleanTrue() as *const CFBoolean).cast::<c_void>()];
     let options: objc2_core_foundation::CFRetained<CFDictionary> = unsafe {
         CFDictionaryCreate(
             None,

@@ -283,7 +283,9 @@ impl WorkspaceContext {
             NSNotificationCenter::defaultCenter().addObserver_selector_name_object(
                 &this,
                 sel!(didRestartDock:),
-                Some(&NSString::from_str(NS_APPLICATION_DOCK_DID_RESTART_NOTIFICATION)),
+                Some(&NSString::from_str(
+                    NS_APPLICATION_DOCK_DID_RESTART_NOTIFICATION,
+                )),
                 None,
             );
 
@@ -361,7 +363,6 @@ pub(crate) fn release_running_application_removing_its_observations(
     {
         let observation_info: *mut c_void = unsafe { msg_send![&*application, observationInfo] };
         if !observation_info.is_null() {
-
             //
             // :WorstApiEverMade
             //

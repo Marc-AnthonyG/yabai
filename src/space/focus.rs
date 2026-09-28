@@ -140,16 +140,44 @@ pub(crate) fn focus_space_with_synthesized_dock_swipes(
     } else {
         -1.0f64
     }) as f32;
-    CGEventSetIntegerValueField(Some(&event_dock_control), /* kCGSEventTypeField            */ CGEventField(55), /* kCGSEventDockControl       */ 30);
-    CGEventSetIntegerValueField(Some(&event_dock_control), /* kCGEventGestureHIDType        */ CGEventField(110), /* kIOHIDEventTypeDockSwipe   */ 23);
-    CGEventSetIntegerValueField(Some(&event_dock_control), /* kCGEventGestureSwipeMotion    */ CGEventField(123), /* kCGGestureMotionHorizontal */ 1);
-    CGEventSetDoubleValueField(Some(&event_dock_control), /* kCGEventGestureSwipeProgress  */ CGEventField(124), sign as f64);
-    CGEventSetDoubleValueField(Some(&event_dock_control), /* kCGEventGestureSwipeVelocityX */ CGEventField(129), sign as f64 * 9999.0f64);
+    CGEventSetIntegerValueField(
+        Some(&event_dock_control),
+        /* kCGSEventTypeField            */ CGEventField(55),
+        /* kCGSEventDockControl       */ 30,
+    );
+    CGEventSetIntegerValueField(
+        Some(&event_dock_control),
+        /* kCGEventGestureHIDType        */ CGEventField(110),
+        /* kIOHIDEventTypeDockSwipe   */ 23,
+    );
+    CGEventSetIntegerValueField(
+        Some(&event_dock_control),
+        /* kCGEventGestureSwipeMotion    */ CGEventField(123),
+        /* kCGGestureMotionHorizontal */ 1,
+    );
+    CGEventSetDoubleValueField(
+        Some(&event_dock_control),
+        /* kCGEventGestureSwipeProgress  */ CGEventField(124),
+        sign as f64,
+    );
+    CGEventSetDoubleValueField(
+        Some(&event_dock_control),
+        /* kCGEventGestureSwipeVelocityX */ CGEventField(129),
+        sign as f64 * 9999.0f64,
+    );
 
     for _ in 0..count {
-        CGEventSetIntegerValueField(Some(&event_dock_control), /* kCGEventGesturePhase */ CGEventField(132), /* kCGSGesturePhaseBegan */ 1);
+        CGEventSetIntegerValueField(
+            Some(&event_dock_control),
+            /* kCGEventGesturePhase */ CGEventField(132),
+            /* kCGSGesturePhaseBegan */ 1,
+        );
         CGEventPost(kCGSessionEventTap, Some(&event_dock_control));
-        CGEventSetIntegerValueField(Some(&event_dock_control), /* kCGEventGesturePhase */ CGEventField(132), /* kCGSGesturePhaseEnded */ 4);
+        CGEventSetIntegerValueField(
+            Some(&event_dock_control),
+            /* kCGEventGesturePhase */ CGEventField(132),
+            /* kCGSGesturePhaseEnded */ 4,
+        );
         CGEventPost(kCGSessionEventTap, Some(&event_dock_control));
     }
     drop(event_dock_control);

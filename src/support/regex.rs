@@ -17,7 +17,13 @@ impl PosixRegex {
 
     pub fn matches(&self, subject: &std::ffi::CStr) -> bool {
         let status = unsafe {
-            libc::regexec(self.regex.as_ref(), subject.as_ptr(), 0, std::ptr::null_mut(), 0)
+            libc::regexec(
+                self.regex.as_ref(),
+                subject.as_ptr(),
+                0,
+                std::ptr::null_mut(),
+                0,
+            )
         };
         status == 0
     }

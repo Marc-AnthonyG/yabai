@@ -558,8 +558,8 @@ pub(crate) fn run_space_command(
             let mut right: libc::c_int = 0;
             let mut type_of_change = [0 as libc::c_char; FIXED_STRING_BUFFER_LENGTH];
             let value = message_cursor.take_next_token();
-            let subject = std::ffi::CString::new(value.bytes(message_cursor.bytes()))
-                .unwrap_or_default();
+            let subject =
+                std::ffi::CString::new(value.bytes(message_cursor.bytes())).unwrap_or_default();
             let converted = unsafe {
                 libc::sscanf(
                     subject.as_ptr(),
@@ -598,8 +598,8 @@ pub(crate) fn run_space_command(
             let mut gap: libc::c_int = 0;
             let mut type_of_change = [0 as libc::c_char; FIXED_STRING_BUFFER_LENGTH];
             let value = message_cursor.take_next_token();
-            let subject = std::ffi::CString::new(value.bytes(message_cursor.bytes()))
-                .unwrap_or_default();
+            let subject =
+                std::ffi::CString::new(value.bytes(message_cursor.bytes())).unwrap_or_default();
             let converted = unsafe {
                 libc::sscanf(
                     subject.as_ptr(),
@@ -728,7 +728,10 @@ pub(crate) fn run_space_command(
                         mouse_drag_state,
                     );
                 } else {
-                    daemon_fail!(response, "cannot set layout for a macOS fullscreen space!\n");
+                    daemon_fail!(
+                        response,
+                        "cannot set layout for a macOS fullscreen space!\n"
+                    );
                 }
             } else {
                 daemon_fail_with_unknown_value_given_to_command_for_domain(

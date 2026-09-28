@@ -50,11 +50,7 @@ pub(crate) fn copy_accessibility_window_element_at_point(
 
     let mut role: *const CFType = core::ptr::null();
     unsafe {
-        AXUIElementCopyAttributeValue(
-            &element_ref,
-            kAXRoleAttribute(),
-            NonNull::from(&mut role),
-        )
+        AXUIElementCopyAttributeValue(&element_ref, kAXRoleAttribute(), NonNull::from(&mut role))
     };
     let role = unsafe { take_create_rule_result(role) }?;
 

@@ -376,10 +376,7 @@ pub(crate) fn run_window_command(
                     if result == WindowOperationOutcome::InvalidSourceView {
                         daemon_fail!(response, "the acting window is not within a bsp space.\n");
                     } else if result == WindowOperationOutcome::InvalidDestinationView {
-                        daemon_fail!(
-                            response,
-                            "the selected window is not within a bsp space.\n"
-                        );
+                        daemon_fail!(response, "the selected window is not within a bsp space.\n");
                     } else if result == WindowOperationOutcome::InvalidSourceNode {
                         daemon_fail!(response, "the acting window is not managed.\n");
                     } else if result == WindowOperationOutcome::InvalidDestinationNode {
@@ -418,10 +415,7 @@ pub(crate) fn run_window_command(
                     if result == WindowOperationOutcome::InvalidSourceView {
                         daemon_fail!(response, "the acting window is not within a bsp space.\n");
                     } else if result == WindowOperationOutcome::InvalidDestinationView {
-                        daemon_fail!(
-                            response,
-                            "the selected window is not within a bsp space.\n"
-                        );
+                        daemon_fail!(response, "the selected window is not within a bsp space.\n");
                     } else if result == WindowOperationOutcome::InvalidSourceNode {
                         daemon_fail!(response, "the acting window is not managed.\n");
                     } else if result == WindowOperationOutcome::InvalidDestinationNode {
@@ -496,8 +490,8 @@ pub(crate) fn run_window_command(
                 let mut width: libc::c_int = 0;
                 let mut height: libc::c_int = 0;
                 let value = message_cursor.take_next_token();
-                let subject = std::ffi::CString::new(value.bytes(message_cursor.bytes()))
-                    .unwrap_or_default();
+                let subject =
+                    std::ffi::CString::new(value.bytes(message_cursor.bytes())).unwrap_or_default();
                 let converted = unsafe {
                     libc::sscanf(
                         subject.as_ptr(),
@@ -542,8 +536,8 @@ pub(crate) fn run_window_command(
                 let mut y: libc::c_float = 0.0;
                 let mut type_of_change = [0 as libc::c_char; FIXED_STRING_BUFFER_LENGTH];
                 let value = message_cursor.take_next_token();
-                let subject = std::ffi::CString::new(value.bytes(message_cursor.bytes()))
-                    .unwrap_or_default();
+                let subject =
+                    std::ffi::CString::new(value.bytes(message_cursor.bytes())).unwrap_or_default();
                 let converted = unsafe {
                     libc::sscanf(
                         subject.as_ptr(),
@@ -580,8 +574,8 @@ pub(crate) fn run_window_command(
                 let mut height: libc::c_float = 0.0;
                 let mut handle = [0 as libc::c_char; FIXED_STRING_BUFFER_LENGTH];
                 let value = message_cursor.take_next_token();
-                let subject = std::ffi::CString::new(value.bytes(message_cursor.bytes()))
-                    .unwrap_or_default();
+                let subject =
+                    std::ffi::CString::new(value.bytes(message_cursor.bytes())).unwrap_or_default();
                 let converted = unsafe {
                     libc::sscanf(
                         subject.as_ptr(),
@@ -627,8 +621,8 @@ pub(crate) fn run_window_command(
                 let mut ratio: libc::c_float = 0.0;
                 let mut type_of_change = [0 as libc::c_char; FIXED_STRING_BUFFER_LENGTH];
                 let value = message_cursor.take_next_token();
-                let subject = std::ffi::CString::new(value.bytes(message_cursor.bytes()))
-                    .unwrap_or_default();
+                let subject =
+                    std::ffi::CString::new(value.bytes(message_cursor.bytes())).unwrap_or_default();
                 let converted = unsafe {
                     libc::sscanf(
                         subject.as_ptr(),

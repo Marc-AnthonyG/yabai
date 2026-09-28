@@ -122,19 +122,15 @@ pub(crate) fn is_target_area_in_direction_of_source_area_and_facing_it(
     if direction == DIRECTION_NORTH || direction == DIRECTION_SOUTH {
         return (second_area_max_point.x > first_area.x as f64
             && second_area_max_point.x <= first_area_max_point.x)
-            || (second_area.x < first_area.x
-                && second_area_max_point.x > first_area_max_point.x)
-            || (second_area.x >= first_area.x
-                && (second_area.x as f64) < first_area_max_point.x);
+            || (second_area.x < first_area.x && second_area_max_point.x > first_area_max_point.x)
+            || (second_area.x >= first_area.x && (second_area.x as f64) < first_area_max_point.x);
     }
 
     if direction == DIRECTION_EAST || direction == DIRECTION_WEST {
         return (second_area_max_point.y > first_area.y as f64
             && second_area_max_point.y <= first_area_max_point.y)
-            || (second_area.y < first_area.y
-                && second_area_max_point.y > first_area_max_point.y)
-            || (second_area.y >= first_area.y
-                && (second_area.y as f64) < first_area_max_point.y);
+            || (second_area.y < first_area.y && second_area_max_point.y > first_area_max_point.y)
+            || (second_area.y >= first_area.y && (second_area.y as f64) < first_area_max_point.y);
     }
 
     false
@@ -380,7 +376,7 @@ mod tests {
 
     #[test]
     fn divide_area_into_two_by_split_ratio_and_gap_for_a_y_split_truncates_both_widths_and_rounds_the_offset_of_the_second_area()
-    {
+     {
         assert_pair_is(
             WindowNodeSplit::Vertical,
             10,

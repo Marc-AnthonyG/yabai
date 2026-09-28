@@ -272,7 +272,10 @@ pub(crate) fn run_query_command(
                     space_manager,
                 );
             } else {
-                daemon_fail!(response, "could not find window to retrieve space details.\n");
+                daemon_fail!(
+                    response,
+                    "could not find window to retrieve space details.\n"
+                );
             }
         } else if option.is_not_empty() {
             daemon_fail_with_unknown_option_given_to_command_for_domain(

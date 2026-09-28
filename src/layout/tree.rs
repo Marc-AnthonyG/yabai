@@ -1070,7 +1070,13 @@ pub(crate) fn remove_window_from_view_tree(
 ) -> Option<NodeId> {
     let node_id = leaf_holding_window(space_manager, space_id, window_id)?;
 
-    if space_manager.view.find(&space_id)?.node(node_id).window_count > 1 {
+    if space_manager
+        .view
+        .find(&space_id)?
+        .node(node_id)
+        .window_count
+        > 1
+    {
         let view = space_manager.view.find_mut(&space_id)?;
         let node = view.node_mut(node_id);
         let mut removed_entry = false;
@@ -1086,7 +1092,8 @@ pub(crate) fn remove_window_from_view_tree(
             }
 
             if !removed_order && node.window_order[index] == window_id {
-                node.window_order.copy_within(index + 1..window_count, index);
+                node.window_order
+                    .copy_within(index + 1..window_count, index);
                 removed_order = true;
             }
         }
@@ -1207,7 +1214,9 @@ pub(crate) fn remove_window_from_view_tree(
             parent.child = child_child;
             parent.window_order[0]
         };
-        window_manager.insert_feedback.remove(&parent_first_window_id);
+        window_manager
+            .insert_feedback
+            .remove(&parent_first_window_id);
         window_manager
             .insert_feedback
             .add_unless_key_already_present(parent_first_window_id, (space_id, parent_id));
@@ -1349,7 +1358,10 @@ pub(crate) fn add_window_to_view_tree_preferring_insertion_point(
     if !is_node_holding_any_window(space_id, ROOT_NODE_ID, space_manager)
         && is_leaf_node(space_id, ROOT_NODE_ID, space_manager)
     {
-        let root = space_manager.view.find_mut(&space_id)?.node_mut(ROOT_NODE_ID);
+        let root = space_manager
+            .view
+            .find_mut(&space_id)?
+            .node_mut(ROOT_NODE_ID);
         root.window_list[0] = window_id;
         root.window_order[0] = window_id;
         root.window_count = 1;

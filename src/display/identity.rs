@@ -16,7 +16,8 @@ use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
 use crate::support::handles::DisplayId;
 
 pub(crate) fn copy_uuid_of_display(display_id: DisplayId) -> Option<CFStringOwned> {
-    let uuid_ref = unsafe { take_create_rule_result(CGDisplayCreateUUIDFromDisplayID(display_id.0)) };
+    let uuid_ref =
+        unsafe { take_create_rule_result(CGDisplayCreateUUIDFromDisplayID(display_id.0)) };
     let Some(uuid_ref) = uuid_ref else {
         return None;
     };

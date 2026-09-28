@@ -205,10 +205,8 @@ pub fn create_cfarray_of_cfnumbers<T: Copy>(
     let numbers: Vec<CFRetained<CFNumber>> = values
         .iter()
         .map(|value| {
-            unsafe {
-                CFNumberCreate(None, number_type, (value as *const T).cast::<c_void>())
-            }
-            .unwrap()
+            unsafe { CFNumberCreate(None, number_type, (value as *const T).cast::<c_void>()) }
+                .unwrap()
         })
         .collect();
     let mut pointers: Vec<*const c_void> = numbers

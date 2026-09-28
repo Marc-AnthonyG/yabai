@@ -44,7 +44,10 @@ impl Response {
     }
 
     pub fn write_bytes_stopping_at_first_null(&mut self, bytes: &[u8]) {
-        let end = bytes.iter().position(|byte| *byte == 0).unwrap_or(bytes.len());
+        let end = bytes
+            .iter()
+            .position(|byte| *byte == 0)
+            .unwrap_or(bytes.len());
         self.write_bytes(&bytes[..end]);
     }
 

@@ -65,5 +65,7 @@ pub(crate) fn set_label_of_display_removing_it_from_any_other_display(
         }
     }
 
-    display_manager.labels.push(DisplayLabel { display_id, label });
+    display_manager
+        .labels
+        .push(DisplayLabel { display_id, label });
 }

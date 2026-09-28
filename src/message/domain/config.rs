@@ -1295,7 +1295,10 @@ pub(crate) fn run_config_command(
                             mouse_drag_state,
                         );
                     } else {
-                        daemon_fail!(response, "cannot set layout for a macOS fullscreen space!\n");
+                        daemon_fail!(
+                            response,
+                            "cannot set layout for a macOS fullscreen space!\n"
+                        );
                     }
                 } else if is_token_equal_to(
                     value,
@@ -1322,7 +1325,10 @@ pub(crate) fn run_config_command(
                             mouse_drag_state,
                         );
                     } else {
-                        daemon_fail!(response, "cannot set layout for a macOS fullscreen space!\n");
+                        daemon_fail!(
+                            response,
+                            "cannot set layout for a macOS fullscreen space!\n"
+                        );
                     }
                 } else if is_token_equal_to(
                     value,
@@ -1342,7 +1348,10 @@ pub(crate) fn run_config_command(
                             mouse_drag_state,
                         );
                     } else {
-                        daemon_fail!(response, "cannot set layout for a macOS fullscreen space!\n");
+                        daemon_fail!(
+                            response,
+                            "cannot set layout for a macOS fullscreen space!\n"
+                        );
                     }
                 } else {
                     daemon_fail_with_unknown_value_given_to_command_for_domain(
@@ -1765,8 +1774,8 @@ pub(crate) fn run_config_command(
             let mut bottom: libc::c_int = 0;
             let mut mode = [0 as libc::c_char; 6];
             let value = message_cursor.take_next_token();
-            let subject = std::ffi::CString::new(value.bytes(message_cursor.bytes()))
-                .unwrap_or_default();
+            let subject =
+                std::ffi::CString::new(value.bytes(message_cursor.bytes())).unwrap_or_default();
             let converted = unsafe {
                 libc::sscanf(
                     subject.as_ptr(),

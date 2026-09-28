@@ -93,8 +93,7 @@ pub(crate) fn queue_pending_signal_for_its_subscribers(
             // The dt threshold below is triple the average interval computed, to allow for some leeway.
             //
 
-            let delta_time =
-                unsafe { GetCurrentEventTime() } - process_manager.switch_event_time;
+            let delta_time = unsafe { GetCurrentEventTime() } - process_manager.switch_event_time;
             if delta_time >= f64::from(0.05f32) {
                 event_signal.active = i32::from(process_manager.front_process_id == process_id);
             } else {
@@ -128,9 +127,7 @@ pub(crate) fn queue_pending_signal_for_its_subscribers(
             event_signal.app = Some(application.name.to_string());
             event_signal.active = i32::from(process_manager.front_process_id == process_id);
         }
-        SignalType::WindowCreated
-        | SignalType::WindowFocused
-        | SignalType::WindowDeminimized => {
+        SignalType::WindowCreated | SignalType::WindowFocused | SignalType::WindowDeminimized => {
             let SignalContext::Window(window_id) = context else {
                 return;
             };
@@ -166,11 +163,9 @@ pub(crate) fn queue_pending_signal_for_its_subscribers(
                 format!("{}", window.id.0 as i32),
             ));
 
-            let application = window
-                .application
-                .and_then(|application_process_id| {
-                    window_manager.application.find(&application_process_id)
-                });
+            let application = window.application.and_then(|application_process_id| {
+                window_manager.application.find(&application_process_id)
+            });
             event_signal.app = match application {
                 Some(application) => Some(application.name.to_string()),
                 None => Some(String::from("<unknown>")),

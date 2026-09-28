@@ -115,10 +115,7 @@ unsafe fn undo_premultiplied_alpha_of_four_pixels_and_make_them_opaque(pixel: *m
             _mm_or_si128(_mm_or_si128(source_red, source_green), source_blue),
             source_alpha,
         );
-        let masked_color = _mm_or_si128(
-            _mm_and_si128(mask, color),
-            _mm_andnot_si128(mask, source),
-        );
+        let masked_color = _mm_or_si128(_mm_and_si128(mask, color), _mm_andnot_si128(mask, source));
         _mm_storeu_si128(pixel.cast::<__m128i>(), masked_color);
     }
 }

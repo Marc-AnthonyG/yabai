@@ -243,10 +243,9 @@ pub(crate) fn make_scripting_addition_binaries_executable_and_ad_hoc_signed() {
 }
 
 pub(crate) fn terminate_dock_so_it_restarts() {
-    let dock =
-        NSRunningApplication::runningApplicationsWithBundleIdentifier(&NSString::from_str(
-            "com.apple.dock",
-        ));
+    let dock = NSRunningApplication::runningApplicationsWithBundleIdentifier(&NSString::from_str(
+        "com.apple.dock",
+    ));
     unsafe { dock.makeObjectsPerformSelector(sel!(terminate)) };
 }
 
@@ -259,7 +258,13 @@ pub(crate) fn store_scripting_addition_socket_path_of_sudo_user() -> bool {
     if sudo_user_id.is_null() {
         return false;
     }
-    if unsafe { libc::sscanf(sudo_user_id, c"%u".as_ptr(), &mut user_id as *mut libc::uid_t) } != 1
+    if unsafe {
+        libc::sscanf(
+            sudo_user_id,
+            c"%u".as_ptr(),
+            &mut user_id as *mut libc::uid_t,
+        )
+    } != 1
     {
         return false;
     }
@@ -313,7 +318,9 @@ pub(crate) fn is_scripting_addition_missing_or_outdated() -> i32 {
                 if ns_version_utf8_string.is_null() {
                     None
                 } else {
-                    unsafe { CStr::from_ptr(ns_version_utf8_string) }.to_str().ok()
+                    unsafe { CStr::from_ptr(ns_version_utf8_string) }
+                        .to_str()
+                        .ok()
                 },
                 Some(SCRIPTING_ADDITION_VERSION),
             );
@@ -426,7 +433,10 @@ pub(crate) fn validate_loaded_scripting_addition_updating_it_if_outdated() -> i3
         return install_scripting_addition_bundle_and_restart_dock();
     }
 
-    notify!("scripting-addition", "payload is outdated, restarting Dock.app..");
+    notify!(
+        "scripting-addition",
+        "payload is outdated, restarting Dock.app.."
+    );
     terminate_dock_so_it_restarts();
     0
 }
@@ -573,7 +583,10 @@ pub(crate) fn install_and_load_scripting_addition() -> i32 {
 
         if !run_loader_to_inject_payload_into_dock() {
             warn!("yabai: scripting-addition failed to inject payload into Dock.app!\n");
-            notify!("scripting-addition", "failed to inject payload into Dock.app!");
+            notify!(
+                "scripting-addition",
+                "failed to inject payload into Dock.app!"
+            );
             result = 1;
             return result;
         }

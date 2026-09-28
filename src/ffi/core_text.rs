@@ -5,7 +5,7 @@ use objc2_core_text::{
     kCTForegroundColorFromContextAttributeName,
 };
 
-use crate::ffi::core_foundation::kCFBooleanTrue;
+use crate::ffi::core_foundation::CFBoolean;
 
 pub struct TypographicBoundsOfLine {
     pub ascent: f64,
@@ -41,7 +41,7 @@ pub fn create_line_of_text_coloured_by_the_context_fill(
             kCTForegroundColorFromContextAttributeName,
         ]
     };
-    let values: [&CFType; 2] = [font, kCFBooleanTrue()];
+    let values: [&CFType; 2] = [font, CFBoolean::new(true)];
     let attributes = CFDictionary::from_slices(&keys, &values);
     let attributed_text =
         unsafe { CFAttributedString::new(None, Some(&text), Some(attributes.as_opaque())) }?;

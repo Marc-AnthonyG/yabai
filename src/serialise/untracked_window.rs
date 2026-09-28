@@ -4,7 +4,6 @@ use std::sync::Mutex;
 use crate::display::arrangement::query_arrangement_index_of_display;
 use crate::display::manager::DisplayManager;
 use crate::ffi::core_foundation::CGRect;
-use crate::ffi::libsystem::{PROC_PIDPATHINFO_MAXSIZE, proc_name};
 use crate::ffi::skylight::{SLSConnectionGetPID, SLSGetWindowBounds, SLSGetWindowOwner};
 use crate::layout::tree::{WINDOW_NODE_CHILD_NAMES, WINDOW_NODE_SPLIT_NAMES, WindowNodeChild};
 use crate::serialise::window::{
@@ -36,6 +35,7 @@ use crate::window::model::{
     query_window_level_from_window_server, query_window_opacity_from_window_server,
     query_window_sub_level_from_window_server, query_window_title_from_window_server,
 };
+use libc::proc_name;
 
 pub(crate) fn write_untracked_window_as_json_object(
     response: &mut Response,
@@ -100,8 +100,8 @@ pub(crate) fn write_untracked_window_as_json_object(
             response.write(format_args!(",\n"));
         }
 
-        static PROCESS_NAME_BUFFER: Mutex<[u8; PROC_PIDPATHINFO_MAXSIZE]> =
-            Mutex::new([0u8; PROC_PIDPATHINFO_MAXSIZE]);
+        static PROCESS_NAME_BUFFER: Mutex<[u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize]> =
+            Mutex::new([0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize]);
         let mut process_name = PROCESS_NAME_BUFFER.lock().unwrap();
         unsafe {
             proc_name(

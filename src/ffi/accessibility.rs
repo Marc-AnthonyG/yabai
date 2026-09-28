@@ -2,7 +2,6 @@
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
 
-use core::ffi::c_void;
 use core::ptr::NonNull;
 use std::sync::OnceLock;
 
@@ -18,11 +17,7 @@ pub use objc2_application_services::{
     kAXTrustedCheckOptionPrompt,
 };
 
-use crate::ffi::core_foundation::{
-    CFDictionaryCreate, CFIndex, CFRetainedAssumedSendAndSync, as_cftype, cfboolean_get_value,
-    kCFBooleanFalse, kCFBooleanTrue, kCFCopyStringDictionaryKeyCallBacks,
-    kCFTypeDictionaryValueCallBacks, take_create_rule_result,
-};
+use crate::ffi::core_foundation::{CFRetainedAssumedSendAndSync, take_create_rule_result};
 
 pub type AXUIElementRef = *const AXUIElement;
 pub type AXObserverRef = *mut AXObserver;
@@ -113,21 +108,11 @@ pub fn accessibility_error_constant_name(error: AXError) -> &'static str {
 }
 
 pub fn query_accessibility_trust_prompting_the_user_if_untrusted() -> bool {
-    let mut keys: [*const c_void; 1] =
-        [(unsafe { kAXTrustedCheckOptionPrompt } as *const CFString).cast::<c_void>()];
-    let mut values: [*const c_void; 1] = [(kCFBooleanTrue() as *const CFBoolean).cast::<c_void>()];
-    let options: objc2_core_foundation::CFRetained<CFDictionary> = unsafe {
-        CFDictionaryCreate(
-            None,
-            keys.as_mut_ptr(),
-            values.as_mut_ptr(),
-            keys.len() as CFIndex,
-            &raw const kCFCopyStringDictionaryKeyCallBacks,
-            &raw const kCFTypeDictionaryValueCallBacks,
-        )
-    }
-    .unwrap();
-    unsafe { AXIsProcessTrustedWithOptions(Some(&options)) }
+    let options = CFDictionary::from_slices(
+        &[unsafe { kAXTrustedCheckOptionPrompt }],
+        &[CFBoolean::new(true)],
+    );
+    unsafe { AXIsProcessTrustedWithOptions(Some(options.as_opaque())) }
 }
 
 pub fn query_accessibility_trust_without_prompting_the_user() -> bool {
@@ -159,9 +144,9 @@ pub fn read_whether_enhanced_user_interface_is_enabled(reference: &AXUIElement) 
     } == kAXErrorSuccess
     {
         if let Some(owned_value) = unsafe { take_create_rule_result(value) } {
-            result = cfboolean_get_value(unsafe {
-                &*((&*owned_value as *const CFType).cast::<CFBoolean>())
-            });
+            result = owned_value
+                .downcast_ref::<CFBoolean>()
+                .is_some_and(CFBoolean::as_bool);
         }
     }
 
@@ -180,7 +165,7 @@ impl Drop for RestoreEnhancedUserInterfaceOnDrop<'_> {
                 AXUIElementSetAttributeValue(
                     self.application_reference,
                     kAXEnhancedUserInterface(),
-                    as_cftype(kCFBooleanTrue()),
+                    CFBoolean::new(true),
                 )
             };
         }
@@ -198,7 +183,7 @@ pub fn with_enhanced_user_interface_disabled<Result>(
             AXUIElementSetAttributeValue(
                 application_reference,
                 kAXEnhancedUserInterface(),
-                as_cftype(kCFBooleanFalse()),
+                CFBoolean::new(false),
             )
         };
     }

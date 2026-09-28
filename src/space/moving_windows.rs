@@ -4,7 +4,7 @@ use objc2::ffi::objc_msgSend;
 use objc2::msg_send;
 use objc2::runtime::{AnyClass, AnyObject, Sel};
 
-use crate::ffi::core_foundation::{CFRetained, create_cfarray_of_cfnumbers, kCFNumberSInt32Type};
+use crate::ffi::core_foundation::{CFRetained, create_cfarray_of_window_ids};
 use crate::ffi::skylight::{
     SLSMoveWindowsToManagedSpace, SLSSetWindowListWorkspace, SLSSpaceSetCompatID,
 };
@@ -30,7 +30,7 @@ pub(crate) fn move_windows_to_space_by_whichever_mechanism_this_macos_supports(
     if let Some(perform_operation) =
         resolved_sls_perform_asynchronous_bridged_window_management_operation_function()
     {
-        let window_list_ref = create_cfarray_of_cfnumbers(&window_id_list, kCFNumberSInt32Type);
+        let window_list_ref = create_cfarray_of_window_ids(&window_id_list);
         let Some(class) = AnyClass::get(c"SLSBridgedMoveWindowsToManagedSpaceOperation") else {
             return;
         };
@@ -55,7 +55,7 @@ pub(crate) fn move_windows_to_space_by_whichever_mechanism_this_macos_supports(
         let _: () = unsafe { msg_send![operation, release] };
         drop(window_list_ref);
     } else if !is_workaround_needed_to_move_windows_between_spaces() {
-        let window_list_ref = create_cfarray_of_cfnumbers(&window_id_list, kCFNumberSInt32Type);
+        let window_list_ref = create_cfarray_of_window_ids(&window_id_list);
         unsafe { SLSMoveWindowsToManagedSpace(connection_id, &*window_list_ref, space_id.0) };
         drop(window_list_ref);
     } else if !move_window_list_to_space_through_scripting_addition(space_id, window_list) {
@@ -82,7 +82,7 @@ pub(crate) fn move_window_to_space_by_whichever_mechanism_this_macos_supports(
     if let Some(perform_operation) =
         resolved_sls_perform_asynchronous_bridged_window_management_operation_function()
     {
-        let window_list_ref = create_cfarray_of_cfnumbers(&[window_id_value], kCFNumberSInt32Type);
+        let window_list_ref = create_cfarray_of_window_ids(&[window_id_value]);
         let Some(class) = AnyClass::get(c"SLSBridgedMoveWindowsToManagedSpaceOperation") else {
             return;
         };
@@ -107,7 +107,7 @@ pub(crate) fn move_window_to_space_by_whichever_mechanism_this_macos_supports(
         let _: () = unsafe { msg_send![operation, release] };
         drop(window_list_ref);
     } else if !is_workaround_needed_to_move_windows_between_spaces() {
-        let window_list_ref = create_cfarray_of_cfnumbers(&[window_id_value], kCFNumberSInt32Type);
+        let window_list_ref = create_cfarray_of_window_ids(&[window_id_value]);
         unsafe { SLSMoveWindowsToManagedSpace(connection_id, &*window_list_ref, space_id.0) };
         drop(window_list_ref);
     } else if !move_window_to_space_through_scripting_addition(space_id, window_id) {

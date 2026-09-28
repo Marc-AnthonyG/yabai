@@ -8,7 +8,7 @@ use crate::event::queue::{Event, post_event_to_event_loop};
 use crate::ffi::accessibility::{kAXDrawerRole, kAXSheetRole};
 use crate::ffi::core_foundation::{
     CFArrayGetCount, CFEqual, CFIndex, CFNumber, CGPoint, as_cftype, cfarray_borrow_value_at_index,
-    cfnumber_read_i32, take_create_rule_result,
+    take_create_rule_result,
 };
 use crate::ffi::core_graphics::CGRectContainsRect;
 use crate::ffi::dispatch::dispatch_after_on_main_queue;
@@ -109,7 +109,7 @@ pub(crate) fn focus_the_window_at_point_the_way_focus_follows_mouse_does(
                         cfarray_borrow_value_at_index::<CFNumber>(&window_list, index as CFIndex)
                     };
                     let child_window_id =
-                        WindowId(child_number.map_or(0, cfnumber_read_i32) as u32);
+                        WindowId(child_number.and_then(CFNumber::as_i32).unwrap_or(0) as u32);
                     let child = tracked_window_with_id(window_manager, child_window_id);
                     let Some(child) = child else {
                         continue;

@@ -64,23 +64,10 @@ fn build_launchd_service_plist_contents() -> String {
     };
     let path_env = path_env.to_string_lossy();
 
-    let mut executable_path_buffer = [0u8; 4096];
-    let mut executable_path_size: u32 = executable_path_buffer.len() as u32;
-    if unsafe {
-        crate::ffi::libsystem::_NSGetExecutablePath(
-            executable_path_buffer.as_mut_ptr() as *mut libc::c_char,
-            &mut executable_path_size,
-        )
-    } < 0
-    {
+    let Ok(executable_path) = std::env::current_exe() else {
         error!("yabai: unable to retrieve path of executable! abort..\n");
-    }
-    let nul_position = executable_path_buffer
-        .iter()
-        .position(|byte| *byte == 0)
-        .unwrap_or(executable_path_buffer.len());
-    let executable_path =
-        String::from_utf8_lossy(&executable_path_buffer[..nul_position]).into_owned();
+    };
+    let executable_path = executable_path.to_string_lossy();
 
     format!(
         launchd_service_plist_template!(),

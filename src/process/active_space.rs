@@ -1,7 +1,7 @@
 use crate::display::identity::query_displays_active_for_drawing;
 use crate::display::spaces::query_spaces_of_display;
 use crate::ffi::core_foundation::{
-    cfarray_count, create_cfarray_of_cfnumbers, kCFNumberSInt64Type, take_create_rule_result,
+    cfarray_count, create_cfarray_of_space_ids, take_create_rule_result,
 };
 use crate::ffi::skylight::{
     SLSCopyWindowsWithOptionsAndTags, SLSWindowIteratorAdvance, SLSWindowIteratorGetAttributes,
@@ -37,7 +37,7 @@ pub(crate) fn query_space_of_first_window_owned_by_connection(connection: i32) -
     let mut clear_tags: u64 = 0;
     let options: u32 = 0x2;
 
-    let space_list_ref = create_cfarray_of_cfnumbers(&space_list, kCFNumberSInt64Type);
+    let space_list_ref = create_cfarray_of_space_ids(&space_list);
     let window_list_ref = unsafe {
         SLSCopyWindowsWithOptionsAndTags(
             *SKYLIGHT_CONNECTION_ID.get().unwrap(),

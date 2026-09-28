@@ -1,8 +1,8 @@
 #![allow(deprecated)]
 
 use crate::ffi::core_foundation::{
-    CFType, CGPoint, CGRect, CGSize, create_cfarray_of_cfnumbers,
-    disable_window_shadow_through_skylight, kCFNumberSInt32Type, take_create_rule_result,
+    CFType, CGPoint, CGRect, CGSize, create_cfarray_of_window_ids,
+    disable_window_shadow_through_skylight, take_create_rule_result,
 };
 use crate::ffi::core_graphics::{
     CGAffineTransformIdentity, CGContext, CGContextAddPath, CGContextClearRect, CGContextDrawPath,
@@ -101,7 +101,7 @@ pub(crate) fn create_group_header_window_on_space(
     unsafe { SLSSetWindowOpacity(connection, header_window_id, false) };
     unsafe { SLSSetWindowAlpha(connection, header_window_id, 1.0f32) };
 
-    let window_list = create_cfarray_of_cfnumbers(&[header_window_id], kCFNumberSInt32Type);
+    let window_list = create_cfarray_of_window_ids(&[header_window_id]);
     unsafe { SLSMoveWindowsToManagedSpace(connection, &*window_list, space_id.0) };
 
     let context = unsafe { SLWindowContextCreate(connection, header_window_id, std::ptr::null()) };

@@ -3,7 +3,6 @@ use crate::display::identity::copy_uuid_of_display;
 use crate::display::labels::label_of_display;
 use crate::display::manager::DisplayManager;
 use crate::display::spaces::query_spaces_of_display;
-use crate::ffi::core_foundation::cfstring_to_string;
 use crate::ffi::core_graphics::CGDisplayBounds;
 use crate::space::lookup::query_mission_control_index_of_space;
 use crate::support::handles::DisplayId;
@@ -64,7 +63,7 @@ pub(crate) fn write_display_as_json_object(
         let mut uuid: Option<String> = None;
         let uuid_ref = copy_uuid_of_display(display_id);
         if let Some(uuid_ref) = uuid_ref {
-            uuid = cfstring_to_string(uuid_ref.as_ref());
+            uuid = Some(uuid_ref.as_ref().to_string());
         }
 
         response.write(format_args!(

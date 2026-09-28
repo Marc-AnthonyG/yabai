@@ -8,7 +8,7 @@ use crate::display::spaces::{
     is_display_animating_a_space_transition, query_current_space_of_display,
 };
 use crate::ffi::accessibility::{AXUIElementSetAttributeValue, kAXFullscreenAttribute};
-use crate::ffi::core_foundation::{as_cftype, kCFBooleanFalse, kCFBooleanTrue};
+use crate::ffi::core_foundation::CFBoolean;
 use crate::layout::settings::{ViewFlag, ViewLayout};
 use crate::layout::tree::{leaf_holding_window, move_windows_below_node_into_their_areas};
 use crate::scripting_addition::client::scale_window_through_scripting_addition;
@@ -105,7 +105,7 @@ pub(crate) fn toggle_window_native_fullscreen(
                 AXUIElementSetAttributeValue(
                     &*window.element_ref,
                     kAXFullscreenAttribute(),
-                    as_cftype(kCFBooleanTrue()),
+                    CFBoolean::new(true),
                 )
             };
         } else {
@@ -113,7 +113,7 @@ pub(crate) fn toggle_window_native_fullscreen(
                 AXUIElementSetAttributeValue(
                     &*window.element_ref,
                     kAXFullscreenAttribute(),
-                    as_cftype(kCFBooleanFalse()),
+                    CFBoolean::new(false),
                 )
             };
         }

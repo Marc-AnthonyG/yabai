@@ -17,9 +17,8 @@ use crate::ffi::color_sync::CGDisplayGetDisplayIDFromUUID;
 use crate::ffi::core_foundation::{
     CFBoolean, CFEqual, CFIndex, CFNumber, CFRetainedAssumedSendAndSync, CFString, CFType,
     CFUUIDCreateFromString, CGPoint, CGRect, as_cftype, cfarray_borrow_value_at_index,
-    cfarray_count, cfboolean_get_value, cfnumber_read_u64_widening, cfstring_to_string,
-    create_cfarray_of_cfnumbers, kCFNumberSInt32Type, take_create_rule_result,
-    window_title_property_key,
+    cfarray_count, cfnumber_read_u64_widening, create_cfarray_of_window_ids,
+    take_create_rule_result, window_title_property_key,
 };
 use crate::ffi::mach_port::{
     MACH_RCV_MSG, MACH_SEND_MSG, NDR_record, NDR_record_t, mach_msg, mach_msg_header_t,
@@ -175,7 +174,7 @@ pub(crate) fn query_space_holding_window(window_id: WindowId) -> SpaceId {
     let mut space_id: u64 = 0;
 
     let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
-    let window_list_ref = create_cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
+    let window_list_ref = create_cfarray_of_window_ids(&[window_id.0]);
     let space_list_ref = unsafe {
         take_create_rule_result(SLSCopySpacesForWindows(
             connection_id,
@@ -207,7 +206,7 @@ pub(crate) fn query_every_space_holding_window(window_id: WindowId) -> Vec<Space
     let mut space_list: Vec<SpaceId> = Vec::new();
 
     let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
-    let window_list_ref = create_cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
+    let window_list_ref = create_cfarray_of_window_ids(&[window_id.0]);
     let Some(space_list_ref) = (unsafe {
         take_create_rule_result(SLSCopySpacesForWindows(
             connection_id,
@@ -251,14 +250,15 @@ pub(crate) fn query_window_title_from_window_server(window_id: WindowId) -> Stri
         return String::new();
     };
 
-    let result = cfstring_to_string(unsafe { &*((&*value as *const CFType).cast::<CFString>()) });
-    drop(value);
-    result.unwrap_or_default()
+    value
+        .downcast_ref::<CFString>()
+        .map(ToString::to_string)
+        .unwrap_or_default()
 }
 
 pub(crate) fn window_title_as_string(window: &Window) -> String {
     match &window.title {
-        Some(title) => cfstring_to_string(title.as_ref()).unwrap_or_default(),
+        Some(title) => title.as_ref().to_string(),
         None => String::new(),
     }
 }
@@ -422,8 +422,9 @@ pub(crate) fn is_window_minimized_according_to_accessibility(window: &Window) ->
     } == kAXErrorSuccess
     {
         if let Some(value) = unsafe { take_create_rule_result(value) } {
-            result =
-                cfboolean_get_value(unsafe { &*((&*value as *const CFType).cast::<CFBoolean>()) });
+            result = value
+                .downcast_ref::<CFBoolean>()
+                .is_some_and(CFBoolean::as_bool);
             drop(value);
         }
     }
@@ -444,8 +445,9 @@ pub(crate) fn is_window_in_native_fullscreen_according_to_accessibility(window: 
     } == kAXErrorSuccess
     {
         if let Some(value) = unsafe { take_create_rule_result(value) } {
-            result =
-                cfboolean_get_value(unsafe { &*((&*value as *const CFType).cast::<CFBoolean>()) });
+            result = value
+                .downcast_ref::<CFBoolean>()
+                .is_some_and(CFBoolean::as_bool);
             drop(value);
         }
     }
@@ -456,7 +458,7 @@ pub(crate) fn is_window_in_native_fullscreen_according_to_accessibility(window: 
 pub(crate) fn is_window_on_more_than_one_space(window_id: WindowId) -> bool {
     let mut result = false;
 
-    let window_list_ref = create_cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
+    let window_list_ref = create_cfarray_of_window_ids(&[window_id.0]);
     let space_list_ref = unsafe {
         take_create_rule_result(SLSCopySpacesForWindows(
             *SKYLIGHT_CONNECTION_ID.get().unwrap(),
@@ -494,7 +496,7 @@ pub(crate) fn query_parent_window_from_window_server(window_id: WindowId) -> Win
     let mut parent_window_id: u32 = 0;
     let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
 
-    let window_ref = create_cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
+    let window_ref = create_cfarray_of_window_ids(&[window_id.0]);
 
     let query =
         unsafe { take_create_rule_result(SLSWindowQueryWindows(connection_id, &*window_ref, 1)) };
@@ -525,7 +527,7 @@ pub(crate) fn query_window_level_from_window_server(window_id: WindowId) -> i32 
         || is_running_on_macos_sequoia()
         || is_running_on_macos_tahoe()
     {
-        let window_ref = create_cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
+        let window_ref = create_cfarray_of_window_ids(&[window_id.0]);
 
         let query = unsafe {
             take_create_rule_result(SLSWindowQueryWindows(connection_id, &*window_ref, 1))
@@ -612,7 +614,7 @@ pub(crate) fn query_window_sub_level_from_window_server(window_id: WindowId) -> 
 pub(crate) fn query_window_tags_from_window_server(window_id: WindowId) -> u64 {
     let mut tags: u64 = 0;
     let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
-    let window_ref = create_cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
+    let window_ref = create_cfarray_of_window_ids(&[window_id.0]);
 
     let query =
         unsafe { take_create_rule_result(SLSWindowQueryWindows(connection_id, &*window_ref, 1)) };
@@ -655,8 +657,7 @@ pub(crate) fn window_role_as_string(window: &Window) -> String {
         return String::new();
     };
 
-    let result = cfstring_to_string(role);
-    result.unwrap_or_default()
+    role.to_string()
 }
 
 pub(crate) fn copy_window_subrole_through_accessibility(window: &Window) -> Option<CFStringOwned> {
@@ -680,8 +681,7 @@ pub(crate) fn window_subrole_as_string(window: &Window) -> String {
         return String::new();
     };
 
-    let result = cfstring_to_string(subrole);
-    result.unwrap_or_default()
+    subrole.to_string()
 }
 
 pub(crate) fn is_window_root_according_to_accessibility(

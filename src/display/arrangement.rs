@@ -12,7 +12,7 @@ use crate::display::manager::{DisplayArrangementOrder, DisplayManager};
 use crate::ffi::CFStringOwned;
 use crate::ffi::core_foundation::{
     CFArray, CFArrayCreateMutableCopy, CFArrayGetCount, CFArraySortValues, CFComparisonResult,
-    CFEqual, CFIndex, CFRangeMake, CFRetained, CFRetainedAssumedSendAndSync, CFString, CFType,
+    CFEqual, CFIndex, CFRange, CFRetained, CFRetainedAssumedSendAndSync, CFString, CFType,
     as_cftype, cfarray_borrow_value_at_index, take_create_rule_result,
 };
 use crate::ffi::core_graphics::CGDisplayBounds;
@@ -107,7 +107,7 @@ pub(crate) fn query_arrangement_index_of_display(
             unsafe {
                 CFArraySortValues(
                     Some(&mutable_displays),
-                    CFRangeMake(0, count as CFIndex),
+                    CFRange::new(0, count as CFIndex),
                     Some(compare_display_uuids_by_center_along_arrangement_axis),
                     display_manager.order as usize as *mut c_void,
                 )
@@ -154,7 +154,7 @@ pub(crate) fn copy_uuid_of_display_at_arrangement_index(
                 unsafe {
                     CFArraySortValues(
                         Some(&mutable_displays),
-                        CFRangeMake(0, count as CFIndex),
+                        CFRange::new(0, count as CFIndex),
                         Some(compare_display_uuids_by_center_along_arrangement_axis),
                         display_manager.order as usize as *mut c_void,
                     )

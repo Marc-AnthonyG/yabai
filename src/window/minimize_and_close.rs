@@ -7,9 +7,7 @@ use crate::ffi::accessibility::{
     AXUIElementSetAttributeValue, kAXCloseButtonAttribute, kAXErrorSuccess, kAXMinimizedAttribute,
     kAXPressAction,
 };
-use crate::ffi::core_foundation::{
-    CFType, as_cftype, kCFBooleanFalse, kCFBooleanTrue, take_create_rule_result,
-};
+use crate::ffi::core_foundation::{CFBoolean, CFType, take_create_rule_result};
 use crate::support::handles::WindowId;
 use crate::window::manager::{WindowManager, WindowOperationOutcome};
 use crate::window::model::{WindowFlag, can_window_be_minimized_through_accessibility};
@@ -33,7 +31,7 @@ pub(crate) fn minimize_window_through_accessibility(
         AXUIElementSetAttributeValue(
             &*window.element_ref,
             kAXMinimizedAttribute(),
-            as_cftype(kCFBooleanTrue()),
+            CFBoolean::new(true),
         )
     };
     if result == kAXErrorSuccess {
@@ -59,7 +57,7 @@ pub(crate) fn deminimize_window_through_accessibility(
         AXUIElementSetAttributeValue(
             &*window.element_ref,
             kAXMinimizedAttribute(),
-            as_cftype(kCFBooleanFalse()),
+            CFBoolean::new(false),
         )
     };
     if result == kAXErrorSuccess {

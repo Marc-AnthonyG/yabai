@@ -1,6 +1,5 @@
 use crate::display::arrangement::query_arrangement_index_of_display;
 use crate::display::manager::DisplayManager;
-use crate::ffi::core_foundation::cfstring_to_string;
 use crate::layout::settings::VIEW_LAYOUT_NAMES;
 use crate::layout::tree::{first_leaf_below_node, last_leaf_below_node};
 use crate::space::labels::label_of_space;
@@ -81,7 +80,7 @@ pub(crate) fn write_space_as_json_object(
             .view
             .get(&space_id)
             .and_then(|view| view.uuid.as_ref())
-            .and_then(|uuid| cfstring_to_string(uuid.as_ref()));
+            .map(|uuid| uuid.as_ref().to_string());
         response.write(format_args!(
             "\t\"uuid\":\"{}\"",
             uuid.as_deref().unwrap_or("<unknown>")

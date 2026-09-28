@@ -3,8 +3,7 @@
 use crate::display::spaces::query_current_space_of_display;
 use crate::ffi::color_sync::CGDisplayGetDisplayIDFromUUID;
 use crate::ffi::core_foundation::{
-    CFUUIDCreateFromString, cfarray_count, create_cfarray_of_cfnumbers, kCFNumberSInt64Type,
-    take_create_rule_result,
+    CFUUIDCreateFromString, cfarray_count, create_cfarray_of_space_ids, take_create_rule_result,
 };
 use crate::ffi::skylight::{
     SLSCopyManagedDisplayForSpace, SLSCopyWindowsWithOptionsAndTags, SLSSpaceGetType,
@@ -47,7 +46,7 @@ pub(crate) fn query_windows_on_spaces_owned_by_connection(
     let options: u32 = if include_minimized { 0x7 } else { 0x2 };
 
     let space_identifier_list: Vec<u64> = space_list.iter().map(|space_id| space_id.0).collect();
-    let space_list_ref = create_cfarray_of_cfnumbers(&space_identifier_list, kCFNumberSInt64Type);
+    let space_list_ref = create_cfarray_of_space_ids(&space_identifier_list);
     let window_list_ref = unsafe {
         take_create_rule_result(SLSCopyWindowsWithOptionsAndTags(
             *SKYLIGHT_CONNECTION_ID.get().unwrap(),

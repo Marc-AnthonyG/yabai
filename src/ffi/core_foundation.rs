@@ -2,34 +2,26 @@
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
 
-use core::ffi::{c_char, c_void};
+use core::ffi::c_void;
 use core::ptr::NonNull;
 use std::sync::OnceLock;
 
 pub use objc2_core_foundation::{
     CFArray, CFBoolean, CFComparisonResult, CFData, CFDictionary, CFIndex, CFMachPort,
-    CFMutableData, CFNumber, CFNumberType, CFRange, CFRetained, CFRunLoopSource, CFString,
-    CFStringEncoding, CFType, CGAffineTransform, CGFloat, CGPoint, CGRect, CGSize, Type,
+    CFMutableData, CFNumber, CFNumberType, CFRange, CFRetained, CFRunLoopSource, CFString, CFType,
+    CGAffineTransform, CGFloat, CGPoint, CGRect, CGSize, Type,
 };
 
 pub use objc2_core_foundation::{
-    CFArrayCreate, CFArrayCreateMutableCopy, CFArrayGetCount, CFArrayGetValueAtIndex,
-    CFArraySortValues, CFBooleanGetValue, CFDataCreateMutable, CFDataGetMutableBytePtr,
-    CFDataIncreaseLength, CFDictionaryCreate, CFDictionaryGetValue, CFEqual,
-    CFMachPortCreateRunLoopSource, CFMachPortInvalidate, CFNumberCreate, CFNumberGetType,
+    CFArrayCreateMutableCopy, CFArrayGetCount, CFArrayGetValueAtIndex, CFArraySortValues,
+    CFDataCreateMutable, CFDataGetMutableBytePtr, CFDataIncreaseLength, CFDictionaryGetValue,
+    CFEqual, CFMachPortCreateRunLoopSource, CFMachPortInvalidate, CFNumberGetType,
     CFNumberGetValue, CFRunLoopAddSource, CFRunLoopGetMain, CFRunLoopRemoveSource,
-    CFRunLoopSourceInvalidate, CFStringGetCString, CFStringGetLength,
-    CFStringGetMaximumSizeForEncoding, CFUUIDCreateFromString, CFUUIDCreateString,
-    kCFCopyStringDictionaryKeyCallBacks, kCFRunLoopCommonModes, kCFRunLoopDefaultMode,
-    kCFTypeArrayCallBacks, kCFTypeDictionaryKeyCallBacks, kCFTypeDictionaryValueCallBacks,
+    CFRunLoopSourceInvalidate, CFUUIDCreateFromString, CFUUIDCreateString, kCFRunLoopCommonModes,
+    kCFRunLoopDefaultMode,
 };
 
 use crate::ffi::skylight::SLSWindowSetShadowProperties;
-
-pub const kCFNumberSInt32Type: CFNumberType = CFNumberType::SInt32Type;
-pub const kCFNumberSInt64Type: CFNumberType = CFNumberType::SInt64Type;
-
-pub const K_CF_STRING_ENCODING_UTF8: CFStringEncoding = 0x0800_0100;
 
 pub struct CFRetainedAssumedSendAndSync<T: ?Sized>(pub CFRetained<T>);
 
@@ -67,20 +59,6 @@ define_cached_cfstring_constants! {
     show_all_windows_dock_notification_name          => "com.apple.expose.awake",
     show_desktop_dock_notification_name              => "com.apple.showdesktop.awake",
     show_front_windows_dock_notification_name        => "com.apple.expose.front.awake",
-}
-
-pub fn kCFBooleanTrue() -> &'static CFBoolean {
-    unsafe { objc2_core_foundation::kCFBooleanTrue }
-        .expect("kCFBooleanTrue is a CoreFoundation constant")
-}
-
-pub fn kCFBooleanFalse() -> &'static CFBoolean {
-    unsafe { objc2_core_foundation::kCFBooleanFalse }
-        .expect("kCFBooleanFalse is a CoreFoundation constant")
-}
-
-pub fn CFRangeMake(location: CFIndex, length: CFIndex) -> CFRange {
-    CFRange::new(location, length)
 }
 
 pub unsafe fn take_create_rule_result<T: ?Sized + Type>(
@@ -123,103 +101,32 @@ pub fn cfnumber_read_u64_widening(number: &CFNumber) -> u64 {
     destination
 }
 
-pub fn cfnumber_read_i32(number: &CFNumber) -> i32 {
-    let mut destination: i32 = 0;
-    unsafe {
-        CFNumberGetValue(
-            number,
-            kCFNumberSInt32Type,
-            (&mut destination as *mut i32).cast::<c_void>(),
-        );
-    }
-    destination
-}
-
-pub fn cfboolean_get_value(boolean: &CFBoolean) -> bool {
-    CFBooleanGetValue(boolean)
-}
-
-pub fn cfstring_to_string(string: &CFString) -> Option<String> {
-    let maximum_size_in_bytes =
-        CFStringGetMaximumSizeForEncoding(CFStringGetLength(string), K_CF_STRING_ENCODING_UTF8);
-    let mut buffer: Vec<u8> = vec![0; (maximum_size_in_bytes + 1).max(0) as usize];
-    let converted = unsafe {
-        CFStringGetCString(
-            string,
-            buffer.as_mut_ptr().cast::<c_char>(),
-            maximum_size_in_bytes + 1,
-            K_CF_STRING_ENCODING_UTF8,
-        )
-    };
-
-    if !converted {
-        return None;
-    }
-
-    let nul_position = buffer
-        .iter()
-        .position(|byte| *byte == 0)
-        .unwrap_or(buffer.len());
-    buffer.truncate(nul_position);
-    Some(String::from_utf8_lossy(&buffer).into_owned())
-}
-
 pub fn as_cftype<T>(object: &T) -> &CFType {
     unsafe { &*((object as *const T).cast::<CFType>()) }
 }
 
-pub fn create_cfnumber_from_i32(number: i32) -> CFRetained<CFNumber> {
-    unsafe {
-        CFNumberCreate(
-            None,
-            kCFNumberSInt32Type,
-            (&number as *const i32).cast::<c_void>(),
-        )
-    }
-    .unwrap()
-}
-
 pub fn disable_window_shadow_through_skylight(id: u32) {
-    let density = create_cfnumber_from_i32(0);
-    let mut keys: [*const c_void; 1] =
-        [(window_shadow_density_option_key() as *const CFString).cast::<c_void>()];
-    let mut values: [*const c_void; 1] = [(&*density as *const CFNumber).cast::<c_void>()];
-    let options = unsafe {
-        CFDictionaryCreate(
-            None,
-            keys.as_mut_ptr(),
-            values.as_mut_ptr(),
-            1,
-            &raw const kCFTypeDictionaryKeyCallBacks,
-            &raw const kCFTypeDictionaryValueCallBacks,
-        )
-    }
-    .unwrap();
-    unsafe { SLSWindowSetShadowProperties(id, &*options) };
+    let density = CFNumber::new_i32(0);
+    let options = CFDictionary::from_slices(&[window_shadow_density_option_key()], &[&*density]);
+    unsafe { SLSWindowSetShadowProperties(id, options.as_opaque()) };
 }
 
-pub fn create_cfarray_of_cfnumbers<T: Copy>(
-    values: &[T],
-    number_type: CFNumberType,
-) -> CFRetained<CFArray> {
-    let numbers: Vec<CFRetained<CFNumber>> = values
+pub fn create_cfarray_of_window_ids(window_ids: &[u32]) -> CFRetained<CFArray> {
+    let numbers: Vec<CFRetained<CFNumber>> = window_ids
         .iter()
-        .map(|value| {
-            unsafe { CFNumberCreate(None, number_type, (value as *const T).cast::<c_void>()) }
-                .unwrap()
-        })
+        .map(|window_id| CFNumber::new_i32(*window_id as i32))
         .collect();
-    let mut pointers: Vec<*const c_void> = numbers
+    CFArray::from_retained_objects(&numbers)
+        .as_opaque()
+        .retain()
+}
+
+pub fn create_cfarray_of_space_ids(space_ids: &[u64]) -> CFRetained<CFArray> {
+    let numbers: Vec<CFRetained<CFNumber>> = space_ids
         .iter()
-        .map(|number| (&**number as *const CFNumber).cast::<c_void>())
+        .map(|space_id| CFNumber::new_i64(*space_id as i64))
         .collect();
-    unsafe {
-        CFArrayCreate(
-            None,
-            pointers.as_mut_ptr(),
-            pointers.len() as CFIndex,
-            &raw const kCFTypeArrayCallBacks,
-        )
-    }
-    .unwrap()
+    CFArray::from_retained_objects(&numbers)
+        .as_opaque()
+        .retain()
 }

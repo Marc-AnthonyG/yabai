@@ -1,4 +1,4 @@
-use crate::ffi::core_foundation::{CGPoint, CGRect, cfstring_to_string};
+use crate::ffi::core_foundation::{CGPoint, CGRect};
 use crate::ffi::core_graphics::CGRectContainsPoint;
 use crate::layout::area::cgrect_from_area;
 use crate::layout::group::is_node_a_group;
@@ -254,7 +254,7 @@ fn title_shown_on_the_tab_of_window(window_manager: &WindowManager, window_id: W
     let window_title = window
         .title
         .as_ref()
-        .and_then(|title| cfstring_to_string(title.as_ref()))
+        .map(|title| title.as_ref().to_string())
         .filter(|title| !title.is_empty());
     window_title
         .or_else(|| {

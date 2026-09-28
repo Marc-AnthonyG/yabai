@@ -3,7 +3,7 @@
 use crate::display::manager::DisplayManager;
 use crate::display::spaces::query_current_space_of_display;
 use crate::ffi::accessibility::{AXUIElementSetAttributeValue, kAXFullscreenAttribute};
-use crate::ffi::core_foundation::{as_cftype, kCFBooleanTrue};
+use crate::ffi::core_foundation::CFBoolean;
 use crate::mouse::drag::MouseDragState;
 use crate::process::manager::ProcessManager;
 use crate::space::focus::focus_space_through_the_scripting_addition_or_dock_swipes;
@@ -218,7 +218,7 @@ pub(crate) fn apply_effects_other_than_manage_of_rule_to_window(
                 AXUIElementSetAttributeValue(
                     &*window_element_ref,
                     kAXFullscreenAttribute(),
-                    as_cftype(kCFBooleanTrue()),
+                    CFBoolean::new(true),
                 )
             };
             window

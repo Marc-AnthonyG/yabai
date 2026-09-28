@@ -1,7 +1,5 @@
 use core::ffi::c_void;
-use std::sync::Mutex;
 
-use crate::ffi::libsystem::{PROC_PIDPATHINFO_MAXSIZE, proc_name};
 use crate::ffi::mach_port::{
     bootstrap_look_up, mach_port_deallocate, mach_task_self, send_bytes_out_of_line_to_mach_port,
 };
@@ -61,23 +59,16 @@ pub(crate) fn notify_janky_borders_of_proxy_pairings(
 }
 
 pub(crate) fn is_window_connection_owned_by_janky_borders(window_connection_id: i32) -> bool {
-    static PROCESS_NAME_BUFFER: Mutex<[u8; PROC_PIDPATHINFO_MAXSIZE]> =
-        Mutex::new([0u8; PROC_PIDPATHINFO_MAXSIZE]);
-    let mut process_name = PROCESS_NAME_BUFFER.lock().unwrap();
-
     let mut window_process_id: libc::pid_t = 0;
     unsafe { SLSConnectionGetPID(window_connection_id, &mut window_process_id) };
-    unsafe {
-        proc_name(
+
+    let mut process_name = [0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+    let process_name_length = unsafe {
+        libc::proc_name(
             window_process_id,
             process_name.as_mut_ptr().cast::<c_void>(),
             process_name.len() as u32,
         )
     };
-
-    let end = process_name
-        .iter()
-        .position(|byte| *byte == 0)
-        .unwrap_or(process_name.len());
-    &process_name[..end] == b"borders"
+    process_name[..process_name_length.max(0) as usize] == *b"borders"
 }

@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, AtomicI32, AtomicPtr, Ordering};
 use crate::ffi::carbon_process::{
     CopyProcessName, GetProcessInformation, GetProcessPID, ProcessInfoRec, ProcessSerialNumber,
 };
-use crate::ffi::core_foundation::{CFString, cfstring_to_string, take_create_rule_result};
+use crate::ffi::core_foundation::{CFString, take_create_rule_result};
 use crate::notifications::workspace::{
     WORKSPACE_CONTEXT, release_running_application_removing_its_observations,
 };
@@ -59,10 +59,7 @@ pub(crate) fn create_process_unless_it_is_ignored(
         return None;
     };
 
-    let process_name = cfstring_to_string(&process_name_ref);
-    drop(process_name_ref);
-
-    let process_name = process_name?;
+    let process_name = process_name_ref.to_string();
 
     if { process_info.process_type } == 0x5850_4321 {
         crate::debug!(

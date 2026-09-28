@@ -1,17 +1,12 @@
-use core::ffi::{c_char, c_int, c_void};
+use core::ffi::{c_int, c_void};
 use libc::pid_t;
 
 unsafe extern "C" {
     pub fn csr_get_active_config(config: *mut u32) -> c_int;
-
-    pub fn proc_name(process_id: c_int, buffer: *mut c_void, buffer_size: u32) -> c_int;
-    pub fn _NSGetExecutablePath(buffer: *mut c_char, buffer_size: *mut u32) -> c_int;
 }
 
 pub const CSR_ALLOW_UNRESTRICTED_FS: u32 = 0x02;
 pub const CSR_ALLOW_TASK_FOR_PID: u32 = 0x04;
-
-pub const PROC_PIDPATHINFO_MAXSIZE: usize = 4096;
 
 pub const P_TRACED: i32 = 0x0000_0800;
 pub const SIZE_OF_KINFO_PROC: usize = 648;

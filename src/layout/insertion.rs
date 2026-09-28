@@ -63,11 +63,7 @@ pub(crate) fn show_insert_feedback_of_node(
     };
     let frame_of_the_inserted_window = cgrect_from_area(area_of_the_inserted_window);
 
-    let Some(node) = space_manager
-        .view
-        .get(&space_id)
-        .and_then(|view| view.find_node(node_id))
-    else {
+    let Some(node) = space_manager.find_node_in_view_of_space(space_id, node_id) else {
         return;
     };
     let node_first_window_id = node.window_order[0];
@@ -77,11 +73,7 @@ pub(crate) fn show_insert_feedback_of_node(
             frame_of_the_inserted_window,
             node_first_window_id,
         );
-        let Some(node) = space_manager
-            .view
-            .get_mut(&space_id)
-            .and_then(|view| view.find_node_mut(node_id))
-        else {
+        let Some(node) = space_manager.find_node_mut_in_view_of_space(space_id, node_id) else {
             return;
         };
         node.feedback_window = Some(feedback_window);
@@ -99,9 +91,7 @@ pub(crate) fn show_insert_feedback_of_node(
     }
 
     let Some(feedback_window) = space_manager
-        .view
-        .get(&space_id)
-        .and_then(|view| view.find_node(node_id))
+        .find_node_in_view_of_space(space_id, node_id)
         .and_then(|node| node.feedback_window.as_ref())
     else {
         return;
@@ -136,11 +126,7 @@ pub(crate) fn destroy_insert_feedback_of_node(
             );
         }
 
-        let Some(node) = space_manager
-            .view
-            .get_mut(&space_id)
-            .and_then(|view| view.find_node_mut(node_id))
-        else {
+        let Some(node) = space_manager.find_node_mut_in_view_of_space(space_id, node_id) else {
             return;
         };
         drop(node.feedback_window.take());
@@ -226,10 +212,8 @@ fn clear_the_pending_insertion_point_of_view(
             );
         }
 
-        if let Some(insert_node) = space_manager
-            .view
-            .get_mut(&space_id)
-            .and_then(|view| view.find_node_mut(insert_node_id))
+        if let Some(insert_node) =
+            space_manager.find_node_mut_in_view_of_space(space_id, insert_node_id)
         {
             insert_node.split = WindowNodeSplit::None;
             insert_node.child = WindowNodeChild::None;

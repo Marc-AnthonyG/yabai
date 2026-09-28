@@ -9,7 +9,7 @@ use crate::ffi::core_foundation::{
 use crate::ffi::skylight::SLSSpaceCopyName;
 use crate::layout::insertion::WindowInsertionPoint;
 use crate::layout::settings::{ViewFlag, ViewLayout};
-use crate::layout::tree::{WindowNodeChild, WindowNodeSplit};
+use crate::layout::tree::{WindowNode, WindowNodeChild, WindowNodeSplit};
 use crate::layout::view::{
     View, create_view_for_space_from_global_settings,
     move_view_windows_into_their_areas_or_defer_until_space_is_visible,
@@ -19,7 +19,7 @@ use crate::mouse::drag::MouseDragState;
 use crate::space::focus::query_current_space_of_the_focused_display;
 use crate::space::labels::{SpaceLabel, label_of_space};
 use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
-use crate::support::handles::{DisplayId, SpaceId};
+use crate::support::handles::{DisplayId, NodeId, SpaceId, WindowId};
 use crate::window::manager::WindowManager;
 
 pub(crate) struct SpaceManager {
@@ -42,6 +42,30 @@ pub(crate) struct SpaceManager {
     pub(crate) labels: Vec<SpaceLabel>,
     pub(crate) skip_window_focus_animation: bool,
     pub(crate) insert_feedback_fade_in_step_is_scheduled: bool,
+}
+
+impl SpaceManager {
+    pub(crate) fn find_node_in_view_of_space(
+        &self,
+        space_id: SpaceId,
+        node_id: NodeId,
+    ) -> Option<&WindowNode> {
+        self.view.get(&space_id)?.find_node(node_id)
+    }
+
+    pub(crate) fn find_node_mut_in_view_of_space(
+        &mut self,
+        space_id: SpaceId,
+        node_id: NodeId,
+    ) -> Option<&mut WindowNode> {
+        self.view.get_mut(&space_id)?.find_node_mut(node_id)
+    }
+
+    pub(crate) fn insertion_point_of_space(&self, space_id: SpaceId) -> WindowId {
+        self.view
+            .get(&space_id)
+            .map_or(WindowId(0), |view| view.insertion_point)
+    }
 }
 
 pub(crate) fn find_or_create_view_for_space(

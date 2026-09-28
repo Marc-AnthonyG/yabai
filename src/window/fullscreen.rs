@@ -151,9 +151,7 @@ pub(crate) fn toggle_managed_window_zoom_parent(
     };
 
     let Some((node_parent, node_zoom)) = space_manager
-        .view
-        .get(&space_id)
-        .and_then(|view| view.find_node(node_id))
+        .find_node_in_view_of_space(space_id, node_id)
         .map(|node| (node.parent, node.zoom))
     else {
         return;
@@ -164,9 +162,7 @@ pub(crate) fn toggle_managed_window_zoom_parent(
     }
 
     if node_zoom == node_parent {
-        if let Some(view) = space_manager.view.get_mut(&space_id)
-            && let Some(node) = view.find_node_mut(node_id)
-        {
+        if let Some(node) = space_manager.find_node_mut_in_view_of_space(space_id, node_id) {
             node.zoom = None;
         }
         if is_space_visible_on_its_display(space_id) {
@@ -180,9 +176,7 @@ pub(crate) fn toggle_managed_window_zoom_parent(
             view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     } else {
-        if let Some(view) = space_manager.view.get_mut(&space_id)
-            && let Some(node) = view.find_node_mut(node_id)
-        {
+        if let Some(node) = space_manager.find_node_mut_in_view_of_space(space_id, node_id) {
             node.zoom = node_parent;
         }
         if is_space_visible_on_its_display(space_id) {
@@ -226,18 +220,14 @@ pub(crate) fn toggle_managed_window_zoom_fullscreen(
     }
 
     let Some(node_zoom) = space_manager
-        .view
-        .get(&space_id)
-        .and_then(|view| view.find_node(node_id))
+        .find_node_in_view_of_space(space_id, node_id)
         .map(|node| node.zoom)
     else {
         return;
     };
 
     if node_zoom == Some(ROOT_NODE_ID) {
-        if let Some(view) = space_manager.view.get_mut(&space_id)
-            && let Some(node) = view.find_node_mut(node_id)
-        {
+        if let Some(node) = space_manager.find_node_mut_in_view_of_space(space_id, node_id) {
             node.zoom = None;
         }
         if is_space_visible_on_its_display(space_id) {
@@ -251,9 +241,7 @@ pub(crate) fn toggle_managed_window_zoom_fullscreen(
             view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     } else {
-        if let Some(view) = space_manager.view.get_mut(&space_id)
-            && let Some(node) = view.find_node_mut(node_id)
-        {
+        if let Some(node) = space_manager.find_node_mut_in_view_of_space(space_id, node_id) {
             node.zoom = Some(ROOT_NODE_ID);
         }
         if is_space_visible_on_its_display(space_id) {

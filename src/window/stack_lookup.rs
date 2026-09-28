@@ -25,9 +25,7 @@ fn stack_holding_window_in_active_space_view(
         return None;
     }
 
-    let Some(node_id) = leaf_holding_window(space_manager, space_id, window_id) else {
-        return None;
-    };
+    let node_id = leaf_holding_window(space_manager, space_id, window_id)?;
 
     let node = space_manager.view.get(&space_id)?.find_node(node_id)?;
     Some((node.window_list, node.window_order, node.window_count))

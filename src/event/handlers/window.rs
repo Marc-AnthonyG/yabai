@@ -1025,9 +1025,7 @@ pub(crate) fn handle_skylight_window_ordered_event(
     let node = window_manager.insert_feedback.get(&window_id).copied();
     let feedback_window_order = node.and_then(|(space_id, node_id)| {
         space_manager
-            .view
-            .get(&space_id)
-            .and_then(|view| view.find_node(node_id))
+            .find_node_in_view_of_space(space_id, node_id)
             .map(|node| {
                 (
                     node.feedback_window

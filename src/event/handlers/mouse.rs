@@ -234,9 +234,7 @@ pub(crate) fn handle_mouse_up_event(
                         mouse_drag_state.feedback_node
                     {
                         if let Some(feedback_node) = space_manager
-                            .view
-                            .get_mut(&feedback_space_id)
-                            .and_then(|view| view.find_node_mut(feedback_node_id))
+                            .find_node_mut_in_view_of_space(feedback_space_id, feedback_node_id)
                         {
                             feedback_node.insert_direction = 0;
                         }
@@ -528,9 +526,7 @@ pub(crate) fn handle_mouse_dragged_event(
                 && (feedback_space_id, feedback_node_id) != (destination_view, b_node)
             {
                 if let Some(feedback_node) = space_manager
-                    .view
-                    .get_mut(&feedback_space_id)
-                    .and_then(|view| view.find_node_mut(feedback_node_id))
+                    .find_node_mut_in_view_of_space(feedback_space_id, feedback_node_id)
                 {
                     feedback_node.insert_direction = 0;
                 }
@@ -581,17 +577,13 @@ pub(crate) fn handle_mouse_dragged_event(
             }
 
             let b_node_insert_direction = space_manager
-                .view
-                .get(&destination_view)
-                .and_then(|view| view.find_node(b_node))
+                .find_node_in_view_of_space(destination_view, b_node)
                 .map(|node| node.insert_direction);
             if let Some(b_node_insert_direction) = b_node_insert_direction
                 && b_node_insert_direction != insert_direction
             {
-                if let Some(node) = space_manager
-                    .view
-                    .get_mut(&destination_view)
-                    .and_then(|view| view.find_node_mut(b_node))
+                if let Some(node) =
+                    space_manager.find_node_mut_in_view_of_space(destination_view, b_node)
                 {
                     node.insert_direction = insert_direction;
                 }
@@ -618,9 +610,7 @@ pub(crate) fn handle_mouse_dragged_event(
         } else if b_node.is_none() {
             if let Some((feedback_space_id, feedback_node_id)) = mouse_drag_state.feedback_node {
                 if let Some(feedback_node) = space_manager
-                    .view
-                    .get_mut(&feedback_space_id)
-                    .and_then(|view| view.find_node_mut(feedback_node_id))
+                    .find_node_mut_in_view_of_space(feedback_space_id, feedback_node_id)
                 {
                     feedback_node.insert_direction = 0;
                 }

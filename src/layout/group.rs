@@ -145,11 +145,7 @@ pub(crate) fn put_the_rejoined_groups_back_in_order_and_forget_them(
         else {
             continue;
         };
-        let Some(node) = space_manager
-            .view
-            .get_mut(&space_id)
-            .and_then(|view| view.find_node_mut(leaf))
-        else {
+        let Some(node) = space_manager.find_node_mut_in_view_of_space(space_id, leaf) else {
             continue;
         };
 
@@ -226,9 +222,7 @@ fn leaf_holding_another_member_of_the_remembered_group_of(
         .into_iter()
         .find_map(|member| leaf_holding_window(space_manager, space_id, member))?;
     let leaf_has_room = space_manager
-        .view
-        .get(&space_id)
-        .and_then(|view| view.find_node(leaf))
+        .find_node_in_view_of_space(space_id, leaf)
         .is_some_and(|node| (node.window_count as usize) < MOST_WINDOWS_A_NODE_CAN_HOLD);
     leaf_has_room.then_some(leaf)
 }

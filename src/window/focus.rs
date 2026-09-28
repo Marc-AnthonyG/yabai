@@ -237,12 +237,8 @@ pub(crate) fn query_focused_tracked_application(
 }
 
 pub(crate) fn query_focused_tracked_window(window_manager: &mut WindowManager) -> Option<WindowId> {
-    let Some(application_process_id) = query_focused_tracked_application(window_manager) else {
-        return None;
-    };
-    let Some(application) = window_manager.application.get(&application_process_id) else {
-        return None;
-    };
+    let application_process_id = query_focused_tracked_application(window_manager)?;
+    let application = window_manager.application.get(&application_process_id)?;
 
     let window_id = read_focused_window_of_application(application);
     tracked_window_with_id(window_manager, window_id)

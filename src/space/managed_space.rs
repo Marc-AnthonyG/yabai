@@ -56,10 +56,7 @@ pub(crate) fn query_windows_on_spaces_owned_by_connection(
             &mut set_tags,
             &mut clear_tags,
         ))
-    };
-    let Some(window_list_ref) = window_list_ref else {
-        return None;
-    };
+    }?;
 
     let count = cfarray_count(&window_list_ref) as i32;
     if count == 0 {
@@ -72,15 +69,9 @@ pub(crate) fn query_windows_on_spaces_owned_by_connection(
             &*window_list_ref,
             count,
         ))
-    };
-    let Some(query) = query else {
-        return None;
-    };
+    }?;
 
-    let iterator = unsafe { take_create_rule_result(SLSWindowQueryResultCopyWindows(&*query)) };
-    let Some(iterator) = iterator else {
-        return None;
-    };
+    let iterator = unsafe { take_create_rule_result(SLSWindowQueryResultCopyWindows(&*query)) }?;
 
     let mut window_list: Vec<WindowId> = Vec::with_capacity(count as usize);
 

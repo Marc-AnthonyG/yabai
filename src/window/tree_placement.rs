@@ -63,10 +63,7 @@ pub(crate) fn toggle_insertion_point_at_window_in_direction(
         return WindowOperationOutcome::InvalidSourceNode;
     };
 
-    let insertion_point = space_manager
-        .view
-        .get(&space_id)
-        .map_or(WindowId(0), |view| view.insertion_point);
+    let insertion_point = space_manager.insertion_point_of_space(space_id);
     if insertion_point.0 != 0 && insertion_point != window_id {
         let insert_node = leaf_holding_window(space_manager, space_id, insertion_point);
         if let Some(insert_node_id) = insert_node {
@@ -76,8 +73,8 @@ pub(crate) fn toggle_insertion_point_at_window_in_direction(
                 window_manager,
                 space_manager,
             );
-            if let Some(view) = space_manager.view.get_mut(&space_id)
-                && let Some(insert_node) = view.find_node_mut(insert_node_id)
+            if let Some(insert_node) =
+                space_manager.find_node_mut_in_view_of_space(space_id, insert_node_id)
             {
                 insert_node.split = WindowNodeSplit::None;
                 insert_node.child = WindowNodeChild::None;
@@ -87,9 +84,7 @@ pub(crate) fn toggle_insertion_point_at_window_in_direction(
     }
 
     let Some(node_insert_direction) = space_manager
-        .view
-        .get(&space_id)
-        .and_then(|view| view.find_node(node_id))
+        .find_node_in_view_of_space(space_id, node_id)
         .map(|node| node.insert_direction)
     else {
         return WindowOperationOutcome::InvalidSourceNode;
@@ -186,9 +181,7 @@ pub(crate) fn stack_second_window_onto_the_node_of_first_window(
         return WindowOperationOutcome::InvalidSourceNode;
     };
     let Some(receiving_node_window_count) = space_manager
-        .view
-        .get(&receiving_view)
-        .and_then(|view| view.find_node(receiving_node))
+        .find_node_in_view_of_space(receiving_view, receiving_node)
         .map(|node| node.window_count)
     else {
         return WindowOperationOutcome::InvalidSourceNode;
@@ -211,9 +204,7 @@ pub(crate) fn stack_second_window_onto_the_node_of_first_window(
     );
     set_window_layer_unless_explicitly_set(stacked_window, LAYER_BELOW, window_manager);
     let Some(receiving_node_second_window_in_order) = space_manager
-        .view
-        .get(&receiving_view)
-        .and_then(|view| view.find_node(receiving_node))
+        .find_node_in_view_of_space(receiving_view, receiving_node)
         .map(|node| node.window_order[1])
     else {
         return WindowOperationOutcome::InvalidSourceNode;
@@ -289,17 +280,13 @@ pub(crate) fn warp_first_window_into_the_node_of_second_window(
     }
 
     let Some((warped_node_parent, warped_node_window_count)) = space_manager
-        .view
-        .get(&warped_view)
-        .and_then(|view| view.find_node(warped_node))
+        .find_node_in_view_of_space(warped_view, warped_node)
         .map(|node| (node.parent, node.window_count))
     else {
         return WindowOperationOutcome::InvalidSourceNode;
     };
     let Some(target_node_parent) = space_manager
-        .view
-        .get(&target_view)
-        .and_then(|view| view.find_node(target_node))
+        .find_node_in_view_of_space(target_view, target_node)
         .map(|node| node.parent)
     else {
         return WindowOperationOutcome::InvalidDestinationNode;
@@ -310,10 +297,7 @@ pub(crate) fn warp_first_window_into_the_node_of_second_window(
         && (warped_view, warped_node_parent) == (target_view, target_node_parent)
         && warped_node_window_count == 1
     {
-        let target_view_insertion_point = space_manager
-            .view
-            .get(&target_view)
-            .map_or(WindowId(0), |view| view.insertion_point);
+        let target_view_insertion_point = space_manager.insertion_point_of_space(target_view);
         if is_window_in_node(
             target_view,
             target_node,
@@ -367,10 +351,7 @@ pub(crate) fn warp_first_window_into_the_node_of_second_window(
             }
             move_windows_to_their_target_frames_animating_if_enabled(&window_list, window_manager);
         } else {
-            let warped_view_insertion_point = space_manager
-                .view
-                .get(&warped_view)
-                .map_or(WindowId(0), |view| view.insertion_point);
+            let warped_view_insertion_point = space_manager.insertion_point_of_space(warped_view);
             if is_window_in_node(
                 warped_view,
                 warped_node,
@@ -418,9 +399,7 @@ pub(crate) fn warp_first_window_into_the_node_of_second_window(
             //
 
             let Some(target_node_area) = space_manager
-                .view
-                .get(&target_view)
-                .and_then(|view| view.find_node(target_node))
+                .find_node_in_view_of_space(target_view, target_node)
                 .map(|node| node.area)
             else {
                 return WindowOperationOutcome::InvalidDestinationNode;
@@ -434,9 +413,7 @@ pub(crate) fn warp_first_window_into_the_node_of_second_window(
                 );
 
             let Some(warped_node_area) = space_manager
-                .view
-                .get(&warped_view)
-                .and_then(|view| view.find_node(warped_node))
+                .find_node_in_view_of_space(warped_view, warped_node)
                 .map(|node| node.area)
             else {
                 return WindowOperationOutcome::InvalidSourceNode;
@@ -482,8 +459,8 @@ pub(crate) fn warp_first_window_into_the_node_of_second_window(
             } else {
                 WindowNodeChild::Second
             };
-            if let Some(view) = space_manager.view.get_mut(&target_view)
-                && let Some(node) = view.find_node_mut(target_node)
+            if let Some(node) =
+                space_manager.find_node_mut_in_view_of_space(target_view, target_node)
             {
                 node.child = target_node_child;
             }
@@ -518,9 +495,7 @@ pub(crate) fn warp_first_window_into_the_node_of_second_window(
 
             if let Some(warped_node_add) = warped_node_add {
                 let warped_node_add_parent = space_manager
-                    .view
-                    .get(&target_view)
-                    .and_then(|view| view.find_node(warped_node_add))
+                    .find_node_in_view_of_space(target_view, warped_node_add)
                     .and_then(|node| node.parent);
                 if warped_node_remove != Some(warped_node_add)
                     && warped_node_remove != warped_node_add_parent
@@ -681,14 +656,8 @@ pub(crate) fn swap_managed_windows(
         return WindowOperationOutcome::InvalidDestinationView;
     }
 
-    let a_view_insertion_point = space_manager
-        .view
-        .get(&a_view)
-        .map_or(WindowId(0), |view| view.insertion_point);
-    let b_view_insertion_point = space_manager
-        .view
-        .get(&b_view)
-        .map_or(WindowId(0), |view| view.insertion_point);
+    let a_view_insertion_point = space_manager.insertion_point_of_space(a_view);
+    let b_view_insertion_point = space_manager.insertion_point_of_space(b_view);
     if is_window_in_node(a_view, a_node, a_view_insertion_point, space_manager) {
         if let Some(view) = space_manager.view.get_mut(&a_view) {
             view.insertion_point = b_window;
@@ -704,9 +673,7 @@ pub(crate) fn swap_managed_windows(
 
     if a_view != b_view {
         let Some((a_node_window_list, a_node_window_count)) = space_manager
-            .view
-            .get(&a_view)
-            .and_then(|view| view.find_node(a_node))
+            .find_node_in_view_of_space(a_view, a_node)
             .map(|node| (node.window_list, node.window_count))
         else {
             return WindowOperationOutcome::InvalidSourceNode;
@@ -726,9 +693,7 @@ pub(crate) fn swap_managed_windows(
         }
 
         let Some((b_node_window_list, b_node_window_count)) = space_manager
-            .view
-            .get(&b_view)
-            .and_then(|view| view.find_node(b_node))
+            .find_node_in_view_of_space(b_view, b_node)
             .map(|node| (node.window_list, node.window_count))
         else {
             return WindowOperationOutcome::InvalidDestinationNode;

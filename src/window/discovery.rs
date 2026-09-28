@@ -383,15 +383,10 @@ pub(crate) fn query_application_windows_on_every_space(
         space_list.get_or_insert_with(Vec::new).extend(list);
     }
 
-    let Some(space_list) = space_list else {
-        return None;
-    };
+    let space_list = space_list?;
 
     let connection_id = match process_id {
-        Some(process_id) => match window_manager.application.get(&process_id) {
-            Some(application) => application.connection,
-            None => return None,
-        },
+        Some(process_id) => window_manager.application.get(&process_id)?.connection,
         None => 0,
     };
     query_windows_on_spaces_owned_by_connection(&space_list, connection_id, true, window_manager)

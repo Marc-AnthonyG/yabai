@@ -44,9 +44,7 @@ pub(crate) fn adjust_split_ratio_of_managed_window_parent_node(
     let node_id = leaf_holding_window(space_manager, space_id, window_id);
     let parent_node_id = node_id.and_then(|node_id| {
         space_manager
-            .view
-            .get(&space_id)
-            .and_then(|view| view.find_node(node_id))
+            .find_node_in_view_of_space(space_id, node_id)
             .and_then(|node| node.parent)
     });
     let Some(parent_node_id) = parent_node_id else {
@@ -55,15 +53,15 @@ pub(crate) fn adjust_split_ratio_of_managed_window_parent_node(
 
     match type_of_change {
         CHANGE_TYPE_RELATIVE => {
-            if let Some(view) = space_manager.view.get_mut(&space_id)
-                && let Some(parent_node) = view.find_node_mut(parent_node_id)
+            if let Some(parent_node) =
+                space_manager.find_node_mut_in_view_of_space(space_id, parent_node_id)
             {
                 parent_node.ratio = (parent_node.ratio + ratio).clamp(0.1, 0.9);
             }
         }
         CHANGE_TYPE_ABSOLUTE => {
-            if let Some(view) = space_manager.view.get_mut(&space_id)
-                && let Some(parent_node) = view.find_node_mut(parent_node_id)
+            if let Some(parent_node) =
+                space_manager.find_node_mut_in_view_of_space(space_id, parent_node_id)
             {
                 parent_node.ratio = ratio.clamp(0.1, 0.9);
             }
@@ -263,16 +261,16 @@ pub(crate) fn resize_window_by_dragging_edges_or_to_absolute_size(
         }
 
         if let Some(y_fence) = y_fence
-            && let Some(view) = space_manager.view.get_mut(&space_id)
-            && let Some(y_fence_node) = view.find_node_mut(y_fence)
+            && let Some(y_fence_node) =
+                space_manager.find_node_mut_in_view_of_space(space_id, y_fence)
         {
             let scaled_ratio = y_fence_node.ratio + delta_x / y_fence_node.area.width;
             y_fence_node.ratio = scaled_ratio.clamp(0.1, 0.9);
         }
 
         if let Some(x_fence) = x_fence
-            && let Some(view) = space_manager.view.get_mut(&space_id)
-            && let Some(x_fence_node) = view.find_node_mut(x_fence)
+            && let Some(x_fence_node) =
+                space_manager.find_node_mut_in_view_of_space(space_id, x_fence)
         {
             let scaled_ratio = x_fence_node.ratio + delta_y / x_fence_node.area.height;
             x_fence_node.ratio = scaled_ratio.clamp(0.1, 0.9);

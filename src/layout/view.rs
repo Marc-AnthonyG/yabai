@@ -34,7 +34,7 @@ pub(crate) struct View {
     pub(crate) right_padding: i32,
     pub(crate) window_gap: i32,
     pub(crate) auto_balance: u32,
-    pub(crate) flags: u64,
+    pub(crate) flags: ViewFlag,
     pub(crate) groups_remembered_outside_bsp: Vec<RememberedGroup>,
 }
 
@@ -71,18 +71,6 @@ impl View {
             }
         }
     }
-
-    pub(crate) fn has_flag(&self, flag: ViewFlag) -> bool {
-        (self.flags & flag.0) != 0
-    }
-
-    pub(crate) fn clear_flag(&mut self, flag: ViewFlag) {
-        self.flags &= !flag.0;
-    }
-
-    pub(crate) fn set_flag(&mut self, flag: ViewFlag) {
-        self.flags |= flag.0;
-    }
 }
 
 pub(crate) fn has_view_out_of_date_areas(
@@ -93,7 +81,7 @@ pub(crate) fn has_view_out_of_date_areas(
         return false;
     };
 
-    !view.has_flag(ViewFlag::AREAS_ARE_UP_TO_DATE)
+    !view.flags.contains(ViewFlag::AREAS_ARE_UP_TO_DATE)
 }
 
 pub(crate) fn has_view_windows_awaiting_their_areas(
@@ -104,7 +92,7 @@ pub(crate) fn has_view_windows_awaiting_their_areas(
         return false;
     };
 
-    view.has_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS)
+    view.flags.contains(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS)
 }
 
 pub(crate) fn move_view_windows_into_their_areas_or_defer_until_space_is_visible(
@@ -124,10 +112,10 @@ pub(crate) fn move_view_windows_into_their_areas_or_defer_until_space_is_visible
             space_manager,
         );
         if let Some(view) = space_manager.view.get_mut(&space_id) {
-            view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+            view.flags.remove(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     } else if let Some(view) = space_manager.view.get_mut(&space_id) {
-        view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+        view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
     }
 }
 
@@ -148,7 +136,7 @@ pub(crate) fn recompute_view_areas_from_display_bounds_and_padding(
         let Some(view) = space_manager.view.get_mut(&space_id) else {
             return;
         };
-        let enable_padding = view.has_flag(ViewFlag::PADDING_IS_ENABLED);
+        let enable_padding = view.flags.contains(ViewFlag::PADDING_IS_ENABLED);
         let top_padding = view.top_padding;
         let bottom_padding = view.bottom_padding;
         let left_padding = view.left_padding;
@@ -173,8 +161,8 @@ pub(crate) fn recompute_view_areas_from_display_bounds_and_padding(
     );
 
     if let Some(view) = space_manager.view.get_mut(&space_id) {
-        view.set_flag(ViewFlag::AREAS_ARE_UP_TO_DATE);
-        view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+        view.flags.insert(ViewFlag::AREAS_ARE_UP_TO_DATE);
+        view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
     }
 }
 
@@ -198,7 +186,7 @@ pub(crate) fn create_view_for_space_from_global_settings(
         right_padding: 0,
         window_gap: 0,
         auto_balance: 0,
-        flags: 0,
+        flags: ViewFlag::empty(),
         groups_remembered_outside_bsp: Vec::new(),
     };
 
@@ -211,32 +199,38 @@ pub(crate) fn create_view_for_space_from_global_settings(
     }
     .map(CFRetainedAssumedSendAndSync);
 
-    view.set_flag(ViewFlag::PADDING_IS_ENABLED);
-    view.set_flag(ViewFlag::WINDOW_GAP_IS_ENABLED);
+    view.flags.insert(ViewFlag::PADDING_IS_ENABLED);
+    view.flags.insert(ViewFlag::WINDOW_GAP_IS_ENABLED);
 
     if is_user_space(view.space_id) {
-        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_LAYOUT) {
+        if !view.flags.contains(ViewFlag::OVERRIDES_GLOBAL_LAYOUT) {
             view.layout = space_manager.layout;
         }
-        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_TOP_PADDING) {
+        if !view.flags.contains(ViewFlag::OVERRIDES_GLOBAL_TOP_PADDING) {
             view.top_padding = space_manager.top_padding;
         }
-        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_BOTTOM_PADDING) {
+        if !view
+            .flags
+            .contains(ViewFlag::OVERRIDES_GLOBAL_BOTTOM_PADDING)
+        {
             view.bottom_padding = space_manager.bottom_padding;
         }
-        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_LEFT_PADDING) {
+        if !view.flags.contains(ViewFlag::OVERRIDES_GLOBAL_LEFT_PADDING) {
             view.left_padding = space_manager.left_padding;
         }
-        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_RIGHT_PADDING) {
+        if !view
+            .flags
+            .contains(ViewFlag::OVERRIDES_GLOBAL_RIGHT_PADDING)
+        {
             view.right_padding = space_manager.right_padding;
         }
-        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_WINDOW_GAP) {
+        if !view.flags.contains(ViewFlag::OVERRIDES_GLOBAL_WINDOW_GAP) {
             view.window_gap = space_manager.window_gap;
         }
-        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_AUTO_BALANCE) {
+        if !view.flags.contains(ViewFlag::OVERRIDES_GLOBAL_AUTO_BALANCE) {
             view.auto_balance = space_manager.auto_balance;
         }
-        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_SPLIT_TYPE) {
+        if !view.flags.contains(ViewFlag::OVERRIDES_GLOBAL_SPLIT_TYPE) {
             view.split_type = space_manager.split_type;
         }
         space_manager.view.entry(space_id).or_insert(view);

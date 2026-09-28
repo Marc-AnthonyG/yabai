@@ -104,7 +104,7 @@ pub(crate) fn mark_view_areas_out_of_date(
         return;
     }
 
-    view.clear_flag(ViewFlag::AREAS_ARE_UP_TO_DATE);
+    view.flags.remove(ViewFlag::AREAS_ARE_UP_TO_DATE);
 }
 
 pub(crate) fn point_view_handles_at_rekeyed_views(

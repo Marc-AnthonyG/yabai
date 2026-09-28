@@ -27,8 +27,7 @@ use crate::window::manager::{
     tracked_application_with_process_id, tracked_window_with_id,
 };
 use crate::window::model::{
-    WindowRuleFlag, is_window_rule_flag_set, query_display_holding_window,
-    query_space_holding_window,
+    WindowRuleFlag, query_display_holding_window, query_space_holding_window,
 };
 use crate::window::opacity::set_window_opacity_unless_disabled_or_fixed_by_rule;
 
@@ -60,8 +59,14 @@ pub(crate) fn warp_cursor_to_window_center_if_mouse_follows_focus(
         return;
     };
 
-    if is_window_rule_flag_set(window, WindowRuleFlag::OVERRIDES_MOUSE_FOLLOWS_FOCUS) {
-        if !is_window_rule_flag_set(window, WindowRuleFlag::MOUSE_FOLLOWS_FOCUS_OVERRIDE_IS_ON) {
+    if window
+        .rule_flags
+        .contains(WindowRuleFlag::OVERRIDES_MOUSE_FOLLOWS_FOCUS)
+    {
+        if !window
+            .rule_flags
+            .contains(WindowRuleFlag::MOUSE_FOLLOWS_FOCUS_OVERRIDE_IS_ON)
+        {
             return;
         }
     } else {

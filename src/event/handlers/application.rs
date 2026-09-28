@@ -347,7 +347,7 @@ pub(crate) fn handle_application_launched_event(
                 );
 
                 if let Some(view) = space_manager.view.get_mut(&view) {
-                    view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+                    view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
                 }
                 view_list.push(view);
 
@@ -389,7 +389,7 @@ pub(crate) fn handle_application_launched_event(
 
         move_windows_below_node_into_their_areas(view, ROOT_NODE_ID, window_manager, space_manager);
         if let Some(view) = space_manager.view.get_mut(&view) {
-            view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+            view.flags.remove(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     }
 
@@ -480,7 +480,7 @@ pub(crate) fn handle_application_terminated_event(
                     forget_managed_window(window_manager, window_id);
 
                     if let Some(view) = space_manager.view.get_mut(&view) {
-                        view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+                        view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
                     }
                     view_list.push(view);
                 }
@@ -556,7 +556,7 @@ pub(crate) fn handle_application_terminated_event(
                     space_manager,
                 );
                 if let Some(view) = space_manager.view.get_mut(&view) {
-                    view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+                    view.flags.remove(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
                 }
             }
 
@@ -848,7 +848,7 @@ pub(crate) fn handle_application_visible_event(
             );
 
             if let Some(view) = space_manager.view.get_mut(&view) {
-                view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+                view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
             view_list.push(view);
 
@@ -876,7 +876,7 @@ pub(crate) fn handle_application_visible_event(
 
         move_windows_below_node_into_their_areas(view, ROOT_NODE_ID, window_manager, space_manager);
         if let Some(view) = space_manager.view.get_mut(&view) {
-            view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+            view.flags.remove(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     }
 
@@ -952,7 +952,7 @@ pub(crate) fn handle_application_hidden_event(
             apply_shadow_removal_mode_to_window(window_manager, window_id);
 
             if let Some(view) = space_manager.view.get_mut(&view) {
-                view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+                view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
             view_list.push(view);
         }
@@ -978,7 +978,7 @@ pub(crate) fn handle_application_hidden_event(
 
         move_windows_below_node_into_their_areas(view, ROOT_NODE_ID, window_manager, space_manager);
         if let Some(view) = space_manager.view.get_mut(&view) {
-            view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+            view.flags.remove(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     }
 

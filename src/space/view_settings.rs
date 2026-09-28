@@ -132,11 +132,7 @@ pub(crate) fn toggle_window_gap_of_space(
         return false;
     }
 
-    if view.has_flag(ViewFlag::WINDOW_GAP_IS_ENABLED) {
-        view.clear_flag(ViewFlag::WINDOW_GAP_IS_ENABLED);
-    } else {
-        view.set_flag(ViewFlag::WINDOW_GAP_IS_ENABLED);
-    }
+    view.flags.toggle(ViewFlag::WINDOW_GAP_IS_ENABLED);
 
     recompute_view_areas_from_display_bounds_and_padding(
         space_manager,
@@ -165,7 +161,7 @@ pub(crate) fn set_global_layout_applying_it_to_views_without_their_own(
         let Some(view) = space_manager.view.get(&space_id) else {
             continue;
         };
-        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_LAYOUT) && is_user_space(space_id) {
+        if !view.flags.contains(ViewFlag::OVERRIDES_GLOBAL_LAYOUT) && is_user_space(space_id) {
             retile_view_in_a_different_layout_remembering_its_groups(
                 space_manager,
                 space_id,
@@ -189,7 +185,7 @@ pub(crate) fn set_global_window_gap_applying_it_to_views_without_their_own(
         let Some(view) = space_manager.view.get_mut(&space_id) else {
             continue;
         };
-        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_WINDOW_GAP) {
+        if !view.flags.contains(ViewFlag::OVERRIDES_GLOBAL_WINDOW_GAP) {
             view.window_gap = window_gap;
             recompute_view_areas_from_display_bounds_and_padding(
                 space_manager,
@@ -217,7 +213,7 @@ pub(crate) fn set_global_top_padding_applying_it_to_views_without_their_own(
         let Some(view) = space_manager.view.get_mut(&space_id) else {
             continue;
         };
-        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_TOP_PADDING) {
+        if !view.flags.contains(ViewFlag::OVERRIDES_GLOBAL_TOP_PADDING) {
             view.top_padding = top_padding;
             recompute_view_areas_from_display_bounds_and_padding(
                 space_manager,
@@ -245,7 +241,10 @@ pub(crate) fn set_global_bottom_padding_applying_it_to_views_without_their_own(
         let Some(view) = space_manager.view.get_mut(&space_id) else {
             continue;
         };
-        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_BOTTOM_PADDING) {
+        if !view
+            .flags
+            .contains(ViewFlag::OVERRIDES_GLOBAL_BOTTOM_PADDING)
+        {
             view.bottom_padding = bottom_padding;
             recompute_view_areas_from_display_bounds_and_padding(
                 space_manager,
@@ -273,7 +272,7 @@ pub(crate) fn set_global_left_padding_applying_it_to_views_without_their_own(
         let Some(view) = space_manager.view.get_mut(&space_id) else {
             continue;
         };
-        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_LEFT_PADDING) {
+        if !view.flags.contains(ViewFlag::OVERRIDES_GLOBAL_LEFT_PADDING) {
             view.left_padding = left_padding;
             recompute_view_areas_from_display_bounds_and_padding(
                 space_manager,
@@ -301,7 +300,10 @@ pub(crate) fn set_global_right_padding_applying_it_to_views_without_their_own(
         let Some(view) = space_manager.view.get_mut(&space_id) else {
             continue;
         };
-        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_RIGHT_PADDING) {
+        if !view
+            .flags
+            .contains(ViewFlag::OVERRIDES_GLOBAL_RIGHT_PADDING)
+        {
             view.right_padding = right_padding;
             recompute_view_areas_from_display_bounds_and_padding(
                 space_manager,
@@ -324,7 +326,7 @@ pub(crate) fn set_global_split_type_applying_it_to_views_without_their_own(
 ) {
     space_manager.split_type = split_type;
     for view in space_manager.view.values_mut() {
-        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_SPLIT_TYPE) {
+        if !view.flags.contains(ViewFlag::OVERRIDES_GLOBAL_SPLIT_TYPE) {
             view.split_type = split_type;
         }
     }
@@ -336,7 +338,7 @@ pub(crate) fn set_global_auto_balance_applying_it_to_views_without_their_own(
 ) {
     space_manager.auto_balance = auto_balance;
     for view in space_manager.view.values_mut() {
-        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_AUTO_BALANCE) {
+        if !view.flags.contains(ViewFlag::OVERRIDES_GLOBAL_AUTO_BALANCE) {
             view.auto_balance = auto_balance;
         }
     }
@@ -404,11 +406,7 @@ pub(crate) fn toggle_padding_of_space(
         return false;
     }
 
-    if view.has_flag(ViewFlag::PADDING_IS_ENABLED) {
-        view.clear_flag(ViewFlag::PADDING_IS_ENABLED);
-    } else {
-        view.set_flag(ViewFlag::PADDING_IS_ENABLED);
-    }
+    view.flags.toggle(ViewFlag::PADDING_IS_ENABLED);
 
     recompute_view_areas_from_display_bounds_and_padding(
         space_manager,

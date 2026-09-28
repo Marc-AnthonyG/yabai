@@ -11,9 +11,8 @@ use crate::window::manager::{
     space_managing_window,
 };
 use crate::window::model::{
-    WindowFlag, WindowRuleFlag, clear_window_flag, is_window_a_standard_window,
-    is_window_at_normal_window_level, is_window_flag_set, is_window_movable,
-    is_window_rule_flag_set, set_window_flag,
+    WindowFlag, WindowRuleFlag, is_window_a_standard_window, is_window_at_normal_window_level,
+    is_window_movable,
 };
 use crate::window::shadow::apply_shadow_removal_mode_to_window;
 
@@ -38,7 +37,7 @@ pub(crate) fn set_whether_window_floats(
             || !is_window_at_normal_window_level(window)
             || !is_window_movable(window)
         {
-            if !is_window_rule_flag_set(window, WindowRuleFlag::MANAGE_FORCED_ON) {
+            if !window.rule_flags.contains(WindowRuleFlag::MANAGE_FORCED_ON) {
                 return;
             }
         }
@@ -59,15 +58,15 @@ pub(crate) fn set_whether_window_floats(
             apply_shadow_removal_mode_to_window(window_manager, window_id);
         }
         if let Some(window) = window_manager.window.get_mut(&window_id) {
-            set_window_flag(window, WindowFlag::FLOATING);
+            window.flags.insert(WindowFlag::FLOATING);
         }
     } else {
         let Some(window) = window_manager.window.get_mut(&window_id) else {
             return;
         };
-        clear_window_flag(window, WindowFlag::FLOATING);
+        window.flags.remove(WindowFlag::FLOATING);
 
-        if !is_window_flag_set(window, WindowFlag::STICKY) {
+        if !window.flags.contains(WindowFlag::STICKY) {
             if (should_window_be_managed(window_id, window_manager))
                 && (space_managing_window(window_manager, window_id).is_none())
             {
@@ -117,7 +116,7 @@ pub(crate) fn set_whether_window_is_sticky(
                 apply_shadow_removal_mode_to_window(window_manager, window_id);
             }
             if let Some(window) = window_manager.window.get_mut(&window_id) {
-                set_window_flag(window, WindowFlag::STICKY);
+                window.flags.insert(WindowFlag::STICKY);
             }
         }
     } else {
@@ -125,9 +124,9 @@ pub(crate) fn set_whether_window_is_sticky(
             let Some(window) = window_manager.window.get_mut(&window_id) else {
                 return;
             };
-            clear_window_flag(window, WindowFlag::STICKY);
+            window.flags.remove(WindowFlag::STICKY);
 
-            if !is_window_flag_set(window, WindowFlag::FLOATING) {
+            if !window.flags.contains(WindowFlag::FLOATING) {
                 if (should_window_be_managed(window_id, window_manager))
                     && (space_managing_window(window_manager, window_id).is_none())
                 {

@@ -48,7 +48,7 @@ use crate::window::frame::{
     move_window_through_accessibility, resize_floating_window_by_dragging_edges,
 };
 use crate::window::manager::{FocusFollowsMouseMode, WindowManager, space_managing_window};
-use crate::window::model::{WindowFlag, is_window_flag_set};
+use crate::window::model::WindowFlag;
 use crate::window::screen_lookup::{
     query_tracked_window_at_point, query_tracked_window_at_point_skipping_window,
 };
@@ -93,7 +93,10 @@ pub(crate) fn handle_mouse_down_event(
     let Some(window_record) = window_manager.window.get(&window) else {
         return;
     };
-    if is_window_flag_set(window_record, WindowFlag::IN_NATIVE_FULLSCREEN) {
+    if window_record
+        .flags
+        .contains(WindowFlag::IN_NATIVE_FULLSCREEN)
+    {
         return;
     }
 
@@ -167,7 +170,7 @@ pub(crate) fn handle_mouse_up_event(
             let is_fullscreen = window_manager
                 .window
                 .get(&mouse_window)
-                .is_some_and(|window| is_window_flag_set(window, WindowFlag::IN_NATIVE_FULLSCREEN));
+                .is_some_and(|window| window.flags.contains(WindowFlag::IN_NATIVE_FULLSCREEN));
             if is_fullscreen {
                 debug!(
                     "{}: {} is transitioning into native-fullscreen mode, ignoring event..\n",

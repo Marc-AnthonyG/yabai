@@ -87,7 +87,7 @@ pub(crate) fn adjust_split_ratio_of_managed_window_parent_node(
             space_manager,
         );
     } else if let Some(view) = space_manager.view.get_mut(&space_id) {
-        view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+        view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
     }
 
     WindowOperationOutcome::Success

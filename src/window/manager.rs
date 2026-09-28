@@ -20,8 +20,8 @@ use crate::support::handles::{NodeId, ProcessId, SpaceId, WindowId};
 use crate::window::animator::WindowAnimator;
 use crate::window::model::{
     Window, WindowFlag, WindowRuleFlag, is_window_a_standard_floating_or_dialog_window,
-    is_window_a_standard_window, is_window_at_normal_window_level, is_window_flag_set,
-    is_window_movable, is_window_on_more_than_one_space, is_window_rule_flag_set,
+    is_window_a_standard_window, is_window_at_normal_window_level, is_window_movable,
+    is_window_on_more_than_one_space,
 };
 use crate::window::rule::Rule;
 use crate::window::scratchpad::Scratchpad;
@@ -121,7 +121,7 @@ pub(crate) fn is_window_eligible_for_management(
 
     let result = window.is_root
         && (is_window_a_standard_floating_or_dialog_window(window)
-            || is_window_rule_flag_set(window, WindowRuleFlag::MANAGE_FORCED_ON));
+            || window.rule_flags.contains(WindowRuleFlag::MANAGE_FORCED_ON));
     result
 }
 
@@ -136,13 +136,13 @@ pub(crate) fn should_window_be_managed(
     if !window.is_root {
         return false;
     }
-    if is_window_flag_set(window, WindowFlag::FLOATING) {
+    if window.flags.contains(WindowFlag::FLOATING) {
         return false;
     }
     if is_window_on_more_than_one_space(window_id) {
         return false;
     }
-    if is_window_flag_set(window, WindowFlag::MINIMIZED) {
+    if window.flags.contains(WindowFlag::MINIMIZED) {
         return false;
     }
 
@@ -162,7 +162,7 @@ pub(crate) fn should_window_be_managed(
     (is_window_a_standard_window(window)
         && is_window_at_normal_window_level(window)
         && is_window_movable(window))
-        || is_window_rule_flag_set(window, WindowRuleFlag::MANAGE_FORCED_ON)
+        || window.rule_flags.contains(WindowRuleFlag::MANAGE_FORCED_ON)
 }
 
 pub(crate) fn space_managing_window(

@@ -52,7 +52,7 @@ pub(crate) fn untile_window_from_view_of_space(
     if is_space_visible_on_its_display(space_id) {
         move_windows_below_node_into_their_areas(space_id, node_id, window_manager, space_manager);
     } else if let Some(view) = space_manager.view.get_mut(&space_id) {
-        view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+        view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
     }
 }
 
@@ -232,7 +232,7 @@ pub(crate) fn tile_window_on_space_preferring_insertion_point(
             );
         }
     } else if let Some(view) = space_manager.view.get_mut(&space_id) {
-        view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+        view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
     }
 
     space_id
@@ -325,7 +325,7 @@ pub(crate) fn toggle_split_direction_of_the_parent_of_window_leaf(
                     space_manager,
                 );
             } else if let Some(view) = space_manager.view.get_mut(&space_id) {
-                view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+                view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
         }
     }

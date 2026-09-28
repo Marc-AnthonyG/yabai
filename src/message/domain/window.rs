@@ -55,7 +55,7 @@ use crate::window::minimize_and_close::{
     close_window_by_pressing_its_close_button, deminimize_window_through_accessibility,
     minimize_window_through_accessibility,
 };
-use crate::window::model::{WindowFlag, is_window_flag_set};
+use crate::window::model::WindowFlag;
 use crate::window::opacity::apply_opacity_to_window_through_scripting_addition;
 use crate::window::scratchpad::{
     assign_window_to_scratchpad_making_it_float,
@@ -661,7 +661,7 @@ pub(crate) fn run_window_command(
                     let should_float = window_manager
                         .window
                         .get(&acting_window)
-                        .map(|window| !is_window_flag_set(window, WindowFlag::FLOATING));
+                        .map(|window| !window.flags.contains(WindowFlag::FLOATING));
                     if let Some(should_float) = should_float {
                         set_whether_window_floats(
                             space_manager,
@@ -685,7 +685,7 @@ pub(crate) fn run_window_command(
                     let should_sticky = window_manager
                         .window
                         .get(&acting_window)
-                        .map(|window| !is_window_flag_set(window, WindowFlag::STICKY));
+                        .map(|window| !window.flags.contains(WindowFlag::STICKY));
                     if let Some(should_sticky) = should_sticky {
                         set_whether_window_is_sticky(
                             space_manager,

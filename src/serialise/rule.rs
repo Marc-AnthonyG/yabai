@@ -27,7 +27,7 @@ pub(crate) fn write_rule_as_json_object(
     let escaped_role = role.and_then(escape_string_for_json_when_it_needs_escaping);
     let escaped_subrole = subrole.and_then(escape_string_for_json_when_it_needs_escaping);
 
-    let mut flags = RuleFlag(rule.flags);
+    let mut flags = rule.flags;
     if rule.app_regex.is_some() {
         flags.insert(RuleFlag::APPLICATION_PATTERN_IS_VALID);
     }
@@ -41,7 +41,7 @@ pub(crate) fn write_rule_as_json_object(
         flags.insert(RuleFlag::SUBROLE_PATTERN_IS_VALID);
     }
 
-    let effects_flags = RuleEffectsFlag(rule.effects.flags);
+    let effects_flags = rule.effects.flags;
 
     response.write(format_args!(
         "{{\n\
@@ -106,7 +106,7 @@ pub(crate) fn write_rule_as_json_object(
         rule.effects.grid[5] as i32,
         rule.effects.scratchpad.as_deref().unwrap_or(""),
         json_literal_for_boolean(flags.contains(RuleFlag::ONE_SHOT)),
-        ((rule.effects.flags as u32) << 16) | (flags.0 as u32),
+        ((rule.effects.flags.bits() as u32) << 16) | (flags.bits() as u32),
     ));
 }
 

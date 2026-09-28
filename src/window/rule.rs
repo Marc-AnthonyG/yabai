@@ -8,48 +8,28 @@ pub(crate) const RULE_PROPERTY_UNSET: i32 = 0;
 pub(crate) const RULE_PROPERTY_ON: i32 = 1;
 pub(crate) const RULE_PROPERTY_OFF: i32 = 2;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RuleFlag(pub u16);
-
-impl RuleFlag {
-    pub(crate) const APPLICATION_PATTERN_IS_VALID: RuleFlag = RuleFlag(0x001);
-    pub(crate) const TITLE_PATTERN_IS_VALID: RuleFlag = RuleFlag(0x002);
-    pub(crate) const ROLE_PATTERN_IS_VALID: RuleFlag = RuleFlag(0x004);
-    pub(crate) const SUBROLE_PATTERN_IS_VALID: RuleFlag = RuleFlag(0x008);
-    pub(crate) const APPLICATION_PATTERN_IS_NEGATED: RuleFlag = RuleFlag(0x010);
-    pub(crate) const TITLE_PATTERN_IS_NEGATED: RuleFlag = RuleFlag(0x020);
-    pub(crate) const ROLE_PATTERN_IS_NEGATED: RuleFlag = RuleFlag(0x040);
-    pub(crate) const SUBROLE_PATTERN_IS_NEGATED: RuleFlag = RuleFlag(0x080);
-    pub(crate) const ONE_SHOT: RuleFlag = RuleFlag(0x100);
-    pub(crate) const ONE_SHOT_DUE_FOR_REMOVAL: RuleFlag = RuleFlag(0x200);
-
-    pub(crate) fn contains(self, flag: RuleFlag) -> bool {
-        (self.0 & flag.0) != 0
-    }
-
-    pub(crate) fn insert(&mut self, flag: RuleFlag) {
-        self.0 |= flag.0;
+bitflags::bitflags! {
+    #[derive(Clone, Copy, PartialEq, Eq, Default)]
+    pub(crate) struct RuleFlag: u16 {
+        const APPLICATION_PATTERN_IS_VALID = 0x001;
+        const TITLE_PATTERN_IS_VALID = 0x002;
+        const ROLE_PATTERN_IS_VALID = 0x004;
+        const SUBROLE_PATTERN_IS_VALID = 0x008;
+        const APPLICATION_PATTERN_IS_NEGATED = 0x010;
+        const TITLE_PATTERN_IS_NEGATED = 0x020;
+        const ROLE_PATTERN_IS_NEGATED = 0x040;
+        const SUBROLE_PATTERN_IS_NEGATED = 0x080;
+        const ONE_SHOT = 0x100;
+        const ONE_SHOT_DUE_FOR_REMOVAL = 0x200;
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RuleEffectsFlag(pub u16);
-
-impl RuleEffectsFlag {
-    pub(crate) const FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE: RuleEffectsFlag = RuleEffectsFlag(0x01);
-    pub(crate) const OPACITY_IS_SET: RuleEffectsFlag = RuleEffectsFlag(0x02);
-    pub(crate) const LAYER_IS_SET: RuleEffectsFlag = RuleEffectsFlag(0x04);
-
-    pub(crate) fn contains(self, flag: RuleEffectsFlag) -> bool {
-        (self.0 & flag.0) != 0
-    }
-
-    pub(crate) fn remove(&mut self, flag: RuleEffectsFlag) {
-        self.0 &= !flag.0;
-    }
-
-    pub(crate) fn insert(&mut self, flag: RuleEffectsFlag) {
-        self.0 |= flag.0;
+bitflags::bitflags! {
+    #[derive(Clone, Copy, PartialEq, Eq, Default)]
+    pub(crate) struct RuleEffectsFlag: u16 {
+        const FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE = 0x01;
+        const OPACITY_IS_SET = 0x02;
+        const LAYER_IS_SET = 0x04;
     }
 }
 
@@ -65,7 +45,7 @@ pub(crate) struct RuleEffects {
     pub(crate) fullscreen: i32,
     pub(crate) grid: [u32; 6],
     pub(crate) scratchpad: Option<String>,
-    pub(crate) flags: u16,
+    pub(crate) flags: RuleEffectsFlag,
 }
 
 #[derive(Default)]
@@ -80,47 +60,44 @@ pub(crate) struct Rule {
     pub(crate) role_regex: Option<PosixRegex>,
     pub(crate) subrole_regex: Option<PosixRegex>,
     pub(crate) effects: RuleEffects,
-    pub(crate) flags: u16,
+    pub(crate) flags: RuleFlag,
 }
 
 pub(crate) fn combine_rule_effects_into_accumulated_effects(
     effects: &RuleEffects,
     result: &mut RuleEffects,
 ) {
-    let effects_flags = RuleEffectsFlag(effects.flags);
-    let mut result_flags = RuleEffectsFlag(result.flags);
+    let focus_follows_window_to_its_space = effects
+        .flags
+        .contains(RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE);
 
     if effects.display_id.0 != 0 {
         result.display_id = effects.display_id;
-        if effects_flags.contains(RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE) {
-            result_flags.insert(RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE);
-        } else {
-            result_flags.remove(RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE);
-        }
+        result.flags.set(
+            RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE,
+            focus_follows_window_to_its_space,
+        );
     }
 
     if effects.space_id.0 != 0 {
         result.space_id = effects.space_id;
-        if effects_flags.contains(RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE) {
-            result_flags.insert(RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE);
-        } else {
-            result_flags.remove(RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE);
-        }
+        result.flags.set(
+            RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE,
+            focus_follows_window_to_its_space,
+        );
     }
 
-    if effects_flags.contains(RuleEffectsFlag::OPACITY_IS_SET)
+    if effects.flags.contains(RuleEffectsFlag::OPACITY_IS_SET)
         && is_within_range_including_both_bounds(effects.opacity, 0.0f32, 1.0f32)
     {
         result.opacity = effects.opacity;
-        result_flags.insert(RuleEffectsFlag::OPACITY_IS_SET);
+        result.flags.insert(RuleEffectsFlag::OPACITY_IS_SET);
     }
 
-    if effects_flags.contains(RuleEffectsFlag::LAYER_IS_SET) {
+    if effects.flags.contains(RuleEffectsFlag::LAYER_IS_SET) {
         result.layer = effects.layer;
-        result_flags.insert(RuleEffectsFlag::LAYER_IS_SET);
+        result.flags.insert(RuleEffectsFlag::LAYER_IS_SET);
     }
-
-    result.flags = result_flags.0;
 
     if let Some(scratchpad) = effects.scratchpad.as_deref() {
         result.scratchpad = Some(copy_into_owned_string(scratchpad));
@@ -200,5 +177,76 @@ impl Drop for Rule {
         drop(self.subrole.take());
 
         drop(self.effects.scratchpad.take());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RuleEffects, RuleEffectsFlag, combine_rule_effects_into_accumulated_effects};
+    use crate::support::handles::SpaceId;
+
+    fn effects_sending_to_space(space_id: u64, focus_follows: bool) -> RuleEffects {
+        let mut effects = RuleEffects {
+            space_id: SpaceId(space_id),
+            ..RuleEffects::default()
+        };
+        effects.flags.set(
+            RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE,
+            focus_follows,
+        );
+        effects
+    }
+
+    #[test]
+    fn a_later_space_without_focus_following_clears_the_earlier_rules_focus_following() {
+        let mut accumulated = RuleEffects::default();
+
+        combine_rule_effects_into_accumulated_effects(
+            &effects_sending_to_space(3, true),
+            &mut accumulated,
+        );
+        combine_rule_effects_into_accumulated_effects(
+            &effects_sending_to_space(5, false),
+            &mut accumulated,
+        );
+
+        assert_eq!(accumulated.space_id.0, 5);
+        assert!(
+            !accumulated
+                .flags
+                .contains(RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE)
+        );
+    }
+
+    #[test]
+    fn a_rule_without_a_display_or_space_keeps_the_accumulated_focus_following() {
+        let mut accumulated = RuleEffects::default();
+        combine_rule_effects_into_accumulated_effects(
+            &effects_sending_to_space(3, true),
+            &mut accumulated,
+        );
+
+        combine_rule_effects_into_accumulated_effects(&RuleEffects::default(), &mut accumulated);
+
+        assert!(
+            accumulated
+                .flags
+                .contains(RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE)
+        );
+    }
+
+    #[test]
+    fn an_opacity_outside_zero_to_one_is_not_taken() {
+        let mut accumulated = RuleEffects::default();
+        let mut effects = RuleEffects {
+            opacity: 1.5,
+            ..RuleEffects::default()
+        };
+        effects.flags.insert(RuleEffectsFlag::OPACITY_IS_SET);
+
+        combine_rule_effects_into_accumulated_effects(&effects, &mut accumulated);
+
+        assert!(!accumulated.flags.contains(RuleEffectsFlag::OPACITY_IS_SET));
+        assert_eq!(accumulated.opacity, 0.0);
     }
 }

@@ -38,9 +38,7 @@ use crate::window::manager::{
     is_window_eligible_for_management, record_managed_window_on_space_updating_its_shadow,
     space_managing_window, tracked_window_with_id,
 };
-use crate::window::model::{
-    WindowFlag, clear_window_flag, is_window_flag_set, query_space_holding_window,
-};
+use crate::window::model::{WindowFlag, query_space_holding_window};
 use crate::window::screen_lookup::query_tracked_window_at_rank_on_space_skipping_window;
 use crate::window::shadow::apply_shadow_removal_mode_to_window;
 
@@ -162,7 +160,7 @@ pub(crate) fn stack_second_window_onto_the_node_of_first_window(
     } else if window_manager
         .window
         .get(&stacked_window)
-        .is_some_and(|window| is_window_flag_set(window, WindowFlag::FLOATING))
+        .is_some_and(|window| window.flags.contains(WindowFlag::FLOATING))
     {
         if !is_window_eligible_for_management(stacked_window, window_manager) {
             return WindowOperationOutcome::InvalidSourceNode;
@@ -170,8 +168,8 @@ pub(crate) fn stack_second_window_onto_the_node_of_first_window(
         let Some(window) = window_manager.window.get_mut(&stacked_window) else {
             return WindowOperationOutcome::InvalidSourceNode;
         };
-        clear_window_flag(window, WindowFlag::FLOATING);
-        if is_window_flag_set(window, WindowFlag::STICKY) {
+        window.flags.remove(WindowFlag::FLOATING);
+        if window.flags.contains(WindowFlag::STICKY) {
             set_whether_window_is_sticky(
                 space_manager,
                 window_manager,
@@ -768,7 +766,7 @@ pub(crate) fn swap_managed_windows(
             space_manager,
         );
     } else if let Some(view) = space_manager.view.get_mut(&a_view) {
-        view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+        view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
     }
 
     if b_visible {
@@ -780,7 +778,7 @@ pub(crate) fn swap_managed_windows(
             space_manager,
         );
     } else if let Some(view) = space_manager.view.get_mut(&b_view) {
-        view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+        view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
     }
 
     move_windows_to_their_target_frames_animating_if_enabled(&window_list, window_manager);

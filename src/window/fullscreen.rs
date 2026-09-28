@@ -26,9 +26,8 @@ use crate::window::animation::{
 use crate::window::focus::focus_and_raise_tracked_window;
 use crate::window::manager::{WindowManager, space_managing_window};
 use crate::window::model::{
-    WindowFlag, clear_window_flag, is_window_flag_set,
-    is_window_in_native_fullscreen_according_to_accessibility, query_display_holding_window,
-    query_space_holding_window, set_window_flag,
+    WindowFlag, is_window_in_native_fullscreen_according_to_accessibility,
+    query_display_holding_window, query_space_holding_window,
 };
 
 const LONGEST_WAIT_FOR_A_SPACE_TRANSITION_BEFORE_GIVING_UP: Duration = Duration::from_secs(2);
@@ -178,7 +177,7 @@ pub(crate) fn toggle_managed_window_zoom_parent(
                 space_manager,
             );
         } else if let Some(view) = space_manager.view.get_mut(&space_id) {
-            view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+            view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     } else {
         if let Some(view) = space_manager.view.get_mut(&space_id)
@@ -194,7 +193,7 @@ pub(crate) fn toggle_managed_window_zoom_parent(
                 space_manager,
             );
         } else if let Some(view) = space_manager.view.get_mut(&space_id) {
-            view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+            view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     }
 }
@@ -249,7 +248,7 @@ pub(crate) fn toggle_managed_window_zoom_fullscreen(
                 space_manager,
             );
         } else if let Some(view) = space_manager.view.get_mut(&space_id) {
-            view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+            view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     } else {
         if let Some(view) = space_manager.view.get_mut(&space_id)
@@ -265,7 +264,7 @@ pub(crate) fn toggle_managed_window_zoom_fullscreen(
                 space_manager,
             );
         } else if let Some(view) = space_manager.view.get_mut(&space_id) {
-            view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+            view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     }
 }
@@ -284,8 +283,8 @@ pub(crate) fn toggle_window_windowed_fullscreen(
         return;
     };
 
-    if is_window_flag_set(window, WindowFlag::IN_WINDOWED_FULLSCREEN) {
-        clear_window_flag(window, WindowFlag::IN_WINDOWED_FULLSCREEN);
+    if window.flags.contains(WindowFlag::IN_WINDOWED_FULLSCREEN) {
+        window.flags.remove(WindowFlag::IN_WINDOWED_FULLSCREEN);
         let windowed_frame = window.windowed_frame;
         move_window_to_its_target_frame_animating_if_enabled(
             WindowWithTargetFrame {
@@ -298,7 +297,7 @@ pub(crate) fn toggle_window_windowed_fullscreen(
             window_manager,
         );
     } else {
-        set_window_flag(window, WindowFlag::IN_WINDOWED_FULLSCREEN);
+        window.flags.insert(WindowFlag::IN_WINDOWED_FULLSCREEN);
         window.windowed_frame = window.frame;
         let bounds = query_bounds_of_display_left_for_windows(display_id, true, display_manager);
         move_window_to_its_target_frame_animating_if_enabled(
@@ -331,7 +330,7 @@ pub(crate) fn toggle_window_picture_in_picture(
 
     let mut bounds = query_bounds_of_display_left_for_windows(display_id, false, display_manager);
     if let Some(view) = space_manager.view.get(&display_view)
-        && view.has_flag(ViewFlag::PADDING_IS_ENABLED)
+        && view.flags.contains(ViewFlag::PADDING_IS_ENABLED)
     {
         bounds.origin.x += view.left_padding as f64;
         bounds.size.width -= (view.left_padding + view.right_padding) as f64;

@@ -65,9 +65,9 @@ pub(crate) fn place_floating_window_on_display_grid(
     );
 
     if let Some(view) = space_manager.view.get(&display_view) {
-        let enable_gap = view.has_flag(ViewFlag::WINDOW_GAP_IS_ENABLED);
+        let enable_gap = view.flags.contains(ViewFlag::WINDOW_GAP_IS_ENABLED);
 
-        if view.has_flag(ViewFlag::PADDING_IS_ENABLED) {
+        if view.flags.contains(ViewFlag::PADDING_IS_ENABLED) {
             bounds.origin.x += view.left_padding as f64;
             bounds.size.width -= (view.left_padding + view.right_padding) as f64;
             bounds.origin.y += view.top_padding as f64;

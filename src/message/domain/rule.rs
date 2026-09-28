@@ -132,7 +132,7 @@ pub(crate) fn parse_rule(
                 has_filter = true;
                 rule.app = Some(String::from_utf8_lossy(&value).into_owned());
                 if pair.exclusion {
-                    rule.flags |= RuleFlag::APPLICATION_PATTERN_IS_NEGATED.0;
+                    rule.flags |= RuleFlag::APPLICATION_PATTERN_IS_NEGATED;
                 }
                 rule.app_regex =
                     PosixRegex::compile(&CString::new(value.clone()).unwrap_or_default());
@@ -144,7 +144,7 @@ pub(crate) fn parse_rule(
                 has_filter = true;
                 rule.title = Some(String::from_utf8_lossy(&value).into_owned());
                 if pair.exclusion {
-                    rule.flags |= RuleFlag::TITLE_PATTERN_IS_NEGATED.0;
+                    rule.flags |= RuleFlag::TITLE_PATTERN_IS_NEGATED;
                 }
                 rule.title_regex =
                     PosixRegex::compile(&CString::new(value.clone()).unwrap_or_default());
@@ -156,7 +156,7 @@ pub(crate) fn parse_rule(
                 has_filter = true;
                 rule.role = Some(String::from_utf8_lossy(&value).into_owned());
                 if pair.exclusion {
-                    rule.flags |= RuleFlag::ROLE_PATTERN_IS_NEGATED.0;
+                    rule.flags |= RuleFlag::ROLE_PATTERN_IS_NEGATED;
                 }
                 rule.role_regex =
                     PosixRegex::compile(&CString::new(value.clone()).unwrap_or_default());
@@ -168,7 +168,7 @@ pub(crate) fn parse_rule(
                 has_filter = true;
                 rule.subrole = Some(String::from_utf8_lossy(&value).into_owned());
                 if pair.exclusion {
-                    rule.flags |= RuleFlag::SUBROLE_PATTERN_IS_NEGATED.0;
+                    rule.flags |= RuleFlag::SUBROLE_PATTERN_IS_NEGATED;
                 }
                 rule.subrole_regex =
                     PosixRegex::compile(&CString::new(value.clone()).unwrap_or_default());
@@ -184,7 +184,7 @@ pub(crate) fn parse_rule(
                 let mut value_start = pair.value;
                 if message_cursor.bytes()[value_start] == ARGUMENT_RULE_VALUE_SPACE {
                     value_start += 1;
-                    rule.effects.flags |= RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE.0;
+                    rule.effects.flags |= RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE;
                 }
 
                 let acting_display_id = query_display_showing_the_active_menu_bar();
@@ -209,7 +209,7 @@ pub(crate) fn parse_rule(
                 let mut value_start = pair.value;
                 if message_cursor.bytes()[value_start] == ARGUMENT_RULE_VALUE_SPACE {
                     value_start += 1;
-                    rule.effects.flags |= RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE.0;
+                    rule.effects.flags |= RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE;
                 }
 
                 let acting_space_id = query_current_space_of_the_focused_display(window_manager);
@@ -265,7 +265,7 @@ pub(crate) fn parse_rule(
                 if converted == 1
                     && is_within_range_including_both_bounds(rule.effects.opacity, 0.0f32, 1.0f32)
                 {
-                    rule.effects.flags |= RuleEffectsFlag::OPACITY_IS_SET.0;
+                    rule.effects.flags |= RuleEffectsFlag::OPACITY_IS_SET;
                 } else {
                     daemon_fail_with_invalid_value_for_key(response, &value, &key);
                     did_parse = false;
@@ -316,16 +316,16 @@ pub(crate) fn parse_rule(
 
                 if value == ARGUMENT_WINDOW_LAYER_BELOW.as_bytes() {
                     rule.effects.layer = LAYER_BELOW;
-                    rule.effects.flags |= RuleEffectsFlag::LAYER_IS_SET.0;
+                    rule.effects.flags |= RuleEffectsFlag::LAYER_IS_SET;
                 } else if value == ARGUMENT_WINDOW_LAYER_NORMAL.as_bytes() {
                     rule.effects.layer = LAYER_NORMAL;
-                    rule.effects.flags |= RuleEffectsFlag::LAYER_IS_SET.0;
+                    rule.effects.flags |= RuleEffectsFlag::LAYER_IS_SET;
                 } else if value == ARGUMENT_WINDOW_LAYER_ABOVE.as_bytes() {
                     rule.effects.layer = LAYER_ABOVE;
-                    rule.effects.flags |= RuleEffectsFlag::LAYER_IS_SET.0;
+                    rule.effects.flags |= RuleEffectsFlag::LAYER_IS_SET;
                 } else if value == ARGUMENT_WINDOW_LAYER_AUTO.as_bytes() {
                     rule.effects.layer = LAYER_AUTO;
-                    rule.effects.flags |= RuleEffectsFlag::LAYER_IS_SET.0;
+                    rule.effects.flags |= RuleEffectsFlag::LAYER_IS_SET;
                 } else {
                     daemon_fail_with_invalid_value_for_key(response, &value, &key);
                     did_parse = false;
@@ -396,7 +396,7 @@ pub(crate) fn run_rule_command(
 
         let mut token = message_cursor.take_next_token();
         if is_token_equal_to(token, message_cursor.bytes(), ARGUMENT_RULE_ONE_SHOT) {
-            rule.flags |= RuleFlag::ONE_SHOT.0;
+            rule.flags |= RuleFlag::ONE_SHOT;
             token = message_cursor.take_next_token();
         }
 

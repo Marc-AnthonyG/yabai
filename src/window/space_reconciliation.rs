@@ -78,7 +78,7 @@ pub(crate) fn untile_windows_no_longer_on_space(
             apply_shadow_removal_mode_to_window(window_manager, window);
 
             if let Some(view) = space_manager.view.get_mut(&space_id) {
-                view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+                view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
         }
     }
@@ -131,7 +131,7 @@ pub(crate) fn tile_manageable_windows_found_on_space(
             forget_managed_window(window_manager, window);
             apply_shadow_removal_mode_to_window(window_manager, window);
             if let Some(view) = space_manager.view.get_mut(&existing_space_id) {
-                view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+                view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
         }
 
@@ -163,7 +163,7 @@ pub(crate) fn tile_manageable_windows_found_on_space(
                 space_id,
             );
             if let Some(view) = space_manager.view.get_mut(&space_id) {
-                view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+                view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
         }
     }
@@ -240,7 +240,7 @@ pub(crate) fn reconcile_space_view_with_windows_on_space(
     {
         move_windows_below_node_into_their_areas(view, ROOT_NODE_ID, window_manager, space_manager);
         if let Some(view) = space_manager.view.get_mut(&view) {
-            view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+            view.flags.remove(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     }
 }

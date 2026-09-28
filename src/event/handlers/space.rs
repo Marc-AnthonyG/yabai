@@ -189,7 +189,7 @@ pub(crate) fn handle_space_changed_event(
                 space_manager,
             );
             if let Some(view) = space_manager.view.get_mut(&view) {
-                view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+                view.flags.remove(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
         }
 

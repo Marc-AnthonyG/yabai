@@ -49,12 +49,11 @@ use crate::window::manager::{
     start_tracking_application, start_tracking_window, tracked_window_with_id,
 };
 use crate::window::model::{
-    WindowFlag, WindowRuleFlag, clear_window_rule_flag, create_window_from_accessibility_element,
+    WindowFlag, WindowRuleFlag, create_window_from_accessibility_element,
     destroy_window_releasing_its_accessibility_element, is_window_a_standard_window,
-    is_window_at_most_500_points_wide_or_tall, is_window_at_normal_window_level,
-    is_window_flag_set, is_window_movable, is_window_on_more_than_one_space, is_window_resizable,
-    is_window_rule_flag_set, is_window_subrole_unknown, set_window_flag, window_role_as_string,
-    window_subrole_as_string, window_title_as_string,
+    is_window_at_most_500_points_wide_or_tall, is_window_at_normal_window_level, is_window_movable,
+    is_window_on_more_than_one_space, is_window_resizable, is_window_subrole_unknown,
+    window_role_as_string, window_subrole_as_string, window_title_as_string,
 };
 use crate::window::opacity::set_window_opacity_unless_disabled_or_fixed_by_rule;
 use crate::window::rule::RuleFlag;
@@ -198,18 +197,23 @@ pub(crate) fn track_newly_discovered_window_applying_its_rules(
             let Some(window) = window_manager.window.get_mut(&window_id) else {
                 return Some(window_id);
             };
-            if is_window_flag_set(window, WindowFlag::MINIMIZED) {
+            if window.flags.contains(WindowFlag::MINIMIZED) {
                 return Some(window_id);
             }
-            if is_window_flag_set(window, WindowFlag::IN_NATIVE_FULLSCREEN) {
+            if window.flags.contains(WindowFlag::IN_NATIVE_FULLSCREEN) {
                 return Some(window_id);
             }
-            if is_window_rule_flag_set(window, WindowRuleFlag::MANAGE_FORCED_ON) {
+            if window.rule_flags.contains(WindowRuleFlag::MANAGE_FORCED_ON) {
                 return Some(window_id);
             }
 
-            if is_window_rule_flag_set(window, WindowRuleFlag::NATIVE_FULLSCREEN_REQUESTED) {
-                clear_window_rule_flag(window, WindowRuleFlag::NATIVE_FULLSCREEN_REQUESTED);
+            if window
+                .rule_flags
+                .contains(WindowRuleFlag::NATIVE_FULLSCREEN_REQUESTED)
+            {
+                window
+                    .rule_flags
+                    .remove(WindowRuleFlag::NATIVE_FULLSCREEN_REQUESTED);
                 return Some(window_id);
             }
 
@@ -220,7 +224,7 @@ pub(crate) fn track_newly_discovered_window_applying_its_rules(
                 || (!is_window_resizable(window)
                     && is_window_at_most_500_points_wide_or_tall(window))
             {
-                set_window_flag(window, WindowFlag::FLOATING);
+                window.flags.insert(WindowFlag::FLOATING);
             }
         } else {
             crate::debug!(
@@ -230,7 +234,7 @@ pub(crate) fn track_newly_discovered_window_applying_its_rules(
                 window_id.0 as i32
             );
             if let Some(window) = window_manager.window.get_mut(&window_id) {
-                set_window_flag(window, WindowFlag::FLOATING);
+                window.flags.insert(WindowFlag::FLOATING);
             }
 
             //
@@ -261,7 +265,7 @@ pub(crate) fn track_newly_discovered_window_applying_its_rules(
             window_id.0 as i32
         );
         if let Some(window) = window_manager.window.get_mut(&window_id) {
-            set_window_flag(window, WindowFlag::FLOATING);
+            window.flags.insert(WindowFlag::FLOATING);
         }
 
         //
@@ -342,7 +346,8 @@ pub(crate) fn track_untracked_windows_of_application_applying_one_shot_rules(
     let mut rule_length = window_manager.rules.len() as i32;
     let mut index: i32 = 0;
     while index < rule_length {
-        if RuleFlag(window_manager.rules[index as usize].flags)
+        if window_manager.rules[index as usize]
+            .flags
             .contains(RuleFlag::ONE_SHOT_DUE_FOR_REMOVAL)
         {
             window_manager.rules.swap_remove(index as usize);

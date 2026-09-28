@@ -977,7 +977,7 @@ pub(crate) fn run_config_command(
                     if let TokenValueType::Invalid = value.type_of_value {
                         response.write(format_args!("{}\n", view.top_padding));
                     } else if let TokenValueType::Integer(int_value) = value.type_of_value {
-                        view.set_flag(ViewFlag::OVERRIDES_GLOBAL_TOP_PADDING);
+                        view.flags.insert(ViewFlag::OVERRIDES_GLOBAL_TOP_PADDING);
                         view.top_padding = int_value;
                         recompute_view_areas_from_display_bounds_and_padding(
                             space_manager,
@@ -1038,7 +1038,7 @@ pub(crate) fn run_config_command(
                     if let TokenValueType::Invalid = value.type_of_value {
                         response.write(format_args!("{}\n", view.bottom_padding));
                     } else if let TokenValueType::Integer(int_value) = value.type_of_value {
-                        view.set_flag(ViewFlag::OVERRIDES_GLOBAL_BOTTOM_PADDING);
+                        view.flags.insert(ViewFlag::OVERRIDES_GLOBAL_BOTTOM_PADDING);
                         view.bottom_padding = int_value;
                         recompute_view_areas_from_display_bounds_and_padding(
                             space_manager,
@@ -1095,7 +1095,7 @@ pub(crate) fn run_config_command(
                     if let TokenValueType::Invalid = value.type_of_value {
                         response.write(format_args!("{}\n", view.left_padding));
                     } else if let TokenValueType::Integer(int_value) = value.type_of_value {
-                        view.set_flag(ViewFlag::OVERRIDES_GLOBAL_LEFT_PADDING);
+                        view.flags.insert(ViewFlag::OVERRIDES_GLOBAL_LEFT_PADDING);
                         view.left_padding = int_value;
                         recompute_view_areas_from_display_bounds_and_padding(
                             space_manager,
@@ -1156,7 +1156,7 @@ pub(crate) fn run_config_command(
                     if let TokenValueType::Invalid = value.type_of_value {
                         response.write(format_args!("{}\n", view.right_padding));
                     } else if let TokenValueType::Integer(int_value) = value.type_of_value {
-                        view.set_flag(ViewFlag::OVERRIDES_GLOBAL_RIGHT_PADDING);
+                        view.flags.insert(ViewFlag::OVERRIDES_GLOBAL_RIGHT_PADDING);
                         view.right_padding = int_value;
                         recompute_view_areas_from_display_bounds_and_padding(
                             space_manager,
@@ -1213,7 +1213,7 @@ pub(crate) fn run_config_command(
                     if let TokenValueType::Invalid = value.type_of_value {
                         response.write(format_args!("{}\n", view.window_gap));
                     } else if let TokenValueType::Integer(int_value) = value.type_of_value {
-                        view.set_flag(ViewFlag::OVERRIDES_GLOBAL_WINDOW_GAP);
+                        view.flags.insert(ViewFlag::OVERRIDES_GLOBAL_WINDOW_GAP);
                         view.window_gap = int_value;
                         recompute_view_areas_from_display_bounds_and_padding(
                             space_manager,
@@ -1277,7 +1277,7 @@ pub(crate) fn run_config_command(
                 ) {
                     if is_user_space(selector_space_id) {
                         if let Some(view) = space_manager.view.get_mut(&view_space_id) {
-                            view.set_flag(ViewFlag::OVERRIDES_GLOBAL_LAYOUT);
+                            view.flags.insert(ViewFlag::OVERRIDES_GLOBAL_LAYOUT);
                             view.layout = ViewLayout::BinarySpacePartitioning;
                         }
                         clear_view_tree_unmanaging_every_window(
@@ -1307,7 +1307,7 @@ pub(crate) fn run_config_command(
                 ) {
                     if is_user_space(selector_space_id) {
                         if let Some(view) = space_manager.view.get_mut(&view_space_id) {
-                            view.set_flag(ViewFlag::OVERRIDES_GLOBAL_LAYOUT);
+                            view.flags.insert(ViewFlag::OVERRIDES_GLOBAL_LAYOUT);
                             view.layout = ViewLayout::Stack;
                         }
                         clear_view_tree_unmanaging_every_window(
@@ -1337,7 +1337,7 @@ pub(crate) fn run_config_command(
                 ) {
                     if is_user_space(selector_space_id) {
                         if let Some(view) = space_manager.view.get_mut(&view_space_id) {
-                            view.set_flag(ViewFlag::OVERRIDES_GLOBAL_LAYOUT);
+                            view.flags.insert(ViewFlag::OVERRIDES_GLOBAL_LAYOUT);
                             view.layout = ViewLayout::Float;
                         }
                         clear_view_tree_unmanaging_every_window(
@@ -1449,21 +1449,21 @@ pub(crate) fn run_config_command(
                         message_cursor.bytes(),
                         ARGUMENT_CONFIG_SPLIT_TYPE_Y,
                     ) {
-                        view.set_flag(ViewFlag::OVERRIDES_GLOBAL_SPLIT_TYPE);
+                        view.flags.insert(ViewFlag::OVERRIDES_GLOBAL_SPLIT_TYPE);
                         view.split_type = WindowNodeSplit::Vertical;
                     } else if is_token_equal_to(
                         value,
                         message_cursor.bytes(),
                         ARGUMENT_CONFIG_SPLIT_TYPE_X,
                     ) {
-                        view.set_flag(ViewFlag::OVERRIDES_GLOBAL_SPLIT_TYPE);
+                        view.flags.insert(ViewFlag::OVERRIDES_GLOBAL_SPLIT_TYPE);
                         view.split_type = WindowNodeSplit::Horizontal;
                     } else if is_token_equal_to(
                         value,
                         message_cursor.bytes(),
                         ARGUMENT_CONFIG_SPLIT_TYPE_AUTO,
                     ) {
-                        view.set_flag(ViewFlag::OVERRIDES_GLOBAL_SPLIT_TYPE);
+                        view.flags.insert(ViewFlag::OVERRIDES_GLOBAL_SPLIT_TYPE);
                         view.split_type = WindowNodeSplit::Auto;
                     } else {
                         daemon_fail_with_unknown_value_given_to_command_for_domain(
@@ -1530,14 +1530,14 @@ pub(crate) fn run_config_command(
                         message_cursor.bytes(),
                         ARGUMENT_COMMON_VALUE_OFF,
                     ) {
-                        view.set_flag(ViewFlag::OVERRIDES_GLOBAL_AUTO_BALANCE);
+                        view.flags.insert(ViewFlag::OVERRIDES_GLOBAL_AUTO_BALANCE);
                         view.auto_balance = WindowNodeSplit::None as u32;
                     } else if is_token_equal_to(
                         value,
                         message_cursor.bytes(),
                         ARGUMENT_COMMON_VALUE_ON,
                     ) {
-                        view.set_flag(ViewFlag::OVERRIDES_GLOBAL_AUTO_BALANCE);
+                        view.flags.insert(ViewFlag::OVERRIDES_GLOBAL_AUTO_BALANCE);
                         view.auto_balance =
                             WindowNodeSplit::Horizontal as u32 | WindowNodeSplit::Vertical as u32;
                     } else if is_token_equal_to(
@@ -1545,14 +1545,14 @@ pub(crate) fn run_config_command(
                         message_cursor.bytes(),
                         ARGUMENT_COMMON_VALUE_AXIS_X,
                     ) {
-                        view.set_flag(ViewFlag::OVERRIDES_GLOBAL_AUTO_BALANCE);
+                        view.flags.insert(ViewFlag::OVERRIDES_GLOBAL_AUTO_BALANCE);
                         view.auto_balance = WindowNodeSplit::Horizontal as u32;
                     } else if is_token_equal_to(
                         value,
                         message_cursor.bytes(),
                         ARGUMENT_COMMON_VALUE_AXIS_Y,
                     ) {
-                        view.set_flag(ViewFlag::OVERRIDES_GLOBAL_AUTO_BALANCE);
+                        view.flags.insert(ViewFlag::OVERRIDES_GLOBAL_AUTO_BALANCE);
                         view.auto_balance = WindowNodeSplit::Vertical as u32;
                     } else {
                         daemon_fail_with_unknown_value_given_to_command_for_domain(

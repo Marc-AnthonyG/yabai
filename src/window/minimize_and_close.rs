@@ -12,9 +12,7 @@ use crate::ffi::core_foundation::{
 };
 use crate::support::handles::WindowId;
 use crate::window::manager::{WindowManager, WindowOperationOutcome};
-use crate::window::model::{
-    WindowFlag, can_window_be_minimized_through_accessibility, is_window_flag_set,
-};
+use crate::window::model::{WindowFlag, can_window_be_minimized_through_accessibility};
 
 pub(crate) fn minimize_window_through_accessibility(
     window_id: WindowId,
@@ -27,7 +25,7 @@ pub(crate) fn minimize_window_through_accessibility(
     if !can_window_be_minimized_through_accessibility(window) {
         return WindowOperationOutcome::CannotMinimize;
     }
-    if is_window_flag_set(window, WindowFlag::MINIMIZED) {
+    if window.flags.contains(WindowFlag::MINIMIZED) {
         return WindowOperationOutcome::AlreadyMinimized;
     }
 
@@ -53,7 +51,7 @@ pub(crate) fn deminimize_window_through_accessibility(
         return WindowOperationOutcome::NotMinimized;
     };
 
-    if !is_window_flag_set(window, WindowFlag::MINIMIZED) {
+    if !window.flags.contains(WindowFlag::MINIMIZED) {
         return WindowOperationOutcome::NotMinimized;
     }
 

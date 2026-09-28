@@ -21,10 +21,9 @@ use crate::window::grid::place_floating_window_on_display_grid;
 use crate::window::layer::set_window_layer_for_it_and_its_child_windows;
 use crate::window::manager::{WindowManager, is_window_eligible_for_management};
 use crate::window::model::{
-    WindowRuleFlag, clear_window_rule_flag,
-    is_window_in_native_fullscreen_according_to_accessibility, is_window_rule_flag_set,
-    query_space_holding_window, set_window_rule_flag, window_role_as_string,
-    window_subrole_as_string, window_title_as_string,
+    WindowRuleFlag, is_window_in_native_fullscreen_according_to_accessibility,
+    query_space_holding_window, window_role_as_string, window_subrole_as_string,
+    window_title_as_string,
 };
 use crate::window::opacity::apply_opacity_to_window_through_scripting_addition;
 use crate::window::rule::{
@@ -54,7 +53,9 @@ pub(crate) fn is_window_matched_by_rule(
     };
     let application_name = CString::new(application.name.as_bytes()).unwrap();
 
-    let regex_match_app = if RuleFlag(rule.flags).contains(RuleFlag::APPLICATION_PATTERN_IS_NEGATED)
+    let regex_match_app = if rule
+        .flags
+        .contains(RuleFlag::APPLICATION_PATTERN_IS_NEGATED)
     {
         RegexMatch::Yes
     } else {
@@ -67,7 +68,7 @@ pub(crate) fn is_window_matched_by_rule(
     }
 
     let window_title = CString::new(window_title).unwrap();
-    let regex_match_title = if RuleFlag(rule.flags).contains(RuleFlag::TITLE_PATTERN_IS_NEGATED) {
+    let regex_match_title = if rule.flags.contains(RuleFlag::TITLE_PATTERN_IS_NEGATED) {
         RegexMatch::Yes
     } else {
         RegexMatch::No
@@ -79,7 +80,7 @@ pub(crate) fn is_window_matched_by_rule(
     }
 
     let window_role = CString::new(window_role).unwrap();
-    let regex_match_role = if RuleFlag(rule.flags).contains(RuleFlag::ROLE_PATTERN_IS_NEGATED) {
+    let regex_match_role = if rule.flags.contains(RuleFlag::ROLE_PATTERN_IS_NEGATED) {
         RegexMatch::Yes
     } else {
         RegexMatch::No
@@ -91,8 +92,7 @@ pub(crate) fn is_window_matched_by_rule(
     }
 
     let window_subrole = CString::new(window_subrole).unwrap();
-    let regex_match_subrole = if RuleFlag(rule.flags).contains(RuleFlag::SUBROLE_PATTERN_IS_NEGATED)
-    {
+    let regex_match_subrole = if rule.flags.contains(RuleFlag::SUBROLE_PATTERN_IS_NEGATED) {
         RegexMatch::Yes
     } else {
         RegexMatch::No
@@ -116,7 +116,7 @@ pub(crate) fn apply_manage_effect_of_rule_to_window(
 ) {
     if effects.manage == RULE_PROPERTY_ON {
         if let Some(window) = window_manager.window.get_mut(&window_id) {
-            set_window_rule_flag(window, WindowRuleFlag::MANAGE_FORCED_ON);
+            window.rule_flags.insert(WindowRuleFlag::MANAGE_FORCED_ON);
         }
         set_whether_window_floats(
             space_manager,
@@ -129,7 +129,7 @@ pub(crate) fn apply_manage_effect_of_rule_to_window(
         );
     } else if effects.manage == RULE_PROPERTY_OFF {
         if let Some(window) = window_manager.window.get_mut(&window_id) {
-            clear_window_rule_flag(window, WindowRuleFlag::MANAGE_FORCED_ON);
+            window.rule_flags.remove(WindowRuleFlag::MANAGE_FORCED_ON);
         }
         set_whether_window_floats(
             space_manager,
@@ -177,7 +177,8 @@ pub(crate) fn apply_effects_other_than_manage_of_rule_to_window(
                 display_manager,
                 mouse_drag_state,
             );
-            if RuleEffectsFlag(effects.flags)
+            if effects
+                .flags
                 .contains(RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE)
                 || effects.fullscreen == RULE_PROPERTY_ON
             {
@@ -212,21 +213,29 @@ pub(crate) fn apply_effects_other_than_manage_of_rule_to_window(
 
     if effects.mff == RULE_PROPERTY_ON {
         if let Some(window) = window_manager.window.get_mut(&window_id) {
-            set_window_rule_flag(window, WindowRuleFlag::OVERRIDES_MOUSE_FOLLOWS_FOCUS);
-            set_window_rule_flag(window, WindowRuleFlag::MOUSE_FOLLOWS_FOCUS_OVERRIDE_IS_ON);
+            window
+                .rule_flags
+                .insert(WindowRuleFlag::OVERRIDES_MOUSE_FOLLOWS_FOCUS);
+            window
+                .rule_flags
+                .insert(WindowRuleFlag::MOUSE_FOLLOWS_FOCUS_OVERRIDE_IS_ON);
         }
     } else if effects.mff == RULE_PROPERTY_OFF {
         if let Some(window) = window_manager.window.get_mut(&window_id) {
-            set_window_rule_flag(window, WindowRuleFlag::OVERRIDES_MOUSE_FOLLOWS_FOCUS);
-            clear_window_rule_flag(window, WindowRuleFlag::MOUSE_FOLLOWS_FOCUS_OVERRIDE_IS_ON);
+            window
+                .rule_flags
+                .insert(WindowRuleFlag::OVERRIDES_MOUSE_FOLLOWS_FOCUS);
+            window
+                .rule_flags
+                .remove(WindowRuleFlag::MOUSE_FOLLOWS_FOCUS_OVERRIDE_IS_ON);
         }
     }
 
-    if RuleEffectsFlag(effects.flags).contains(RuleEffectsFlag::LAYER_IS_SET) {
+    if effects.flags.contains(RuleEffectsFlag::LAYER_IS_SET) {
         set_window_layer_for_it_and_its_child_windows(window_id, effects.layer, window_manager);
     }
 
-    if RuleEffectsFlag(effects.flags).contains(RuleEffectsFlag::OPACITY_IS_SET)
+    if effects.flags.contains(RuleEffectsFlag::OPACITY_IS_SET)
         && is_within_range_including_both_bounds(effects.opacity, 0.0f32, 1.0f32)
     {
         if let Some(window) = window_manager.window.get_mut(&window_id) {
@@ -249,7 +258,9 @@ pub(crate) fn apply_effects_other_than_manage_of_rule_to_window(
                     as_cftype(kCFBooleanTrue()),
                 )
             };
-            set_window_rule_flag(window, WindowRuleFlag::NATIVE_FULLSCREEN_REQUESTED);
+            window
+                .rule_flags
+                .insert(WindowRuleFlag::NATIVE_FULLSCREEN_REQUESTED);
         }
     }
 
@@ -299,7 +310,7 @@ pub(crate) fn apply_manage_effect_of_matching_rules_to_window(
     let mut rules = std::mem::take(&mut window_manager.rules);
 
     for index in 0..rules.len() {
-        if one_shot_rules || !RuleFlag(rules[index].flags).contains(RuleFlag::ONE_SHOT) {
+        if one_shot_rules || !rules[index].flags.contains(RuleFlag::ONE_SHOT) {
             if is_window_matched_by_rule(
                 &rules[index],
                 window_id,
@@ -327,10 +338,10 @@ pub(crate) fn apply_manage_effect_of_matching_rules_to_window(
                 matched = true;
                 combine_rule_effects_into_accumulated_effects(&rules[index].effects, &mut effects);
 
-                if RuleFlag(rules[index].flags).contains(RuleFlag::ONE_SHOT) {
-                    let mut rule_flags = RuleFlag(rules[index].flags);
-                    rule_flags.insert(RuleFlag::ONE_SHOT_DUE_FOR_REMOVAL);
-                    rules[index].flags = rule_flags.0;
+                if rules[index].flags.contains(RuleFlag::ONE_SHOT) {
+                    rules[index]
+                        .flags
+                        .insert(RuleFlag::ONE_SHOT_DUE_FOR_REMOVAL);
                 }
             }
         }
@@ -369,7 +380,7 @@ pub(crate) fn apply_effects_other_than_manage_of_matching_rules_to_window(
     let mut rules = std::mem::take(&mut window_manager.rules);
 
     for index in 0..rules.len() {
-        if one_shot_rules || !RuleFlag(rules[index].flags).contains(RuleFlag::ONE_SHOT) {
+        if one_shot_rules || !rules[index].flags.contains(RuleFlag::ONE_SHOT) {
             if is_window_matched_by_rule(
                 &rules[index],
                 window_id,
@@ -380,7 +391,7 @@ pub(crate) fn apply_effects_other_than_manage_of_matching_rules_to_window(
             ) {
                 let window_is_managed_by_rule =
                     window_manager.window.get(&window_id).is_some_and(|window| {
-                        is_window_rule_flag_set(window, WindowRuleFlag::MANAGE_FORCED_ON)
+                        window.rule_flags.contains(WindowRuleFlag::MANAGE_FORCED_ON)
                     });
                 if !window_is_managed_by_rule {
                     if rules[index].role_regex.is_none()
@@ -401,10 +412,10 @@ pub(crate) fn apply_effects_other_than_manage_of_matching_rules_to_window(
                 matched = true;
                 combine_rule_effects_into_accumulated_effects(&rules[index].effects, &mut effects);
 
-                if RuleFlag(rules[index].flags).contains(RuleFlag::ONE_SHOT) {
-                    let mut rule_flags = RuleFlag(rules[index].flags);
-                    rule_flags.insert(RuleFlag::ONE_SHOT_DUE_FOR_REMOVAL);
-                    rules[index].flags = rule_flags.0;
+                if rules[index].flags.contains(RuleFlag::ONE_SHOT) {
+                    rules[index]
+                        .flags
+                        .insert(RuleFlag::ONE_SHOT_DUE_FOR_REMOVAL);
                 }
             }
         }
@@ -489,7 +500,10 @@ pub(crate) fn reapply_rule_at_index_to_every_root_window(
 ) -> bool {
     for rule_index in 0..window_manager.rules.len() {
         if rule_index as i32 == index {
-            if !RuleFlag(window_manager.rules[rule_index].flags).contains(RuleFlag::ONE_SHOT) {
+            if !window_manager.rules[rule_index]
+                .flags
+                .contains(RuleFlag::ONE_SHOT)
+            {
                 let rule = std::mem::take(&mut window_manager.rules[rule_index]);
                 apply_rule_to_every_matching_root_window(
                     &rule,
@@ -525,7 +539,10 @@ pub(crate) fn reapply_rule_with_label_to_every_root_window(
             window_manager.rules[rule_index].label.as_deref(),
             Some(&*label),
         ) {
-            if !RuleFlag(window_manager.rules[rule_index].flags).contains(RuleFlag::ONE_SHOT) {
+            if !window_manager.rules[rule_index]
+                .flags
+                .contains(RuleFlag::ONE_SHOT)
+            {
                 let rule = std::mem::take(&mut window_manager.rules[rule_index]);
                 apply_rule_to_every_matching_root_window(
                     &rule,

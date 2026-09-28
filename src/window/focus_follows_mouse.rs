@@ -26,8 +26,8 @@ use crate::window::manager::{
     FocusFollowsMouseMode, WindowManager, is_window_eligible_for_management, tracked_window_with_id,
 };
 use crate::window::model::{
-    WindowFlag, is_window_flag_set, query_window_level_from_window_server,
-    query_window_sub_level_from_window_server, window_role,
+    WindowFlag, query_window_level_from_window_server, query_window_sub_level_from_window_server,
+    window_role,
 };
 use crate::window::screen_lookup::query_tracked_window_at_point;
 
@@ -179,7 +179,7 @@ pub(crate) fn focus_the_window_at_point_the_way_focus_follows_mouse_does(
                         continue;
                     };
 
-                    if !is_window_flag_set(sub_window_record, WindowFlag::FLOATING) {
+                    if !sub_window_record.flags.contains(WindowFlag::FLOATING) {
                         continue;
                     }
                     if query_window_level_from_window_server(window)

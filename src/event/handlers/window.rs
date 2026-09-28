@@ -65,12 +65,11 @@ use crate::window::manager::{
 };
 use crate::window::model::{
     WindowFlag, can_window_be_moved_through_accessibility,
-    can_window_be_resized_through_accessibility, clear_window_flag,
-    copy_window_role_through_accessibility, copy_window_subrole_through_accessibility,
-    copy_window_title_through_accessibility, destroy_window_releasing_its_accessibility_element,
-    is_window_flag_set, is_window_in_native_fullscreen_according_to_accessibility,
-    query_space_holding_window, read_window_frame_through_accessibility,
-    read_window_origin_through_accessibility, set_window_flag,
+    can_window_be_resized_through_accessibility, copy_window_role_through_accessibility,
+    copy_window_subrole_through_accessibility, copy_window_title_through_accessibility,
+    destroy_window_releasing_its_accessibility_element,
+    is_window_in_native_fullscreen_according_to_accessibility, query_space_holding_window,
+    read_window_frame_through_accessibility, read_window_origin_through_accessibility,
 };
 use crate::window::rule::RuleFlag;
 use crate::window::scratchpad::remove_window_from_its_scratchpad;
@@ -131,7 +130,8 @@ pub(crate) fn handle_window_created_event(
     let mut rule_len = window_manager.rules.len() as i32;
     let mut index: i32 = 0;
     while index < rule_len {
-        if RuleFlag(window_manager.rules[index as usize].flags)
+        if window_manager.rules[index as usize]
+            .flags
             .contains(RuleFlag::ONE_SHOT_DUE_FOR_REMOVAL)
         {
             window_manager.rules.swap_remove(index as usize);
@@ -324,7 +324,7 @@ pub(crate) fn handle_window_focused_event(
     let is_minimized = window_manager
         .window
         .get(&window)
-        .is_some_and(|window| is_window_flag_set(window, WindowFlag::MINIMIZED));
+        .is_some_and(|window| window.flags.contains(WindowFlag::MINIMIZED));
     if is_minimized {
         record_focused_event_that_arrived_before_window_was_tracked(window_manager, window);
         return;
@@ -459,7 +459,9 @@ pub(crate) fn handle_window_moved_event(
     window_record.frame.origin = new_origin;
 
     if !windowed_fullscreen {
-        clear_window_flag(window_record, WindowFlag::IN_WINDOWED_FULLSCREEN);
+        window_record
+            .flags
+            .remove(WindowFlag::IN_WINDOWED_FULLSCREEN);
 
         if mouse_drag_state.window_id.is_none() || mouse_drag_state.window_id != Some(window) {
             let view = space_managing_window(window_manager, window);
@@ -508,7 +510,7 @@ pub(crate) fn handle_window_moved_event(
                             space_manager,
                         );
                     } else if let Some(view) = space_manager.view.get_mut(&view) {
-                        view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+                        view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
                     }
                 }
             }
@@ -592,27 +594,25 @@ pub(crate) fn handle_window_resized_event(
     let Some(window_record) = window_manager.window.get_mut(&window) else {
         return;
     };
-    let was_fullscreen = is_window_flag_set(window_record, WindowFlag::IN_NATIVE_FULLSCREEN);
+    let was_fullscreen = window_record
+        .flags
+        .contains(WindowFlag::IN_NATIVE_FULLSCREEN);
 
     let is_fullscreen = is_window_in_native_fullscreen_according_to_accessibility(window_record);
-    if is_fullscreen {
-        set_window_flag(window_record, WindowFlag::IN_NATIVE_FULLSCREEN);
-    } else {
-        clear_window_flag(window_record, WindowFlag::IN_NATIVE_FULLSCREEN);
-    }
+    window_record
+        .flags
+        .set(WindowFlag::IN_NATIVE_FULLSCREEN, is_fullscreen);
 
     if was_fullscreen != is_fullscreen {
-        if can_window_be_moved_through_accessibility(window_record) {
-            set_window_flag(window_record, WindowFlag::MOVABLE);
-        } else {
-            clear_window_flag(window_record, WindowFlag::MOVABLE);
-        }
+        window_record.flags.set(
+            WindowFlag::MOVABLE,
+            can_window_be_moved_through_accessibility(window_record),
+        );
 
-        if can_window_be_resized_through_accessibility(window_record) {
-            set_window_flag(window_record, WindowFlag::RESIZABLE);
-        } else {
-            clear_window_flag(window_record, WindowFlag::RESIZABLE);
-        }
+        window_record.flags.set(
+            WindowFlag::RESIZABLE,
+            can_window_be_resized_through_accessibility(window_record),
+        );
 
         drop(window_record.role.take());
         let role = copy_window_role_through_accessibility(window_record);
@@ -671,7 +671,9 @@ pub(crate) fn handle_window_resized_event(
 
         if !windowed_fullscreen {
             if let Some(window_record) = window_manager.window.get_mut(&window) {
-                clear_window_flag(window_record, WindowFlag::IN_WINDOWED_FULLSCREEN);
+                window_record
+                    .flags
+                    .remove(WindowFlag::IN_WINDOWED_FULLSCREEN);
             }
 
             if mouse_drag_state.window_id.is_none() || mouse_drag_state.window_id != Some(window) {
@@ -733,7 +735,7 @@ pub(crate) fn handle_window_resized_event(
                                 space_manager,
                             );
                         } else if let Some(view) = space_manager.view.get_mut(&view) {
-                            view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
+                            view.flags.insert(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
                         }
                     }
                 }
@@ -784,19 +786,17 @@ pub(crate) fn handle_window_minimized_event(
     let Some(window_record) = window_manager.window.get_mut(&window) else {
         return;
     };
-    set_window_flag(window_record, WindowFlag::MINIMIZED);
+    window_record.flags.insert(WindowFlag::MINIMIZED);
 
-    if can_window_be_moved_through_accessibility(window_record) {
-        set_window_flag(window_record, WindowFlag::MOVABLE);
-    } else {
-        clear_window_flag(window_record, WindowFlag::MOVABLE);
-    }
+    window_record.flags.set(
+        WindowFlag::MOVABLE,
+        can_window_be_moved_through_accessibility(window_record),
+    );
 
-    if can_window_be_resized_through_accessibility(window_record) {
-        set_window_flag(window_record, WindowFlag::RESIZABLE);
-    } else {
-        clear_window_flag(window_record, WindowFlag::RESIZABLE);
-    }
+    window_record.flags.set(
+        WindowFlag::RESIZABLE,
+        can_window_be_resized_through_accessibility(window_record),
+    );
 
     drop(window_record.role.take());
     let role = copy_window_role_through_accessibility(window_record);
@@ -867,19 +867,17 @@ pub(crate) fn handle_window_deminimized_event(
     let Some(window_record) = window_manager.window.get_mut(&window) else {
         return;
     };
-    clear_window_flag(window_record, WindowFlag::MINIMIZED);
+    window_record.flags.remove(WindowFlag::MINIMIZED);
 
-    if can_window_be_moved_through_accessibility(window_record) {
-        set_window_flag(window_record, WindowFlag::MOVABLE);
-    } else {
-        clear_window_flag(window_record, WindowFlag::MOVABLE);
-    }
+    window_record.flags.set(
+        WindowFlag::MOVABLE,
+        can_window_be_moved_through_accessibility(window_record),
+    );
 
-    if can_window_be_resized_through_accessibility(window_record) {
-        set_window_flag(window_record, WindowFlag::RESIZABLE);
-    } else {
-        clear_window_flag(window_record, WindowFlag::RESIZABLE);
-    }
+    window_record.flags.set(
+        WindowFlag::RESIZABLE,
+        can_window_be_resized_through_accessibility(window_record),
+    );
 
     drop(window_record.role.take());
     let role = copy_window_role_through_accessibility(window_record);

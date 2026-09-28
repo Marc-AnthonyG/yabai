@@ -15,7 +15,7 @@ use crate::ffi::skylight::{
 use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
 use crate::support::handles::{DisplayId, SpaceId, WindowId};
 use crate::window::manager::{WindowManager, tracked_window_with_id};
-use crate::window::model::{WindowFlag, is_window_flag_set, query_every_space_holding_window};
+use crate::window::model::{WindowFlag, query_every_space_holding_window};
 
 pub(crate) fn query_display_holding_space(space_id: SpaceId) -> DisplayId {
     let uuid_string = unsafe {
@@ -114,7 +114,7 @@ pub(crate) fn query_windows_on_spaces_owned_by_connection(
             let found_window_id = tracked_window_with_id(window_manager, window_id);
             let window = found_window_id
                 .and_then(|found_window_id| window_manager.window.get(&found_window_id));
-            if window.is_some_and(|window| !is_window_flag_set(window, WindowFlag::MINIMIZED)) {
+            if window.is_some_and(|window| !window.flags.contains(WindowFlag::MINIMIZED)) {
                 window_list.push(window_id);
             } else if parent_window_id == 0 {
                 if level == 0 || level == 3 || level == 8 {

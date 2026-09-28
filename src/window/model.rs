@@ -56,36 +56,36 @@ pub(crate) struct Window {
     pub(crate) is_root: bool,
     pub(crate) is_eligible: bool,
     pub(crate) notification: u8,
-    pub(crate) rule_flags: u8,
-    pub(crate) flags: u8,
+    pub(crate) rule_flags: WindowRuleFlag,
+    pub(crate) flags: WindowFlag,
     pub(crate) opacity: f32,
     pub(crate) layer: i32,
     pub(crate) scratchpad: Option<String>,
     pub(crate) stays_a_group_on_its_own: bool,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WindowFlag(pub u8);
-
-impl WindowFlag {
-    pub(crate) const HAS_SHADOW: WindowFlag = WindowFlag(0x01);
-    pub(crate) const IN_NATIVE_FULLSCREEN: WindowFlag = WindowFlag(0x02);
-    pub(crate) const MINIMIZED: WindowFlag = WindowFlag(0x04);
-    pub(crate) const FLOATING: WindowFlag = WindowFlag(0x08);
-    pub(crate) const STICKY: WindowFlag = WindowFlag(0x10);
-    pub(crate) const IN_WINDOWED_FULLSCREEN: WindowFlag = WindowFlag(0x20);
-    pub(crate) const MOVABLE: WindowFlag = WindowFlag(0x40);
-    pub(crate) const RESIZABLE: WindowFlag = WindowFlag(0x80);
+bitflags::bitflags! {
+    #[derive(Clone, Copy, PartialEq, Eq, Default)]
+    pub(crate) struct WindowFlag: u8 {
+        const HAS_SHADOW = 0x01;
+        const IN_NATIVE_FULLSCREEN = 0x02;
+        const MINIMIZED = 0x04;
+        const FLOATING = 0x08;
+        const STICKY = 0x10;
+        const IN_WINDOWED_FULLSCREEN = 0x20;
+        const MOVABLE = 0x40;
+        const RESIZABLE = 0x80;
+    }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WindowRuleFlag(pub u8);
-
-impl WindowRuleFlag {
-    pub(crate) const MANAGE_FORCED_ON: WindowRuleFlag = WindowRuleFlag(0x01);
-    pub(crate) const NATIVE_FULLSCREEN_REQUESTED: WindowRuleFlag = WindowRuleFlag(0x02);
-    pub(crate) const OVERRIDES_MOUSE_FOLLOWS_FOCUS: WindowRuleFlag = WindowRuleFlag(0x04);
-    pub(crate) const MOUSE_FOLLOWS_FOCUS_OVERRIDE_IS_ON: WindowRuleFlag = WindowRuleFlag(0x08);
+bitflags::bitflags! {
+    #[derive(Clone, Copy, PartialEq, Eq, Default)]
+    pub(crate) struct WindowRuleFlag: u8 {
+        const MANAGE_FORCED_ON = 0x01;
+        const NATIVE_FULLSCREEN_REQUESTED = 0x02;
+        const OVERRIDES_MOUSE_FOLLOWS_FOCUS = 0x04;
+        const MOUSE_FOLLOWS_FOCUS_OVERRIDE_IS_ON = 0x08;
+    }
 }
 
 pub(crate) struct WindowLivenessCell {
@@ -127,30 +127,6 @@ pub(crate) struct WindowSubLevelMachMessage {
 const _: () = assert!(core::mem::size_of::<WindowSubLevelMachMessage>() == 0x30);
 const _: () = assert!(core::mem::offset_of!(WindowSubLevelMachMessage, window_id) == 0x20);
 const _: () = assert!(core::mem::offset_of!(WindowSubLevelMachMessage, sub_level) == 0x24);
-
-pub(crate) fn is_window_flag_set(window: &Window, flag: WindowFlag) -> bool {
-    (window.flags & flag.0) != 0
-}
-
-pub(crate) fn clear_window_flag(window: &mut Window, flag: WindowFlag) {
-    window.flags &= !flag.0;
-}
-
-pub(crate) fn set_window_flag(window: &mut Window, flag: WindowFlag) {
-    window.flags |= flag.0;
-}
-
-pub(crate) fn is_window_rule_flag_set(window: &Window, flag: WindowRuleFlag) -> bool {
-    (window.rule_flags & flag.0) != 0
-}
-
-pub(crate) fn clear_window_rule_flag(window: &mut Window, flag: WindowRuleFlag) {
-    window.rule_flags &= !flag.0;
-}
-
-pub(crate) fn set_window_rule_flag(window: &mut Window, flag: WindowRuleFlag) {
-    window.rule_flags |= flag.0;
-}
 
 pub(crate) fn copy_uuid_of_display_holding_window(window_id: WindowId) -> Option<CFStringOwned> {
     let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
@@ -386,7 +362,7 @@ pub(crate) fn can_window_be_moved_through_accessibility(window: &Window) -> bool
 }
 
 pub(crate) fn is_window_movable(window: &Window) -> bool {
-    is_window_flag_set(window, WindowFlag::MOVABLE)
+    window.flags.contains(WindowFlag::MOVABLE)
 }
 
 pub(crate) fn can_window_be_resized_through_accessibility(window: &Window) -> bool {
@@ -405,7 +381,7 @@ pub(crate) fn can_window_be_resized_through_accessibility(window: &Window) -> bo
 }
 
 pub(crate) fn is_window_resizable(window: &Window) -> bool {
-    is_window_flag_set(window, WindowFlag::RESIZABLE)
+    window.flags.contains(WindowFlag::RESIZABLE)
 }
 
 pub(crate) fn can_window_be_minimized_through_accessibility(window: &Window) -> bool {
@@ -847,8 +823,8 @@ pub(crate) fn create_window_from_accessibility_element(
         is_root: false,
         is_eligible: false,
         notification: 0,
-        rule_flags: 0,
-        flags: 0,
+        rule_flags: WindowRuleFlag::empty(),
+        flags: WindowFlag::empty(),
         opacity: 0.0f32,
         layer: 0,
         scratchpad: None,
@@ -866,29 +842,29 @@ pub(crate) fn create_window_from_accessibility_element(
         || is_window_root_according_to_accessibility(&window, window_manager);
 
     if is_window_shadow_shown_according_to_window_server(window.id) {
-        set_window_flag(&mut window, WindowFlag::HAS_SHADOW);
+        window.flags.insert(WindowFlag::HAS_SHADOW);
     }
 
     if is_window_minimized_according_to_accessibility(&window) {
-        set_window_flag(&mut window, WindowFlag::MINIMIZED);
+        window.flags.insert(WindowFlag::MINIMIZED);
     }
 
     if can_window_be_moved_through_accessibility(&window) {
-        set_window_flag(&mut window, WindowFlag::MOVABLE);
+        window.flags.insert(WindowFlag::MOVABLE);
     }
 
     if can_window_be_resized_through_accessibility(&window) {
-        set_window_flag(&mut window, WindowFlag::RESIZABLE);
+        window.flags.insert(WindowFlag::RESIZABLE);
     }
 
     if (is_window_in_native_fullscreen_according_to_accessibility(&window))
         || (is_native_fullscreen_space(query_space_holding_window(window.id)))
     {
-        set_window_flag(&mut window, WindowFlag::IN_NATIVE_FULLSCREEN);
+        window.flags.insert(WindowFlag::IN_NATIVE_FULLSCREEN);
     }
 
     if is_window_on_more_than_one_space(window.id) {
-        set_window_flag(&mut window, WindowFlag::STICKY);
+        window.flags.insert(WindowFlag::STICKY);
     }
 
     window

@@ -23,11 +23,11 @@ use crate::support::printf_float_format::format_float_with_decimals_as_printf_do
 use crate::support::response::Response;
 use crate::window::manager::{WindowManager, space_managing_window};
 use crate::window::model::{
-    WindowFlag, is_window_flag_set, is_window_movable, is_window_on_more_than_one_space,
-    is_window_resizable, is_window_shadow_shown_according_to_window_server,
-    query_space_holding_window, query_window_level_from_window_server,
-    query_window_opacity_from_window_server, query_window_sub_level_from_window_server,
-    window_role_as_string, window_subrole_as_string, window_title_as_string,
+    WindowFlag, is_window_movable, is_window_on_more_than_one_space, is_window_resizable,
+    is_window_shadow_shown_according_to_window_server, query_space_holding_window,
+    query_window_level_from_window_server, query_window_opacity_from_window_server,
+    query_window_sub_level_from_window_server, window_role_as_string, window_subrole_as_string,
+    window_title_as_string,
 };
 
 macro_rules! with_every_window_property {
@@ -161,12 +161,12 @@ pub(crate) fn write_tracked_window_as_json_object(
     };
 
     if (flags & WINDOW_PROPERTY_IS_VISIBLE) != 0 || (flags & WINDOW_PROPERTY_IS_MINIMIZED) != 0 {
-        is_minimized = Some(is_window_flag_set(window, WindowFlag::MINIMIZED));
+        is_minimized = Some(window.flags.contains(WindowFlag::MINIMIZED));
     }
 
     if (flags & WINDOW_PROPERTY_IS_VISIBLE) != 0 || (flags & WINDOW_PROPERTY_IS_STICKY) != 0 {
         is_sticky = Some(
-            is_window_flag_set(window, WindowFlag::STICKY)
+            window.flags.contains(WindowFlag::STICKY)
                 || is_window_on_more_than_one_space(window_id),
         );
     }
@@ -543,7 +543,7 @@ pub(crate) fn write_tracked_window_as_json_object(
 
         response.write(format_args!(
             "\t\"is-native-fullscreen\":{}",
-            json_literal_for_boolean(is_window_flag_set(window, WindowFlag::IN_NATIVE_FULLSCREEN))
+            json_literal_for_boolean(window.flags.contains(WindowFlag::IN_NATIVE_FULLSCREEN))
         ));
         did_output = true;
     }
@@ -598,7 +598,7 @@ pub(crate) fn write_tracked_window_as_json_object(
 
         response.write(format_args!(
             "\t\"is-floating\":{}",
-            json_literal_for_boolean(is_window_flag_set(window, WindowFlag::FLOATING))
+            json_literal_for_boolean(window.flags.contains(WindowFlag::FLOATING))
         ));
         did_output = true;
     }

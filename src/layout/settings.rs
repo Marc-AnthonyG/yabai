@@ -16,22 +16,22 @@ pub(crate) enum ViewLayout {
 
 pub(crate) static VIEW_LAYOUT_NAMES: [&str; 4] = ["default", "bsp", "stack", "float"];
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ViewFlag(pub u64);
-
-impl ViewFlag {
-    pub(crate) const OVERRIDES_GLOBAL_LAYOUT: ViewFlag = ViewFlag(0x001);
-    pub(crate) const OVERRIDES_GLOBAL_TOP_PADDING: ViewFlag = ViewFlag(0x002);
-    pub(crate) const OVERRIDES_GLOBAL_BOTTOM_PADDING: ViewFlag = ViewFlag(0x004);
-    pub(crate) const OVERRIDES_GLOBAL_LEFT_PADDING: ViewFlag = ViewFlag(0x008);
-    pub(crate) const OVERRIDES_GLOBAL_RIGHT_PADDING: ViewFlag = ViewFlag(0x010);
-    pub(crate) const OVERRIDES_GLOBAL_WINDOW_GAP: ViewFlag = ViewFlag(0x020);
-    pub(crate) const OVERRIDES_GLOBAL_AUTO_BALANCE: ViewFlag = ViewFlag(0x040);
-    pub(crate) const PADDING_IS_ENABLED: ViewFlag = ViewFlag(0x080);
-    pub(crate) const WINDOW_GAP_IS_ENABLED: ViewFlag = ViewFlag(0x100);
-    pub(crate) const AREAS_ARE_UP_TO_DATE: ViewFlag = ViewFlag(0x200);
-    pub(crate) const WINDOWS_AWAIT_THEIR_AREAS: ViewFlag = ViewFlag(0x400);
-    pub(crate) const OVERRIDES_GLOBAL_SPLIT_TYPE: ViewFlag = ViewFlag(0x800);
+bitflags::bitflags! {
+    #[derive(Clone, Copy, PartialEq, Eq, Default)]
+    pub(crate) struct ViewFlag: u64 {
+        const OVERRIDES_GLOBAL_LAYOUT = 0x001;
+        const OVERRIDES_GLOBAL_TOP_PADDING = 0x002;
+        const OVERRIDES_GLOBAL_BOTTOM_PADDING = 0x004;
+        const OVERRIDES_GLOBAL_LEFT_PADDING = 0x008;
+        const OVERRIDES_GLOBAL_RIGHT_PADDING = 0x010;
+        const OVERRIDES_GLOBAL_WINDOW_GAP = 0x020;
+        const OVERRIDES_GLOBAL_AUTO_BALANCE = 0x040;
+        const PADDING_IS_ENABLED = 0x080;
+        const WINDOW_GAP_IS_ENABLED = 0x100;
+        const AREAS_ARE_UP_TO_DATE = 0x200;
+        const WINDOWS_AWAIT_THEIR_AREAS = 0x400;
+        const OVERRIDES_GLOBAL_SPLIT_TYPE = 0x800;
+    }
 }
 
 pub(crate) fn effective_child_for_new_window_in_node(
@@ -108,7 +108,7 @@ pub(crate) fn effective_window_gap_of_view(
         return 0;
     };
 
-    if view.has_flag(ViewFlag::WINDOW_GAP_IS_ENABLED) {
+    if view.flags.contains(ViewFlag::WINDOW_GAP_IS_ENABLED) {
         view.window_gap
     } else {
         0

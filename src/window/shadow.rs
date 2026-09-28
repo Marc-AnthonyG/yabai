@@ -3,7 +3,7 @@ use crate::support::handles::WindowId;
 use crate::window::manager::{
     ShadowRemovalMode, WindowManager, is_window_eligible_for_management, space_managing_window,
 };
-use crate::window::model::{WindowFlag, clear_window_flag, is_window_flag_set, set_window_flag};
+use crate::window::model::WindowFlag;
 
 pub(crate) fn set_shadow_removal_mode_for_every_eligible_window(
     window_manager: &mut WindowManager,
@@ -41,11 +41,7 @@ pub(crate) fn apply_shadow_removal_mode_to_window(
         let Some(window) = window_manager.window.get_mut(&window_id) else {
             return;
         };
-        if value != 0 {
-            set_window_flag(window, WindowFlag::HAS_SHADOW);
-        } else {
-            clear_window_flag(window, WindowFlag::HAS_SHADOW);
-        }
+        window.flags.set(WindowFlag::HAS_SHADOW, value != 0);
     }
 }
 
@@ -54,15 +50,11 @@ pub(crate) fn toggle_window_shadow(window_id: WindowId, window_manager: &mut Win
         return;
     };
 
-    let shadow = !is_window_flag_set(window, WindowFlag::HAS_SHADOW);
+    let shadow = !window.flags.contains(WindowFlag::HAS_SHADOW);
     if set_window_shadow_through_scripting_addition(window_id, shadow) {
         let Some(window) = window_manager.window.get_mut(&window_id) else {
             return;
         };
-        if shadow {
-            set_window_flag(window, WindowFlag::HAS_SHADOW);
-        } else {
-            clear_window_flag(window, WindowFlag::HAS_SHADOW);
-        }
+        window.flags.set(WindowFlag::HAS_SHADOW, shadow);
     }
 }

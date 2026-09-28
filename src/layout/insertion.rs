@@ -318,9 +318,9 @@ mod tests {
             window_gap: WINDOW_GAP_OF_EVERY_VIEW,
             auto_balance: 0,
             flags: if gap_is_enabled {
-                ViewFlag::WINDOW_GAP_IS_ENABLED.0
+                ViewFlag::WINDOW_GAP_IS_ENABLED
             } else {
-                0
+                ViewFlag::empty()
             },
             groups_remembered_outside_bsp: Vec::new(),
         }

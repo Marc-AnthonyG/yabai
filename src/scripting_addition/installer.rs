@@ -20,7 +20,6 @@ use crate::scripting_addition::frame::{
 };
 use crate::state::process_wide::SCRIPTING_ADDITION_SOCKET_PATH;
 use crate::support::privilege::is_running_as_root;
-use crate::support::strings::are_both_strings_present_and_equal;
 use crate::{notify, warn};
 
 pub(crate) static SCRIPTING_ADDITION_PAYLOAD_BINARY: &[u8] =
@@ -258,7 +257,7 @@ pub(crate) fn validate_loaded_scripting_addition_updating_it_if_outdated() -> i3
         return 1;
     }
 
-    if are_both_strings_present_and_equal(Some(&version), Some(SCRIPTING_ADDITION_VERSION)) {
+    if version == SCRIPTING_ADDITION_VERSION {
         if (attributes & SCRIPTING_ADDITION_FOUND_EVERYTHING_IT_NEEDS)
             == SCRIPTING_ADDITION_FOUND_EVERYTHING_IT_NEEDS
         {

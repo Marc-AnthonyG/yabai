@@ -1,6 +1,5 @@
 use crate::layout::tree::{WindowNodeChild, WindowNodeSplit};
 use crate::space::manager::SpaceManager;
-use crate::support::arithmetic::is_within_range_including_both_bounds;
 use crate::support::handles::{NodeId, SpaceId};
 
 pub(crate) static AUTO_BALANCE_NAMES: [&str; 4] = ["off", "vertical", "horizontal", "on"];
@@ -93,7 +92,7 @@ pub(crate) fn effective_ratio_of_node(
         None => return space_manager.split_ratio,
     };
 
-    if is_within_range_including_both_bounds(ratio, 0.1f32, 0.9f32) {
+    if (0.1..=0.9).contains(&ratio) {
         ratio
     } else {
         space_manager.split_ratio

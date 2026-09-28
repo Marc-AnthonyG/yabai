@@ -10,7 +10,6 @@ use crate::layout::view::{
 use crate::mouse::drag::MouseDragState;
 use crate::space::managed_space::is_user_space;
 use crate::space::manager::{SpaceManager, find_or_create_view_for_space};
-use crate::support::arithmetic::add_and_clamp_to_zero;
 use crate::support::handles::SpaceId;
 use crate::support::type_of_change::{CHANGE_TYPE_ABSOLUTE, CHANGE_TYPE_RELATIVE};
 use crate::window::focus_follows_mouse::schedule_focus_follows_mouse_under_the_still_cursor_once_the_layout_settles;
@@ -99,7 +98,7 @@ pub(crate) fn set_window_gap_of_space(
     if type_of_change == CHANGE_TYPE_ABSOLUTE {
         view.window_gap = gap;
     } else if type_of_change == CHANGE_TYPE_RELATIVE {
-        view.window_gap = add_and_clamp_to_zero(view.window_gap, gap);
+        view.window_gap = (view.window_gap + gap).max(0);
     }
 
     recompute_view_areas_from_display_bounds_and_padding(
@@ -370,10 +369,10 @@ pub(crate) fn set_padding_of_space(
         view.left_padding = left;
         view.right_padding = right;
     } else if type_of_change == CHANGE_TYPE_RELATIVE {
-        view.top_padding = add_and_clamp_to_zero(view.top_padding, top);
-        view.bottom_padding = add_and_clamp_to_zero(view.bottom_padding, bottom);
-        view.left_padding = add_and_clamp_to_zero(view.left_padding, left);
-        view.right_padding = add_and_clamp_to_zero(view.right_padding, right);
+        view.top_padding = (view.top_padding + top).max(0);
+        view.bottom_padding = (view.bottom_padding + bottom).max(0);
+        view.left_padding = (view.left_padding + left).max(0);
+        view.right_padding = (view.right_padding + right).max(0);
     }
 
     recompute_view_areas_from_display_bounds_and_padding(

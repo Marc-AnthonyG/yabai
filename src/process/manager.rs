@@ -15,7 +15,6 @@ use crate::process::model::{
     Process, create_process_unless_it_is_ignored, query_process_id_of_process_serial_number,
 };
 use crate::support::handles::ProcessId;
-use crate::support::strings::are_both_strings_present_and_equal;
 
 pub(crate) struct ProcessManager {
     pub(crate) front_process_id: ProcessId,
@@ -48,7 +47,7 @@ pub(crate) fn add_every_running_process_to_the_process_table(process_manager: &m
             continue;
         };
 
-        if are_both_strings_present_and_equal(Some(&process.name), Some("Finder")) {
+        if &*process.name == "Finder" {
             crate::debug!(
                 "{}: {} ({}) was found! caching psn..\n",
                 "add_every_running_process_to_the_process_table",

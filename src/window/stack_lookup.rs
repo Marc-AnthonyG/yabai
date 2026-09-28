@@ -2,7 +2,6 @@ use crate::display::manager::DisplayManager;
 use crate::layout::tree::{MOST_WINDOWS_A_NODE_CAN_HOLD, leaf_holding_window};
 use crate::space::focus::query_current_space_of_the_focused_display;
 use crate::space::manager::{SpaceManager, find_or_create_view_for_space};
-use crate::support::arithmetic::is_within_range_including_both_bounds;
 use crate::support::handles::WindowId;
 use crate::window::manager::{WindowManager, tracked_window_with_id};
 
@@ -152,7 +151,7 @@ pub(crate) fn window_at_one_based_position_in_stack_holding_window(
         display_manager,
     )?;
 
-    if window_count > 1 && is_within_range_including_both_bounds(index, 1, window_count) {
+    if window_count > 1 && (1..=window_count).contains(&index) {
         tracked_window_with_id(window_manager, window_list[(index - 1) as usize])
     } else {
         None

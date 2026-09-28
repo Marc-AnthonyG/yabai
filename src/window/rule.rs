@@ -1,8 +1,6 @@
 use regex::Regex;
 
-use crate::support::arithmetic::is_within_range_including_both_bounds;
 use crate::support::handles::{DisplayId, SpaceId};
-use crate::support::strings::{are_both_strings_present_and_equal, copy_into_owned_string};
 use crate::window::manager::WindowManager;
 
 pub(crate) const RULE_PROPERTY_UNSET: i32 = 0;
@@ -89,7 +87,7 @@ pub(crate) fn combine_rule_effects_into_accumulated_effects(
     }
 
     if effects.flags.contains(RuleEffectsFlag::OPACITY_IS_SET)
-        && is_within_range_including_both_bounds(effects.opacity, 0.0f32, 1.0f32)
+        && (0.0..=1.0).contains(&effects.opacity)
     {
         result.opacity = effects.opacity;
         result.flags.insert(RuleEffectsFlag::OPACITY_IS_SET);
@@ -101,7 +99,7 @@ pub(crate) fn combine_rule_effects_into_accumulated_effects(
     }
 
     if let Some(scratchpad) = effects.scratchpad.as_deref() {
-        result.scratchpad = Some(copy_into_owned_string(scratchpad));
+        result.scratchpad = Some(scratchpad.to_owned());
     }
 
     if effects.manage != RULE_PROPERTY_UNSET {
@@ -152,10 +150,7 @@ pub(crate) fn remove_rule_with_label(label: &[u8], window_manager: &mut WindowMa
     let label = String::from_utf8_lossy(label);
 
     for rule_index in 0..window_manager.rules.len() {
-        if are_both_strings_present_and_equal(
-            window_manager.rules[rule_index].label.as_deref(),
-            Some(&*label),
-        ) {
+        if window_manager.rules[rule_index].label.as_deref() == Some(&*label) {
             window_manager.rules.swap_remove(rule_index);
             return true;
         }

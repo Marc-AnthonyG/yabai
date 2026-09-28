@@ -1,7 +1,5 @@
 use regex::Regex;
 
-use crate::support::strings::are_both_strings_present_and_equal;
-
 #[repr(u32)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SignalType {
@@ -139,7 +137,7 @@ pub(crate) fn signal_type_for_event_name(string: &[u8]) -> SignalType {
     let string = std::str::from_utf8(string).ok();
 
     for index in SignalType::ApplicationLaunched as usize..SIGNAL_TYPE_COUNT {
-        if are_both_strings_present_and_equal(string, Some(SIGNAL_TYPE_NAMES[index])) {
+        if string == Some(SIGNAL_TYPE_NAMES[index]) {
             return SIGNAL_TYPE_BY_DISCRIMINANT[index];
         }
     }
@@ -184,10 +182,7 @@ pub(crate) fn remove_signal_with_label(
 
     for index in SignalType::ApplicationLaunched as usize..SIGNAL_TYPE_COUNT {
         for inner_index in 0..signal_event[index].len() {
-            if are_both_strings_present_and_equal(
-                Some(&label),
-                signal_event[index][inner_index].label.as_deref(),
-            ) {
+            if signal_event[index][inner_index].label.as_deref() == Some(&*label) {
                 signal_event[index].swap_remove(inner_index);
                 return true;
             }

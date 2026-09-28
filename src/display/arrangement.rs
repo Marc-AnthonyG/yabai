@@ -23,7 +23,6 @@ use crate::layout::area::{
     is_target_area_in_direction_of_source_area_and_facing_it,
 };
 use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
-use crate::support::arithmetic::is_within_range_including_low_excluding_high;
 use crate::support::handles::DisplayId;
 
 pub(crate) unsafe extern "C-unwind" fn compare_display_uuids_by_center_along_arrangement_axis(
@@ -146,7 +145,7 @@ pub(crate) fn copy_uuid_of_display_at_arrangement_index(
     let count = CFArrayGetCount(&displays) as i32;
     let index = arrangement - 1;
 
-    if is_within_range_including_low_excluding_high(index, 0, count) {
+    if (0..count).contains(&index) {
         if display_manager.order != DisplayArrangementOrder::Default {
             let mutable_displays =
                 unsafe { CFArrayCreateMutableCopy(None, count as CFIndex, Some(&displays)) };

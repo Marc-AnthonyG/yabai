@@ -1,6 +1,7 @@
-use crate::error;
-use crate::support::filesystem::{is_existing_directory, is_existing_file_that_is_not_a_directory};
 use std::os::unix::fs::DirBuilderExt;
+use std::path::Path;
+
+use crate::error;
 
 macro_rules! launchd_service_plist_template {
     () => {
@@ -76,9 +77,9 @@ fn build_launchd_service_plist_contents() -> String {
 }
 
 fn create_parent_directory_of_plist_if_missing(yabai_plist_path: &str) {
-    let parent = std::path::Path::new(yabai_plist_path).parent().unwrap();
+    let parent = Path::new(yabai_plist_path).parent().unwrap();
 
-    if !is_existing_directory(&parent.to_string_lossy()) {
+    if !parent.is_dir() {
         let _ = std::fs::DirBuilder::new().mode(0o755).create(parent);
     }
 }
@@ -100,7 +101,7 @@ pub(crate) fn write_launchd_service_plist(yabai_plist_path: &str) -> i32 {
 pub fn install_launchd_service() -> i32 {
     let yabai_plist_path = build_launchd_service_plist_path();
 
-    if is_existing_file_that_is_not_a_directory(&yabai_plist_path) {
+    if Path::new(&yabai_plist_path).is_file() {
         error!(
             "yabai: service file '{}' is already installed! abort..\n",
             yabai_plist_path
@@ -113,7 +114,7 @@ pub fn install_launchd_service() -> i32 {
 pub fn uninstall_launchd_service() -> i32 {
     let yabai_plist_path = build_launchd_service_plist_path();
 
-    if !is_existing_file_that_is_not_a_directory(&yabai_plist_path) {
+    if !Path::new(&yabai_plist_path).is_file() {
         error!(
             "yabai: service file '{}' is not installed! abort..\n",
             yabai_plist_path

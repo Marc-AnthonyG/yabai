@@ -10,10 +10,8 @@ use crate::space::focus::focus_space_through_the_scripting_addition_or_dock_swip
 use crate::space::managed_space::is_native_fullscreen_space;
 use crate::space::manager::SpaceManager;
 use crate::state::mission_control_mode::MissionControlMode;
-use crate::support::arithmetic::is_within_range_including_both_bounds;
 use crate::support::handles::WindowId;
 use crate::support::regex::is_subject_rejected_by_optional_pattern;
-use crate::support::strings::{are_both_strings_present_and_equal, copy_into_owned_string};
 use crate::window::floating_and_sticky::{set_whether_window_floats, set_whether_window_is_sticky};
 use crate::window::grid::place_floating_window_on_display_grid;
 use crate::window::layer::set_window_layer_for_it_and_its_child_windows;
@@ -199,7 +197,7 @@ pub(crate) fn apply_effects_other_than_manage_of_rule_to_window(
     }
 
     if effects.flags.contains(RuleEffectsFlag::OPACITY_IS_SET)
-        && is_within_range_including_both_bounds(effects.opacity, 0.0f32, 1.0f32)
+        && (0.0..=1.0).contains(&effects.opacity)
     {
         if let Some(window) = window_manager.window.get_mut(&window_id) {
             window.opacity = effects.opacity;
@@ -228,7 +226,7 @@ pub(crate) fn apply_effects_other_than_manage_of_rule_to_window(
     }
 
     if let Some(effects_scratchpad) = effects.scratchpad.as_deref() {
-        let scratchpad = copy_into_owned_string(effects_scratchpad);
+        let scratchpad = effects_scratchpad.to_owned();
         assign_window_to_scratchpad_making_it_float(
             window_manager,
             window_id,
@@ -283,16 +281,10 @@ pub(crate) fn apply_manage_effect_of_matching_rules_to_window(
                 window_manager,
             ) {
                 if rules[index].effects.manage == RULE_PROPERTY_ON {
-                    if rules[index].role_regex.is_none()
-                        && !are_both_strings_present_and_equal(Some(window_role), Some("AXWindow"))
-                    {
+                    if rules[index].role_regex.is_none() && window_role != "AXWindow" {
                         continue;
                     }
-                    if rules[index].subrole_regex.is_none()
-                        && !are_both_strings_present_and_equal(
-                            Some(window_subrole),
-                            Some("AXStandardWindow"),
-                        )
+                    if rules[index].subrole_regex.is_none() && window_subrole != "AXStandardWindow"
                     {
                         continue;
                     }
@@ -357,16 +349,10 @@ pub(crate) fn apply_effects_other_than_manage_of_matching_rules_to_window(
                         window.rule_flags.contains(WindowRuleFlag::MANAGE_FORCED_ON)
                     });
                 if !window_is_managed_by_rule {
-                    if rules[index].role_regex.is_none()
-                        && !are_both_strings_present_and_equal(Some(window_role), Some("AXWindow"))
-                    {
+                    if rules[index].role_regex.is_none() && window_role != "AXWindow" {
                         continue;
                     }
-                    if rules[index].subrole_regex.is_none()
-                        && !are_both_strings_present_and_equal(
-                            Some(window_subrole),
-                            Some("AXStandardWindow"),
-                        )
+                    if rules[index].subrole_regex.is_none() && window_subrole != "AXStandardWindow"
                     {
                         continue;
                     }
@@ -498,10 +484,7 @@ pub(crate) fn reapply_rule_with_label_to_every_root_window(
     let label = String::from_utf8_lossy(label);
 
     for rule_index in 0..window_manager.rules.len() {
-        if are_both_strings_present_and_equal(
-            window_manager.rules[rule_index].label.as_deref(),
-            Some(&*label),
-        ) {
+        if window_manager.rules[rule_index].label.as_deref() == Some(&*label) {
             if !window_manager.rules[rule_index]
                 .flags
                 .contains(RuleFlag::ONE_SHOT)

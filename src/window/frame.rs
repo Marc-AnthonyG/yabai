@@ -20,7 +20,6 @@ use crate::layout::view::{
 };
 use crate::space::managed_space::is_space_visible_on_its_display;
 use crate::space::manager::SpaceManager;
-use crate::support::arithmetic::{clamp_float_to_range, greater_of_two_values};
 use crate::support::direction::{DIRECTION_EAST, DIRECTION_NORTH, DIRECTION_SOUTH, DIRECTION_WEST};
 use crate::support::handles::{NodeId, WindowId};
 use crate::support::resize_handle::ResizeHandle;
@@ -59,14 +58,14 @@ pub(crate) fn adjust_split_ratio_of_managed_window_parent_node(
             if let Some(view) = space_manager.view.get_mut(&space_id)
                 && let Some(parent_node) = view.find_node_mut(parent_node_id)
             {
-                parent_node.ratio = clamp_float_to_range(parent_node.ratio + ratio, 0.1f32, 0.9f32);
+                parent_node.ratio = (parent_node.ratio + ratio).clamp(0.1, 0.9);
             }
         }
         CHANGE_TYPE_ABSOLUTE => {
             if let Some(view) = space_manager.view.get_mut(&space_id)
                 && let Some(parent_node) = view.find_node_mut(parent_node_id)
             {
-                parent_node.ratio = clamp_float_to_range(ratio, 0.1f32, 0.9f32);
+                parent_node.ratio = ratio.clamp(0.1, 0.9);
             }
         }
         _ => {}
@@ -155,14 +154,8 @@ pub(crate) fn resize_floating_window_by_dragging_edges(
         0
     };
 
-    let frame_width = greater_of_two_values(
-        1.0f64,
-        frame.size.width + (delta_x * x_modifier as f32) as f64,
-    ) as f32;
-    let frame_height = greater_of_two_values(
-        1.0f64,
-        frame.size.height + (delta_y * y_modifier as f32) as f64,
-    ) as f32;
+    let frame_width = (frame.size.width + (delta_x * x_modifier as f32) as f64).max(1.0) as f32;
+    let frame_height = (frame.size.height + (delta_y * y_modifier as f32) as f64).max(1.0) as f32;
     let frame_x = if direction & ResizeHandle::LEFT.0 as i32 != 0 {
         (frame.origin.x + frame.size.width - frame_width as f64) as f32
     } else {
@@ -274,7 +267,7 @@ pub(crate) fn resize_window_by_dragging_edges_or_to_absolute_size(
             && let Some(y_fence_node) = view.find_node_mut(y_fence)
         {
             let scaled_ratio = y_fence_node.ratio + delta_x / y_fence_node.area.width;
-            y_fence_node.ratio = clamp_float_to_range(scaled_ratio, 0.1f32, 0.9f32);
+            y_fence_node.ratio = scaled_ratio.clamp(0.1, 0.9);
         }
 
         if let Some(x_fence) = x_fence
@@ -282,7 +275,7 @@ pub(crate) fn resize_window_by_dragging_edges_or_to_absolute_size(
             && let Some(x_fence_node) = view.find_node_mut(x_fence)
         {
             let scaled_ratio = x_fence_node.ratio + delta_y / x_fence_node.area.height;
-            x_fence_node.ratio = clamp_float_to_range(scaled_ratio, 0.1f32, 0.9f32);
+            x_fence_node.ratio = scaled_ratio.clamp(0.1, 0.9);
         }
 
         recompute_view_areas_from_display_bounds_and_padding(

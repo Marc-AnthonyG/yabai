@@ -11,7 +11,6 @@ use crate::notifications::workspace::{
 };
 use crate::process::running_application::copy_running_application_of_process;
 use crate::support::handles::ProcessId;
-use crate::support::strings::are_both_strings_present_and_equal;
 
 pub(crate) struct Process {
     pub(crate) process_serial_number: ProcessSerialNumber,
@@ -71,7 +70,7 @@ pub(crate) fn create_process_unless_it_is_ignored(
     }
 
     for blacklisted_process_name in PROCESS_NAME_BLACKLIST {
-        if are_both_strings_present_and_equal(Some(&process_name), Some(blacklisted_process_name)) {
+        if process_name == blacklisted_process_name {
             crate::debug!(
                 "{}: {} is blacklisted! ignoring..\n",
                 "create_process_unless_it_is_ignored",

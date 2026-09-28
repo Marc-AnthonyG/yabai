@@ -2,7 +2,6 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use crate::service::plist::{build_launchd_service_plist_path, write_launchd_service_plist};
-use crate::support::filesystem::is_existing_file_that_is_not_a_directory;
 use crate::support::spawned_program_exit_status::{
     SpawnedProgramOutput, run_program_and_read_its_exit_status_even_while_child_exits_are_ignored,
 };
@@ -47,7 +46,7 @@ fn yabai_service_target_of_the_current_user() -> String {
 
 pub fn start_launchd_service_installing_it_if_missing() -> i32 {
     let yabai_plist_path = build_launchd_service_plist_path();
-    if !is_existing_file_that_is_not_a_directory(&yabai_plist_path) {
+    if !Path::new(&yabai_plist_path).is_file() {
         warn!(
             "yabai: service file '{}' is not installed! attempting installation..\n",
             yabai_plist_path
@@ -105,7 +104,7 @@ pub fn start_launchd_service_installing_it_if_missing() -> i32 {
 
 pub fn restart_launchd_service() -> i32 {
     let yabai_plist_path = build_launchd_service_plist_path();
-    if !is_existing_file_that_is_not_a_directory(&yabai_plist_path) {
+    if !Path::new(&yabai_plist_path).is_file() {
         error!(
             "yabai: service file '{}' is not installed! abort..\n",
             yabai_plist_path
@@ -120,7 +119,7 @@ pub fn restart_launchd_service() -> i32 {
 
 pub fn stop_launchd_service() -> i32 {
     let yabai_plist_path = build_launchd_service_plist_path();
-    if !is_existing_file_that_is_not_a_directory(&yabai_plist_path) {
+    if !Path::new(&yabai_plist_path).is_file() {
         error!(
             "yabai: service file '{}' is not installed! abort..\n",
             yabai_plist_path

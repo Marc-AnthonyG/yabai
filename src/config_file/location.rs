@@ -1,12 +1,13 @@
+use std::path::Path;
+
 use crate::state::process_wide::CONFIG_FILE_PATH;
-use crate::support::filesystem::is_existing_file_that_is_not_a_directory;
 
 pub fn find_config_file_in_xdg_or_home_directories(filename: &str) -> Option<String> {
     if let Some(xdg_home) = std::env::var_os("XDG_CONFIG_HOME")
         && !xdg_home.is_empty()
     {
         let buffer = format!("{}/yabai/{}", xdg_home.to_string_lossy(), filename);
-        if is_existing_file_that_is_not_a_directory(&buffer) {
+        if Path::new(&buffer).is_file() {
             return Some(buffer);
         }
     }
@@ -14,12 +15,12 @@ pub fn find_config_file_in_xdg_or_home_directories(filename: &str) -> Option<Str
     let home = std::env::var_os("HOME")?;
 
     let buffer = format!("{}/.config/yabai/{}", home.to_string_lossy(), filename);
-    if is_existing_file_that_is_not_a_directory(&buffer) {
+    if Path::new(&buffer).is_file() {
         return Some(buffer);
     }
 
     let buffer = format!("{}/.{}", home.to_string_lossy(), filename);
-    is_existing_file_that_is_not_a_directory(&buffer).then_some(buffer)
+    Path::new(&buffer).is_file().then_some(buffer)
 }
 
 pub fn locate_the_config_file_warning_when_there_is_none() -> Option<String> {
@@ -37,7 +38,7 @@ pub fn locate_the_config_file_warning_when_there_is_none() -> Option<String> {
         String::from(config_file_from_the_command_line)
     };
 
-    if !is_existing_file_that_is_not_a_directory(&config_file) {
+    if !Path::new(&config_file).is_file() {
         crate::warn!(
             "yabai: configuration file '{}' does not exist..\n",
             config_file

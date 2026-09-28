@@ -1,6 +1,5 @@
 use crate::display::manager::DisplayManager;
 use crate::support::handles::DisplayId;
-use crate::support::strings::are_both_strings_present_and_equal;
 
 pub(crate) struct DisplayLabel {
     pub(crate) display_id: DisplayId,
@@ -27,7 +26,7 @@ pub(crate) fn display_label_with_name<'display_manager>(
     let label = String::from_utf8_lossy(label);
 
     for display_label in display_manager.labels.iter_mut() {
-        if are_both_strings_present_and_equal(Some(&label), Some(&display_label.label)) {
+        if label == display_label.label {
             return Some(display_label);
         }
     }

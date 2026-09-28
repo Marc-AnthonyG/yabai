@@ -49,7 +49,10 @@ use crate::support::log::text_or_printf_null_placeholder;
 use crate::support::macos_version::{is_running_on_macos_sequoia, is_running_on_macos_tahoe};
 use crate::window::discovery::track_newly_discovered_window_applying_its_rules;
 use crate::window::focus::respond_to_window_receiving_focus;
-use crate::window::focus_follows_mouse::schedule_focus_follows_mouse_under_the_still_cursor_once_the_layout_settles;
+use crate::window::focus_follows_mouse::{
+    schedule_focus_follows_mouse_under_the_still_cursor_once_a_new_window_settles_never_taking_focus_from_it,
+    schedule_focus_follows_mouse_under_the_still_cursor_once_the_layout_settles,
+};
 use crate::window::fullscreen::wait_until_native_fullscreen_transition_finishes;
 use crate::window::manager::{
     WindowManager, WindowOriginDisplayMode,
@@ -183,6 +186,12 @@ pub(crate) fn handle_window_created_event(
             space_manager,
             signal_storage,
         );
+        if is_space_visible_on_its_display(query_space_holding_window(window)) {
+            schedule_focus_follows_mouse_under_the_still_cursor_once_a_new_window_settles_never_taking_focus_from_it(
+                window_manager,
+                window,
+            );
+        }
     }
 
     if is_running_on_macos_sequoia() || is_running_on_macos_tahoe() {

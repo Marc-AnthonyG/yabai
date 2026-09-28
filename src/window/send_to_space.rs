@@ -9,6 +9,7 @@ use crate::space::tiling::{tile_window_on_space, untile_window_from_view_of_spac
 use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
 use crate::support::handles::{SpaceId, WindowId};
 use crate::window::focus::{focus_and_raise_tracked_window, kCPSNoWindows};
+use crate::window::focus_follows_mouse::schedule_focus_follows_mouse_under_the_still_cursor_once_the_layout_settles;
 use crate::window::manager::{
     WindowManager, forget_managed_window, record_managed_window_on_space_updating_its_shadow,
     should_window_be_managed, space_managing_window,
@@ -31,6 +32,8 @@ pub(crate) fn send_window_to_space(
     if source_space_id == destination_space_id {
         return;
     }
+    let window_leaves_the_screen = is_space_visible_on_its_display(source_space_id)
+        && !is_space_visible_on_its_display(destination_space_id);
 
     if is_space_visible_on_its_display(source_space_id)
         && (moved_by_rule || window_manager.focused_window_id == window_id)
@@ -101,5 +104,9 @@ pub(crate) fn send_window_to_space(
             space_manager,
             view,
         );
+    }
+
+    if window_leaves_the_screen {
+        schedule_focus_follows_mouse_under_the_still_cursor_once_the_layout_settles(window_manager);
     }
 }

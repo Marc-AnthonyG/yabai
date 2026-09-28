@@ -62,7 +62,9 @@ pub(crate) enum Event {
     SystemWoke,
     SystemAccentColorChanged(RgbaColor),
     InsertFeedbackFadeInStep,
-    FocusFollowsMouseUnderTheStillCursor,
+    FocusFollowsMouseUnderTheStillCursor {
+        new_window_that_keeps_its_focus: Option<WindowId>,
+    },
     DaemonMessage(UnixStream),
 }
 

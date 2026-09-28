@@ -36,6 +36,26 @@ const TIME_FOR_THE_WINDOW_SERVER_TO_SHOW_A_NEW_LAYOUT_IN_NANOSECONDS: i64 = 50_0
 pub(crate) fn schedule_focus_follows_mouse_under_the_still_cursor_once_the_layout_settles(
     window_manager: &WindowManager,
 ) {
+    schedule_focus_follows_mouse_under_the_still_cursor_once_the_animation_ends(
+        window_manager,
+        None,
+    );
+}
+
+pub(crate) fn schedule_focus_follows_mouse_under_the_still_cursor_once_a_new_window_settles_never_taking_focus_from_it(
+    window_manager: &WindowManager,
+    new_window_id: WindowId,
+) {
+    schedule_focus_follows_mouse_under_the_still_cursor_once_the_animation_ends(
+        window_manager,
+        Some(new_window_id),
+    );
+}
+
+fn schedule_focus_follows_mouse_under_the_still_cursor_once_the_animation_ends(
+    window_manager: &WindowManager,
+    new_window_that_keeps_its_focus: Option<WindowId>,
+) {
     if window_manager.focus_follows_mouse_mode == FocusFollowsMouseMode::Disabled {
         return;
     }
@@ -43,7 +63,11 @@ pub(crate) fn schedule_focus_follows_mouse_under_the_still_cursor_once_the_layou
         (window_manager.window_animation_duration.max(0.0) as f64 * 1e9) as i64;
     dispatch_after_on_main_queue(
         animation_in_nanoseconds + TIME_FOR_THE_WINDOW_SERVER_TO_SHOW_A_NEW_LAYOUT_IN_NANOSECONDS,
-        || post_event_to_event_loop(Event::FocusFollowsMouseUnderTheStillCursor),
+        move || {
+            post_event_to_event_loop(Event::FocusFollowsMouseUnderTheStillCursor {
+                new_window_that_keeps_its_focus,
+            })
+        },
     );
 }
 

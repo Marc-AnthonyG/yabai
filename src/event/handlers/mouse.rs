@@ -40,6 +40,7 @@ use crate::support::direction::{
     DIRECTION_EAST, DIRECTION_NORTH, DIRECTION_SOUTH, DIRECTION_STACK_INSTEAD_OF_SPLIT,
     DIRECTION_WEST,
 };
+use crate::support::handles::WindowId;
 use crate::support::resize_handle::ResizeHandle;
 use crate::window::focus::focus_and_raise_tracked_window;
 use crate::window::focus_follows_mouse::focus_the_window_at_point_the_way_focus_follows_mouse_does;
@@ -671,6 +672,7 @@ pub(crate) fn handle_mouse_moved_event(
 }
 
 pub(crate) fn handle_focus_follows_mouse_under_the_still_cursor_event(
+    new_window_that_keeps_its_focus: Option<WindowId>,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
@@ -684,6 +686,9 @@ pub(crate) fn handle_focus_follows_mouse_under_the_still_cursor_event(
         return;
     }
     if mouse_drag_state.ffm_window_id.0 != 0 || mouse_drag_state.window_id.is_some() {
+        return;
+    }
+    if new_window_that_keeps_its_focus == Some(window_manager.focused_window_id) {
         return;
     }
     if DOCK_SWIPE_GESTURE_IS_IN_PROGRESS.load(Ordering::Relaxed) {

@@ -436,15 +436,16 @@ pub(crate) fn run_event_loop_flushing_signals_after_each_event(
                     Event::InsertFeedbackFadeInStep => {
                         handle_insert_feedback_fade_in_step_event(space_manager)
                     }
-                    Event::FocusFollowsMouseUnderTheStillCursor => {
-                        handle_focus_follows_mouse_under_the_still_cursor_event(
-                            display_manager,
-                            window_manager,
-                            space_manager,
-                            mouse_drag_state,
-                            mission_control_mode,
-                        )
-                    }
+                    Event::FocusFollowsMouseUnderTheStillCursor {
+                        new_window_that_keeps_its_focus,
+                    } => handle_focus_follows_mouse_under_the_still_cursor_event(
+                        new_window_that_keeps_its_focus,
+                        display_manager,
+                        window_manager,
+                        space_manager,
+                        mouse_drag_state,
+                        mission_control_mode,
+                    ),
                     Event::DaemonMessage(stream) => handle_daemon_message_event(
                         stream,
                         signal_event,

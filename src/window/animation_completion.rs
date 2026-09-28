@@ -14,6 +14,7 @@ use crate::window::proxy_pairing::WindowProxyPairing;
 
 pub(crate) enum AnimationCompletionJob {
     SwapOutAndReleaseProxies(Vec<WindowProxy>),
+    ReleaseProxiesThatWereNeverSwappedIn(Vec<WindowProxy>),
     StopAndReleaseDisplayLink(AnimationDisplayLink),
 }
 
@@ -42,11 +43,15 @@ fn run_animation_completion_worker_until_the_animator_is_gone(
 ) {
     while let Ok(first_completion_job) = completion_job_receiver.recv() {
         let mut proxies_to_swap_out: Vec<WindowProxy> = Vec::new();
+        let mut proxies_to_release_without_swapping_out: Vec<WindowProxy> = Vec::new();
         let mut next_completion_job = Some(first_completion_job);
         while let Some(completion_job) = next_completion_job {
             match completion_job {
                 AnimationCompletionJob::SwapOutAndReleaseProxies(proxy_list) => {
                     proxies_to_swap_out.extend(proxy_list);
+                }
+                AnimationCompletionJob::ReleaseProxiesThatWereNeverSwappedIn(proxy_list) => {
+                    proxies_to_release_without_swapping_out.extend(proxy_list);
                 }
                 AnimationCompletionJob::StopAndReleaseDisplayLink(display_link) => {
                     drop(display_link);
@@ -61,6 +66,10 @@ fn run_animation_completion_worker_until_the_animator_is_gone(
                 proxies_to_swap_out,
                 &window_animator,
             );
+        }
+
+        for proxy in proxies_to_release_without_swapping_out {
+            destroy_window_proxy(animation_connection, proxy);
         }
     }
 

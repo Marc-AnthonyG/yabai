@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::ffi::core_foundation::{CGPoint, CGRect, CGSize};
 use crate::scripting_addition::client::swap_window_proxies_in_through_scripting_addition;
 use crate::support::handles::WindowId;
+use crate::window::animation_completion::AnimationCompletionJob;
 use crate::window::animator::{
     retarget_moving_windows_and_collect_stationary_ones, set_animation_request_in_motion,
     window_animator_resources_starting_them_once,
@@ -77,20 +78,32 @@ pub(crate) fn animate_windows_to_their_target_frames_through_proxies(
         .iter()
         .map(|(proxy, _)| proxy.pairing())
         .collect();
-    if !pairing_list.is_empty() {
-        swap_window_proxies_in_through_scripting_addition(&pairing_list);
+    let proxies_were_swapped_in =
+        pairing_list.is_empty() || swap_window_proxies_in_through_scripting_addition(&pairing_list);
+    if proxies_were_swapped_in && !pairing_list.is_empty() {
         notify_janky_borders_of_proxy_pairings(&pairing_list, 1325, false);
     }
 
     move_windows_to_their_target_frames_at_once(window_list, window_manager);
 
-    set_animation_request_in_motion(
-        &window_animator,
-        window_animator_resources,
-        proxies_with_their_target_frame,
-        animation_duration,
-        animation_easing,
-    );
+    if proxies_were_swapped_in {
+        set_animation_request_in_motion(
+            &window_animator,
+            window_animator_resources,
+            proxies_with_their_target_frame,
+            animation_duration,
+            animation_easing,
+        );
+    } else {
+        window_animator_resources.hand_over_to_the_completion_worker(
+            AnimationCompletionJob::ReleaseProxiesThatWereNeverSwappedIn(
+                proxies_with_their_target_frame
+                    .into_iter()
+                    .map(|(proxy, _)| proxy)
+                    .collect(),
+            ),
+        );
+    }
 }
 
 pub(crate) fn move_windows_to_their_target_frames_animating_if_enabled(

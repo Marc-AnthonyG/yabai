@@ -6,7 +6,7 @@ use std::sync::Arc;
 use objc2::MainThreadMarker;
 
 use crate::config_file::location::locate_the_config_file_warning_when_there_is_none;
-use crate::config_file::shell_run::run_config_file_in_a_forked_shell;
+use crate::config_file::shell_run::run_config_file_in_a_shell_without_waiting_for_it;
 use crate::display::manager::{
     DisplayManager, start_display_manager_observing_display_reconfiguration,
 };
@@ -272,7 +272,7 @@ pub(crate) fn start_the_daemon_and_enter_the_main_run_loop() {
     }
 
     if let Some(config_file) = locate_the_config_file_warning_when_there_is_none() {
-        run_config_file_in_a_forked_shell(&config_file);
+        run_config_file_in_a_shell_without_waiting_for_it(&config_file);
     }
 
     if let Some(main_thread_marker) = MainThreadMarker::new() {

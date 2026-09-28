@@ -39,7 +39,7 @@ use crate::event::handlers::window::{
     handle_window_resized_event, handle_window_title_changed_event,
 };
 use crate::event::queue::Event;
-use crate::signal::exec::run_commands_of_pending_signals_in_forked_children;
+use crate::signal::exec::run_subscriber_commands_of_pending_signals_without_waiting_for_them;
 use crate::state::event_loop_owned::EventLoopOwnedState;
 
 pub(crate) fn run_event_loop_flushing_signals_after_each_event(
@@ -458,7 +458,10 @@ pub(crate) fn run_event_loop_flushing_signals_after_each_event(
                     ),
                 }
 
-                run_commands_of_pending_signals_in_forked_children(signal_event, signal_storage);
+                run_subscriber_commands_of_pending_signals_without_waiting_for_them(
+                    signal_event,
+                    signal_storage,
+                );
 
                 match event_receiver.try_recv() {
                     Ok(next_event) => next = next_event,

@@ -1,31 +1,16 @@
-use core::ffi::c_char;
+use std::process::Command;
 
 use crate::support::filesystem::can_owner_execute_file;
 
-pub fn run_config_file_in_a_forked_shell(config_file: &str) {
-    let config_file_argument = std::ffi::CString::new(config_file).unwrap();
-    let exec: [*const c_char; 5] = if can_owner_execute_file(config_file) {
-        [
-            c"/usr/bin/env".as_ptr(),
-            c"sh".as_ptr(),
-            c"-c".as_ptr(),
-            config_file_argument.as_ptr(),
-            std::ptr::null(),
-        ]
-    } else {
-        [
-            c"/usr/bin/env".as_ptr(),
-            c"sh".as_ptr(),
-            config_file_argument.as_ptr(),
-            std::ptr::null(),
-            std::ptr::null(),
-        ]
-    };
+pub fn run_config_file_in_a_shell_without_waiting_for_it(config_file: &str) {
+    let mut shell = Command::new("/usr/bin/env");
+    shell.arg("sh");
+    if can_owner_execute_file(config_file) {
+        shell.arg("-c");
+    }
+    shell.arg(config_file);
 
-    let process_id = unsafe { libc::fork() };
-    if process_id == 0 {
-        unsafe { libc::_exit(libc::execvp(exec[0], exec.as_ptr())) };
-    } else if process_id == -1 {
+    if shell.spawn().is_err() {
         crate::warn!("yabai: failed to load config file '{}'\n", config_file);
         crate::notify!("configuration", "failed to load file '{}'", config_file);
     }

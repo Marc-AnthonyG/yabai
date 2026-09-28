@@ -1,4 +1,5 @@
-use core::ffi::{c_char, c_void};
+use std::io::{Read, Write};
+use std::os::unix::net::UnixStream;
 
 use crate::ffi::skylight::SLSWindowIsOrderedIn;
 use crate::scripting_addition::frame::{
@@ -7,113 +8,58 @@ use crate::scripting_addition::frame::{
 };
 use crate::state::process_wide::{SCRIPTING_ADDITION_SOCKET_PATH, SKYLIGHT_CONNECTION_ID};
 use crate::support::handles::{SpaceId, WindowId};
-use crate::support::sockets::{
-    connect_socket_to_unix_path, open_unix_stream_socket, shut_down_and_close_socket,
-};
 use crate::window::proxy_pairing::WindowProxyPairing;
+
+fn connect_to_the_scripting_addition() -> Option<UnixStream> {
+    UnixStream::connect(
+        SCRIPTING_ADDITION_SOCKET_PATH
+            .get()
+            .map_or("", String::as_str),
+    )
+    .ok()
+}
 
 pub(crate) fn request_scripting_addition_handshake(
     version: &mut String,
     attributes: &mut u32,
 ) -> bool {
-    let mut socket_file_descriptor: i32 = 0;
-    let mut result = false;
-    let mut response = [0u8; libc::BUFSIZ as usize];
-    let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-    bytes[0] = 0x01;
-    bytes[1] = 0x00;
-    bytes[2] = ScriptingAdditionOpcode::Handshake as u8;
-
-    if open_unix_stream_socket(&mut socket_file_descriptor) {
-        'out: {
-            if connect_socket_to_unix_path(
-                socket_file_descriptor,
-                SCRIPTING_ADDITION_SOCKET_PATH
-                    .get()
-                    .map_or("", String::as_str),
-            ) {
-                if unsafe {
-                    libc::send(
-                        socket_file_descriptor,
-                        bytes.as_ptr().cast::<c_void>(),
-                        3,
-                        0,
-                    )
-                } != -1
-                {
-                    let length = unsafe {
-                        libc::recv(
-                            socket_file_descriptor,
-                            response.as_mut_ptr().cast::<c_void>(),
-                            response.len() - 1,
-                            0,
-                        )
-                    } as i32;
-                    if length <= 0 {
-                        break 'out;
-                    }
-
-                    let mut zero = 0;
-                    while response[zero] != b'\0' {
-                        zero += 1;
-                    }
-
-                    debug_assert!(response[zero] == b'\0');
-                    let Some(attribute_bytes) = response.get(zero + 1..zero + 1 + size_of::<u32>())
-                    else {
-                        break 'out;
-                    };
-                    *version = String::from_utf8_lossy(&response[..zero]).into_owned();
-                    *attributes = u32::from_ne_bytes(attribute_bytes.try_into().unwrap());
-
-                    result = true;
-                }
-            }
-        }
-
-        shut_down_and_close_socket(socket_file_descriptor);
+    let Some(mut stream) = connect_to_the_scripting_addition() else {
+        return false;
+    };
+    let request = [0x01, 0x00, ScriptingAdditionOpcode::Handshake as u8];
+    if stream.write_all(&request).is_err() {
+        return false;
     }
 
-    result
+    let mut response = [0u8; libc::BUFSIZ as usize];
+    let last_byte_left_as_the_terminator = response.len() - 1;
+    match stream.read(&mut response[..last_byte_left_as_the_terminator]) {
+        Ok(length) if length > 0 => {}
+        _ => return false,
+    }
+
+    let Some(version_length) = response.iter().position(|byte| *byte == 0) else {
+        return false;
+    };
+    let Some(attribute_bytes) =
+        response.get(version_length + 1..version_length + 1 + size_of::<u32>())
+    else {
+        return false;
+    };
+    *version = String::from_utf8_lossy(&response[..version_length]).into_owned();
+    *attributes = u32::from_ne_bytes(attribute_bytes.try_into().unwrap());
+    true
 }
 
 pub(crate) fn send_frame_to_scripting_addition_and_wait_for_acknowledgement(bytes: &[u8]) -> bool {
-    let mut socket_file_descriptor: i32 = 0;
-    let mut dummy: c_char = 0;
-    let mut result = false;
-
-    if open_unix_stream_socket(&mut socket_file_descriptor) {
-        if connect_socket_to_unix_path(
-            socket_file_descriptor,
-            SCRIPTING_ADDITION_SOCKET_PATH
-                .get()
-                .map_or("", String::as_str),
-        ) {
-            if unsafe {
-                libc::send(
-                    socket_file_descriptor,
-                    bytes.as_ptr().cast::<c_void>(),
-                    bytes.len(),
-                    0,
-                )
-            } != -1
-            {
-                unsafe {
-                    libc::recv(
-                        socket_file_descriptor,
-                        (&raw mut dummy).cast::<c_void>(),
-                        1,
-                        0,
-                    )
-                };
-                result = true;
-            }
-        }
-
-        shut_down_and_close_socket(socket_file_descriptor);
+    let Some(mut stream) = connect_to_the_scripting_addition() else {
+        return false;
+    };
+    if stream.write_all(bytes).is_err() {
+        return false;
     }
-
-    result
+    let _ = stream.read(&mut [0u8; 1]);
+    true
 }
 
 pub(crate) fn focus_space_through_scripting_addition(space_id: SpaceId) -> bool {

@@ -1,16 +1,10 @@
-use core::ffi::c_char;
-use std::ffi::{CStr, CString};
+use std::process::Command;
 
 use crate::signal::definition::{
     SIGNAL_TYPE_COUNT, SIGNAL_TYPE_NAMES, Signal, SignalPropertyRequirement, SignalType,
 };
 use crate::signal::queue::PendingSignal;
 use crate::support::regex::is_subject_rejected_by_optional_pattern;
-
-pub(crate) struct PreparedSignalCommand {
-    arguments: Vec<CString>,
-    environment: Vec<CString>,
-}
 
 pub(crate) fn is_signal_filtered_out_for_pending_signal(
     event_signal: &PendingSignal,
@@ -85,123 +79,55 @@ pub(crate) fn is_signal_filtered_out_for_pending_signal(
     }
 }
 
-pub(crate) fn prepare_commands_of_signals_matching_pending_signals(
+fn shell_running_the_command_of_signal_with_the_variables_of_pending_signal(
+    signal: &Signal,
+    event_signal: &PendingSignal,
+) -> Command {
+    let mut shell = Command::new("/usr/bin/env");
+    shell.args(["sh", "-c"]);
+    if let Some(command) = signal.command.as_deref() {
+        shell.arg(command);
+    }
+    shell.envs(
+        event_signal
+            .arguments
+            .iter()
+            .flatten()
+            .map(|(name, value)| (name, value)),
+    );
+    shell
+}
+
+pub(crate) fn run_subscriber_commands_of_pending_signals_without_waiting_for_them(
     signal_event: &[Vec<Signal>; SIGNAL_TYPE_COUNT],
-    signal_storage: &[PendingSignal],
-) -> Vec<PreparedSignalCommand> {
-    let mut inherited_environment: Vec<CString> = Vec::new();
-    unsafe {
-        let mut entry = *libc::_NSGetEnviron();
-        while !(*entry).is_null() {
-            inherited_environment.push(CStr::from_ptr(*entry).to_owned());
-            entry = entry.add(1);
-        }
-    }
-
-    let mut prepared_commands: Vec<PreparedSignalCommand> = Vec::new();
-
-    let count = signal_storage.len() as i32;
-
-    for index in 0..count {
-        let event_signal = &signal_storage[index as usize];
-
-        let signal_count = signal_event[event_signal.signal_type as usize].len() as i32;
-        crate::debug!(
-            "{}: transmitting {} to {} subscriber(s)\n",
-            "prepare_commands_of_signals_matching_pending_signals",
-            SIGNAL_TYPE_NAMES[event_signal.signal_type as usize],
-            signal_count
-        );
-
-        for inner_index in 0..signal_count {
-            let signal = &signal_event[event_signal.signal_type as usize][inner_index as usize];
-            if is_signal_filtered_out_for_pending_signal(event_signal, signal) {
-                continue;
-            }
-
-            let mut environment = inherited_environment.clone();
-            for argument in event_signal.arguments.iter() {
-                if let Some((name, value)) = argument {
-                    let entry = CString::new(format!("{}={}", name, value)).unwrap();
-                    let prefix = format!("{}=", name);
-                    let existing = environment
-                        .iter()
-                        .position(|entry| entry.as_bytes().starts_with(prefix.as_bytes()));
-                    match existing {
-                        Some(existing) => environment[existing] = entry,
-                        None => environment.push(entry),
-                    }
-                }
-            }
-
-            let mut arguments = vec![
-                CString::new("/usr/bin/env").unwrap(),
-                CString::new("sh").unwrap(),
-                CString::new("-c").unwrap(),
-            ];
-            if let Some(command) = signal.command.as_deref() {
-                arguments.push(CString::new(command).unwrap());
-            }
-
-            prepared_commands.push(PreparedSignalCommand {
-                arguments,
-                environment,
-            });
-        }
-    }
-
-    prepared_commands
-}
-
-pub(crate) fn null_terminated_pointer_list(strings: &[CString]) -> Vec<*const c_char> {
-    let mut pointers: Vec<*const c_char> = strings.iter().map(|string| string.as_ptr()).collect();
-    pointers.push(core::ptr::null());
-    pointers
-}
-
-pub(crate) fn run_commands_of_pending_signals_in_forked_children(
-    signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
     signal_storage: &mut Vec<PendingSignal>,
 ) {
-    if signal_storage.is_empty() {
-        return;
-    }
+    for event_signal in signal_storage.drain(..) {
+        let subscribers = &signal_event[event_signal.signal_type as usize];
+        crate::debug!(
+            "{}: transmitting {} to {} subscriber(s)\n",
+            "run_subscriber_commands_of_pending_signals_without_waiting_for_them",
+            SIGNAL_TYPE_NAMES[event_signal.signal_type as usize],
+            subscribers.len()
+        );
 
-    let prepared_commands = prepare_commands_of_signals_matching_pending_signals(
-        signal_event,
-        signal_storage.as_slice(),
-    );
-    let prepared_command_pointers: Vec<(Vec<*const c_char>, Vec<*const c_char>)> =
-        prepared_commands
-            .iter()
-            .map(|prepared_command| {
-                (
-                    null_terminated_pointer_list(&prepared_command.arguments),
-                    null_terminated_pointer_list(&prepared_command.environment),
-                )
-            })
-            .collect();
-
-    let process_id = unsafe { libc::fork() };
-    if process_id != 0 {
-        signal_storage.clear();
-        return;
-    }
-
-    for (argument_pointers, environment_pointers) in prepared_command_pointers.iter() {
-        let process_id = unsafe { libc::fork() };
-        if process_id != 0 {
-            continue;
-        }
-
-        unsafe {
-            *libc::_NSGetEnviron() = environment_pointers.as_ptr() as *mut *mut c_char;
-            libc::_exit(libc::execvp(
-                argument_pointers[0],
-                argument_pointers.as_ptr(),
-            ));
+        for signal in subscribers {
+            if is_signal_filtered_out_for_pending_signal(&event_signal, signal) {
+                continue;
+            }
+            let shell = shell_running_the_command_of_signal_with_the_variables_of_pending_signal(
+                signal,
+                &event_signal,
+            )
+            .spawn();
+            if let Err(error) = shell {
+                crate::debug!(
+                    "{}: could not run the command of a {} subscriber: {}\n",
+                    "run_subscriber_commands_of_pending_signals_without_waiting_for_them",
+                    SIGNAL_TYPE_NAMES[event_signal.signal_type as usize],
+                    error
+                );
+            }
         }
     }
-
-    unsafe { libc::_exit(libc::EXIT_SUCCESS) }
 }

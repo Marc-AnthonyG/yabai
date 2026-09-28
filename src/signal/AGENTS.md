@@ -9,9 +9,9 @@ matching subscriber's command in a child process.
 - Everything here runs on the event-loop thread. The subscriptions and the pending queue are
   owned by `EventLoopOwnedState` and passed in explicitly; queued signals own
   their strings.
-- Delivery forks once per flush and the child forks again per command. The argv,
-  the environment and the filter verdict are all computed in the parent before the first fork;
-  the children only swap `environ`, exec and `_exit`.
+- Delivery spawns one `/usr/bin/env sh -c` child per matching subscriber, with the `YABAI_*`
+  variables added to the daemon's environment, and never waits for it: the daemon ignores
+  SIGCHLD, so the system reaps it.
 - The signal type names are CLI and JSON spellings, and each discriminant indexes the per-type
   subscription table; the first and last names are sentinels.
 - Removal is `swap_remove`, so the indices a listing shows can change order after a removal.

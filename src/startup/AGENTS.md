@@ -15,7 +15,8 @@ and running the user's config file once the message socket listens.
   run loop come last. Which notifications are registered depends on the macOS version.
 - A panic prints and aborts the whole process. SIGPIPE is put back to its default
   before the command line is parsed, because the Rust runtime ignores it before `main`; the
-  daemon then ignores SIGCHLD and SIGPIPE itself, and its children inherit that.
+  daemon then ignores SIGCHLD and SIGPIPE itself. Every child inherits the ignored SIGCHLD; the
+  ones started through `std::process::Command` get SIGPIPE back at its default.
 - The `OnceLock` statics are written once, before any other thread starts. On the
   daemon path the command line stores the config file path and every other one is set here.
 - The lock file is opened, write-locked with `fcntl` and its descriptor never closed; failing to take the lock means another instance is running. The `/tmp` socket

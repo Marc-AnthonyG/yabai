@@ -1,9 +1,12 @@
-use core::ffi::{CStr, c_char, c_void};
-use std::ffi::CString;
+use core::ffi::CStr;
+use std::fs::{DirBuilder, Permissions};
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+use std::path::Path;
+use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
 use objc2::rc::autoreleasepool;
-use objc2::{msg_send, sel};
+use objc2::sel;
 
 use crate::ffi::appkit::NSRunningApplication;
 use crate::ffi::foundation::{NSBundle, NSString};
@@ -17,7 +20,7 @@ use crate::scripting_addition::frame::{
 };
 use crate::state::process_wide::SCRIPTING_ADDITION_SOCKET_PATH;
 use crate::support::privilege::is_running_as_root;
-use crate::support::strings::{FIXED_STRING_BUFFER_LENGTH, are_both_strings_present_and_equal};
+use crate::support::strings::are_both_strings_present_and_equal;
 use crate::{notify, warn};
 
 pub(crate) static SCRIPTING_ADDITION_PAYLOAD_BINARY: &[u8] =
@@ -100,60 +103,18 @@ pub(crate) const SCRIPTING_ADDITION_PAYLOAD_INFO_PLIST_TEMPLATE: &str = concat!(
     "</plist>",
 );
 
-fn truncate_as_snprintf_would_into_a_fixed_string_buffer(mut text: String) -> String {
-    let mut length = text.len().min(FIXED_STRING_BUFFER_LENGTH - 1);
-    while !text.is_char_boundary(length) {
-        length -= 1;
-    }
-    text.truncate(length);
-    text
-}
-
 pub(crate) fn build_scripting_addition_bundle_paths() -> ScriptingAdditionBundlePaths {
-    let base_directory = truncate_as_snprintf_would_into_a_fixed_string_buffer(format!(
-        "{}",
-        "/Library/ScriptingAdditions/yabai.osax"
-    ));
-
-    let contents_directory = truncate_as_snprintf_would_into_a_fixed_string_buffer(format!(
-        "{}/{}",
-        base_directory, "Contents"
-    ));
-    let contents_macos_directory = truncate_as_snprintf_would_into_a_fixed_string_buffer(format!(
-        "{}/{}",
-        contents_directory, "MacOS"
-    ));
-    let contents_resources_directory = truncate_as_snprintf_would_into_a_fixed_string_buffer(
-        format!("{}/{}", contents_directory, "Resources"),
-    );
-    let info_plist = truncate_as_snprintf_would_into_a_fixed_string_buffer(format!(
-        "{}/{}",
-        contents_directory, "Info.plist"
-    ));
-
-    let payload_directory = truncate_as_snprintf_would_into_a_fixed_string_buffer(format!(
-        "{}/{}",
-        contents_resources_directory, "payload.bundle"
-    ));
-    let payload_contents_directory = truncate_as_snprintf_would_into_a_fixed_string_buffer(
-        format!("{}/{}", payload_directory, "Contents"),
-    );
-    let payload_contents_macos_directory = truncate_as_snprintf_would_into_a_fixed_string_buffer(
-        format!("{}/{}", payload_contents_directory, "MacOS"),
-    );
-    let payload_plist = truncate_as_snprintf_would_into_a_fixed_string_buffer(format!(
-        "{}/{}",
-        payload_contents_directory, "Info.plist"
-    ));
-
-    let binary_loader = truncate_as_snprintf_would_into_a_fixed_string_buffer(format!(
-        "{}/{}",
-        contents_macos_directory, "loader"
-    ));
-    let binary_payload = truncate_as_snprintf_would_into_a_fixed_string_buffer(format!(
-        "{}/{}",
-        payload_contents_macos_directory, "payload"
-    ));
+    let base_directory = String::from("/Library/ScriptingAdditions/yabai.osax");
+    let contents_directory = format!("{base_directory}/Contents");
+    let contents_macos_directory = format!("{contents_directory}/MacOS");
+    let contents_resources_directory = format!("{contents_directory}/Resources");
+    let info_plist = format!("{contents_directory}/Info.plist");
+    let payload_directory = format!("{contents_resources_directory}/payload.bundle");
+    let payload_contents_directory = format!("{payload_directory}/Contents");
+    let payload_contents_macos_directory = format!("{payload_contents_directory}/MacOS");
+    let payload_plist = format!("{payload_contents_directory}/Info.plist");
+    let binary_loader = format!("{contents_macos_directory}/loader");
+    let binary_payload = format!("{payload_contents_macos_directory}/payload");
 
     ScriptingAdditionBundlePaths {
         base_directory,
@@ -170,10 +131,13 @@ pub(crate) fn build_scripting_addition_bundle_paths() -> ScriptingAdditionBundle
     }
 }
 
+fn scripting_addition_bundle_paths() -> &'static ScriptingAdditionBundlePaths {
+    SCRIPTING_ADDITION_BUNDLE_PATHS.get_or_init(build_scripting_addition_bundle_paths)
+}
+
 pub(crate) fn create_scripting_addition_bundle_directories() -> bool {
-    let osax_paths =
-        SCRIPTING_ADDITION_BUNDLE_PATHS.get_or_init(build_scripting_addition_bundle_paths);
-    let directory_list = [
+    let osax_paths = scripting_addition_bundle_paths();
+    [
         &osax_paths.base_directory,
         &osax_paths.contents_directory,
         &osax_paths.contents_macos_directory,
@@ -181,65 +145,21 @@ pub(crate) fn create_scripting_addition_bundle_directories() -> bool {
         &osax_paths.payload_directory,
         &osax_paths.payload_contents_directory,
         &osax_paths.payload_contents_macos_directory,
-    ];
-
-    for directory in directory_list {
-        let directory = CString::new(directory.as_str()).unwrap();
-        if unsafe { libc::mkdir(directory.as_ptr(), 0o755) } != 0 {
-            return false;
-        }
-    }
-
-    true
-}
-
-pub(crate) fn write_bytes_to_file_opened_with_mode(
-    buffer: &[u8],
-    file: &str,
-    file_mode: &str,
-) -> bool {
-    let file = CString::new(file).unwrap();
-    let file_mode = CString::new(file_mode).unwrap();
-
-    let handle = unsafe { libc::fopen(file.as_ptr(), file_mode.as_ptr()) };
-    if handle.is_null() {
-        return false;
-    }
-
-    let bytes = unsafe { libc::fwrite(buffer.as_ptr().cast::<c_void>(), buffer.len(), 1, handle) };
-    let result = bytes == 1;
-    unsafe { libc::fclose(handle) };
-
-    result
+    ]
+    .into_iter()
+    .all(|directory| DirBuilder::new().mode(0o755).create(directory).is_ok())
 }
 
 pub(crate) fn make_scripting_addition_binaries_executable_and_ad_hoc_signed() {
-    let osax_paths =
-        SCRIPTING_ADDITION_BUNDLE_PATHS.get_or_init(build_scripting_addition_bundle_paths);
-
-    let command = truncate_as_snprintf_would_into_a_fixed_string_buffer(format!(
-        "{} {}",
-        "chmod +x", osax_paths.binary_loader
-    ));
-    unsafe { libc::system(CString::new(command).unwrap().as_ptr()) };
-
-    let command = truncate_as_snprintf_would_into_a_fixed_string_buffer(format!(
-        "{} {} {}",
-        "codesign -f -s -", osax_paths.binary_loader, "2>/dev/null"
-    ));
-    unsafe { libc::system(CString::new(command).unwrap().as_ptr()) };
-
-    let command = truncate_as_snprintf_would_into_a_fixed_string_buffer(format!(
-        "{} {}",
-        "chmod +x", osax_paths.binary_payload
-    ));
-    unsafe { libc::system(CString::new(command).unwrap().as_ptr()) };
-
-    let command = truncate_as_snprintf_would_into_a_fixed_string_buffer(format!(
-        "{} {} {}",
-        "codesign -f -s -", osax_paths.binary_payload, "2>/dev/null"
-    ));
-    unsafe { libc::system(CString::new(command).unwrap().as_ptr()) };
+    let osax_paths = scripting_addition_bundle_paths();
+    for binary in [&osax_paths.binary_loader, &osax_paths.binary_payload] {
+        let _ = std::fs::set_permissions(binary, Permissions::from_mode(0o755));
+        let _ = Command::new("codesign")
+            .args(["-f", "-s", "-"])
+            .arg(binary)
+            .stderr(Stdio::null())
+            .status();
+    }
 }
 
 pub(crate) fn terminate_dock_so_it_restarts() {
@@ -250,100 +170,65 @@ pub(crate) fn terminate_dock_so_it_restarts() {
 }
 
 pub(crate) fn store_scripting_addition_socket_path_of_sudo_user() -> bool {
-    let sudo_user_id = unsafe { libc::getenv(c"SUDO_UID".as_ptr()) };
-
-    let mut user_id: libc::uid_t = unsafe { libc::getuid() };
-    debug_assert!(user_id == 0);
-
-    if sudo_user_id.is_null() {
+    let Some(sudo_user_id) = std::env::var("SUDO_UID")
+        .ok()
+        .and_then(|user_id| user_id.parse::<libc::uid_t>().ok())
+    else {
         return false;
-    }
-    if unsafe {
-        libc::sscanf(
-            sudo_user_id,
-            c"%u".as_ptr(),
-            &mut user_id as *mut libc::uid_t,
-        )
-    } != 1
-    {
-        return false;
-    }
+    };
 
-    let password_entry = unsafe { libc::getpwuid(user_id) };
+    let password_entry = unsafe { libc::getpwuid(sudo_user_id) };
     if password_entry.is_null() {
         return false;
     }
 
     let user_name = unsafe { CStr::from_ptr((*password_entry).pw_name) }.to_string_lossy();
-    let _ =
-        SCRIPTING_ADDITION_SOCKET_PATH.set(truncate_as_snprintf_would_into_a_fixed_string_buffer(
-            SCRIPTING_ADDITION_SOCKET_PATH_FORMAT.replacen("%s", &user_name, 1),
-        ));
+    let _ = SCRIPTING_ADDITION_SOCKET_PATH
+        .set(SCRIPTING_ADDITION_SOCKET_PATH_FORMAT.replacen("%s", &user_name, 1));
     true
 }
 
 pub(crate) fn is_scripting_addition_installed() -> bool {
-    let osax_paths =
-        SCRIPTING_ADDITION_BUNDLE_PATHS.get_or_init(build_scripting_addition_bundle_paths);
-
-    let base_directory = CString::new(osax_paths.base_directory.as_str()).unwrap();
-    let directory = unsafe { libc::opendir(base_directory.as_ptr()) };
-    if directory.is_null() {
-        return false;
-    }
-
-    unsafe { libc::closedir(directory) };
-    true
+    Path::new(&scripting_addition_bundle_paths().base_directory).is_dir()
 }
 
-pub(crate) fn is_scripting_addition_missing_or_outdated() -> i32 {
+pub(crate) fn is_scripting_addition_missing_or_outdated() -> bool {
+    if !is_scripting_addition_installed() {
+        return true;
+    }
+
     autoreleasepool(|_pool| {
-        let result: bool;
-
-        if is_scripting_addition_installed() {
-            let osax_paths =
-                SCRIPTING_ADDITION_BUNDLE_PATHS.get_or_init(build_scripting_addition_bundle_paths);
-            let payload_path = NSString::from_str(&osax_paths.payload_directory);
-            let payload_bundle = NSBundle::bundleWithPath(&payload_path);
-            let ns_version = payload_bundle.and_then(|payload_bundle| {
+        let payload_path = NSString::from_str(&scripting_addition_bundle_paths().payload_directory);
+        let installed_version = NSBundle::bundleWithPath(&payload_path)
+            .and_then(|payload_bundle| {
                 payload_bundle.objectForInfoDictionaryKey(&NSString::from_str("CFBundleVersion"))
-            });
-            let ns_version_utf8_string: *const c_char = ns_version
-                .as_deref()
-                .map_or(core::ptr::null(), |ns_version| unsafe {
-                    msg_send![ns_version, UTF8String]
-                });
-
-            let status = are_both_strings_present_and_equal(
-                if ns_version_utf8_string.is_null() {
-                    None
-                } else {
-                    unsafe { CStr::from_ptr(ns_version_utf8_string) }
-                        .to_str()
-                        .ok()
-                },
-                Some(SCRIPTING_ADDITION_VERSION),
-            );
-            result = if status { false } else { true };
-        } else {
-            result = true;
-        }
-
-        result as i32
+            })
+            .and_then(|version| version.downcast::<NSString>().ok())
+            .map(|version| version.to_string());
+        installed_version.as_deref() != Some(SCRIPTING_ADDITION_VERSION)
     })
 }
 
 pub(crate) fn remove_scripting_addition_bundle() -> bool {
-    let osax_paths =
-        SCRIPTING_ADDITION_BUNDLE_PATHS.get_or_init(build_scripting_addition_bundle_paths);
+    std::fs::remove_dir_all(&scripting_addition_bundle_paths().base_directory).is_ok()
+}
 
-    let command = truncate_as_snprintf_would_into_a_fixed_string_buffer(format!(
-        "{} {} {}",
-        "rm -rf", osax_paths.base_directory, "2>/dev/null"
-    ));
+fn write_scripting_addition_bundle() -> bool {
+    let osax_paths = scripting_addition_bundle_paths();
+    let info_plist =
+        SCRIPTING_ADDITION_INFO_PLIST_TEMPLATE.replace("{}", SCRIPTING_ADDITION_VERSION);
+    let payload_plist =
+        SCRIPTING_ADDITION_PAYLOAD_INFO_PLIST_TEMPLATE.replace("{}", SCRIPTING_ADDITION_VERSION);
 
-    let code = unsafe { libc::system(CString::new(command).unwrap().as_ptr()) };
-    code == 0
+    create_scripting_addition_bundle_directories()
+        && std::fs::write(&osax_paths.info_plist, info_plist).is_ok()
+        && std::fs::write(&osax_paths.payload_plist, payload_plist).is_ok()
+        && std::fs::write(&osax_paths.binary_loader, SCRIPTING_ADDITION_LOADER_BINARY).is_ok()
+        && std::fs::write(
+            &osax_paths.binary_payload,
+            SCRIPTING_ADDITION_PAYLOAD_BINARY,
+        )
+        .is_ok()
 }
 
 pub(crate) fn install_scripting_addition_bundle_and_restart_dock() -> i32 {
@@ -353,59 +238,20 @@ pub(crate) fn install_scripting_addition_bundle_and_restart_dock() -> i32 {
         return 1;
     }
 
-    'cleanup: {
-        let osax_paths =
-            SCRIPTING_ADDITION_BUNDLE_PATHS.get_or_init(build_scripting_addition_bundle_paths);
-
-        if !create_scripting_addition_bundle_directories() {
-            break 'cleanup;
-        }
-
-        let sa_plist =
-            SCRIPTING_ADDITION_INFO_PLIST_TEMPLATE.replace("{}", SCRIPTING_ADDITION_VERSION);
-        if !write_bytes_to_file_opened_with_mode(sa_plist.as_bytes(), &osax_paths.info_plist, "w") {
-            break 'cleanup;
-        }
-
-        let sa_bundle_plist = SCRIPTING_ADDITION_PAYLOAD_INFO_PLIST_TEMPLATE
-            .replace("{}", SCRIPTING_ADDITION_VERSION);
-        if !write_bytes_to_file_opened_with_mode(
-            sa_bundle_plist.as_bytes(),
-            &osax_paths.payload_plist,
-            "w",
-        ) {
-            break 'cleanup;
-        }
-
-        if !write_bytes_to_file_opened_with_mode(
-            SCRIPTING_ADDITION_LOADER_BINARY,
-            &osax_paths.binary_loader,
-            "wb",
-        ) {
-            break 'cleanup;
-        }
-
-        if !write_bytes_to_file_opened_with_mode(
-            SCRIPTING_ADDITION_PAYLOAD_BINARY,
-            &osax_paths.binary_payload,
-            "wb",
-        ) {
-            break 'cleanup;
-        }
-
-        make_scripting_addition_binaries_executable_and_ad_hoc_signed();
-        terminate_dock_so_it_restarts();
-        return 0;
+    if !write_scripting_addition_bundle() {
+        remove_scripting_addition_bundle();
+        return 2;
     }
 
-    remove_scripting_addition_bundle();
-    2
+    make_scripting_addition_binaries_executable_and_ad_hoc_signed();
+    terminate_dock_so_it_restarts();
+    0
 }
 
 pub(crate) fn validate_loaded_scripting_addition_updating_it_if_outdated() -> i32 {
     let mut attributes: u32 = 0;
     let mut version = String::new();
-    let is_latest_version_installed = is_scripting_addition_missing_or_outdated() == 0;
+    let is_latest_version_installed = !is_scripting_addition_missing_or_outdated();
 
     if !request_scripting_addition_handshake(&mut version, &mut attributes) {
         notify!("scripting-addition", "connection failed!");
@@ -464,7 +310,7 @@ pub(crate) fn is_arm64e_preview_abi_boot_argument_set() -> bool {
     if unsafe {
         libc::sysctlbyname(
             c"kern.bootargs".as_ptr(),
-            boot_arguments.as_mut_ptr().cast::<c_void>(),
+            boot_arguments.as_mut_ptr().cast(),
             &mut length,
             core::ptr::null_mut(),
             0,
@@ -491,26 +337,10 @@ pub(crate) fn is_arm64e_preview_abi_boot_argument_set() -> bool {
 }
 
 pub(crate) fn run_loader_to_inject_payload_into_dock() -> bool {
-    let handle = unsafe {
-        libc::popen(
-            c"/Library/ScriptingAdditions/yabai.osax/Contents/MacOS/loader".as_ptr(),
-            c"r".as_ptr(),
-        )
-    };
-    if handle.is_null() {
-        return false;
-    }
-
-    let result = unsafe { libc::pclose(handle) };
-    if libc::WIFEXITED(result) {
-        return libc::WEXITSTATUS(result) == 0;
-    } else if libc::WIFSIGNALED(result) {
-        return false;
-    } else if libc::WIFSTOPPED(result) {
-        return false;
-    }
-
-    false
+    Command::new(&scripting_addition_bundle_paths().binary_loader)
+        .stdout(Stdio::null())
+        .status()
+        .is_ok_and(|exit_status| exit_status.success())
 }
 
 pub(crate) fn uninstall_scripting_addition() -> i32 {
@@ -563,7 +393,7 @@ pub(crate) fn install_and_load_scripting_addition() -> i32 {
             return result;
         }
 
-        if is_scripting_addition_missing_or_outdated() != 0 {
+        if is_scripting_addition_missing_or_outdated() {
             result = install_scripting_addition_bundle_and_restart_dock();
             return result;
         }

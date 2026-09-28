@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::process::{Command, Stdio};
 
 use crate::service::plist::{build_launchd_service_plist_path, write_launchd_service_plist};
 use crate::support::filesystem::is_existing_file_that_is_not_a_directory;
@@ -19,68 +20,29 @@ pub(crate) const LAUNCHD_SERVICE_LABEL: &str = "com.asmvik.yabai";
 //          4. Running (Start / Stop)
 //
 
-fn run_program_and_wait_for_its_exit_status(arguments: &[&str], suppress_output: bool) -> i32 {
-    let argument_strings: Vec<std::ffi::CString> = arguments
-        .iter()
-        .map(|argument| std::ffi::CString::new(*argument).unwrap())
-        .collect();
-    let mut argument_pointers: Vec<*mut libc::c_char> = argument_strings
-        .iter()
-        .map(|argument| argument.as_ptr() as *mut libc::c_char)
-        .collect();
-    argument_pointers.push(core::ptr::null_mut());
-
-    let mut process_id: libc::pid_t = 0;
-    let mut actions: libc::posix_spawn_file_actions_t = unsafe { std::mem::zeroed() };
-    unsafe { libc::posix_spawn_file_actions_init(&mut actions) };
-
+fn run_launchctl_and_wait_for_its_exit_status(arguments: &[&str], suppress_output: bool) -> i32 {
+    let mut launchctl = Command::new(LAUNCHCTL_EXECUTABLE_PATH);
+    launchctl.args(arguments);
     if suppress_output {
-        let dev_null = std::ffi::CString::new("/dev/null").unwrap();
-        unsafe {
-            libc::posix_spawn_file_actions_addopen(
-                &mut actions,
-                libc::STDOUT_FILENO,
-                dev_null.as_ptr(),
-                libc::O_WRONLY | libc::O_APPEND,
-                0,
-            );
-            libc::posix_spawn_file_actions_addopen(
-                &mut actions,
-                libc::STDERR_FILENO,
-                dev_null.as_ptr(),
-                libc::O_WRONLY | libc::O_APPEND,
-                0,
-            );
-        }
+        launchctl.stdout(Stdio::null()).stderr(Stdio::null());
     }
+    launchctl
+        .status()
+        .ok()
+        .and_then(|exit_status| exit_status.code())
+        .unwrap_or(1)
+}
 
-    let mut status: libc::c_int = unsafe {
-        libc::posix_spawn(
-            &mut process_id,
-            argument_pointers[0],
-            &actions,
-            core::ptr::null(),
-            argument_pointers.as_ptr(),
-            core::ptr::null(),
-        )
-    };
-    if status != 0 {
-        return 1;
-    }
+fn gui_domain_target_of_the_current_user() -> String {
+    format!("gui/{}", unsafe { libc::getuid() })
+}
 
-    while unsafe { libc::waitpid(process_id, &mut status, 0) } == -1
-        && std::io::Error::last_os_error().raw_os_error() == Some(libc::EINTR)
-    {
-        unsafe { libc::usleep(1000) };
-    }
-
-    if libc::WIFSIGNALED(status) {
-        1
-    } else if libc::WIFSTOPPED(status) {
-        1
-    } else {
-        libc::WEXITSTATUS(status)
-    }
+fn yabai_service_target_of_the_current_user() -> String {
+    format!(
+        "{}/{}",
+        gui_domain_target_of_the_current_user(),
+        LAUNCHD_SERVICE_LABEL
+    )
 }
 
 pub fn start_launchd_service_installing_it_if_missing() -> i32 {
@@ -100,20 +62,16 @@ pub fn start_launchd_service_installing_it_if_missing() -> i32 {
         }
     }
 
-    let service_target = format!(
-        "gui/{}/{}",
-        unsafe { libc::getuid() } as i32,
-        LAUNCHD_SERVICE_LABEL
-    );
+    let service_target = yabai_service_target_of_the_current_user();
 
-    let domain_target = format!("gui/{}", unsafe { libc::getuid() } as i32);
+    let domain_target = gui_domain_target_of_the_current_user();
 
     //
     // NOTE(asmvik): Check if service is bootstrapped
     //
 
-    let print_arguments = [LAUNCHCTL_EXECUTABLE_PATH, "print", &service_target];
-    let is_bootstrapped = run_program_and_wait_for_its_exit_status(&print_arguments, true);
+    let print_arguments = ["print", &service_target];
+    let is_bootstrapped = run_launchctl_and_wait_for_its_exit_status(&print_arguments, true);
 
     if is_bootstrapped != 0 {
         //
@@ -123,21 +81,16 @@ pub fn start_launchd_service_installing_it_if_missing() -> i32 {
         // a no-op if the service is already enabled.
         //
 
-        let enable_arguments = [LAUNCHCTL_EXECUTABLE_PATH, "enable", &service_target];
-        run_program_and_wait_for_its_exit_status(&enable_arguments, false);
+        let enable_arguments = ["enable", &service_target];
+        run_launchctl_and_wait_for_its_exit_status(&enable_arguments, false);
 
         //
         // NOTE(asmvik): Bootstrap service into the target domain.
         // This will also start the program **iff* RunAtLoad is set to true.
         //
 
-        let bootstrap_arguments = [
-            LAUNCHCTL_EXECUTABLE_PATH,
-            "bootstrap",
-            &domain_target,
-            &yabai_plist_path,
-        ];
-        run_program_and_wait_for_its_exit_status(&bootstrap_arguments, false)
+        let bootstrap_arguments = ["bootstrap", &domain_target, &yabai_plist_path];
+        run_launchctl_and_wait_for_its_exit_status(&bootstrap_arguments, false)
     } else {
         //
         // NOTE(asmvik): The service has already been bootstrapped.
@@ -145,8 +98,8 @@ pub fn start_launchd_service_installing_it_if_missing() -> i32 {
         // error to bootstrap a service that has already been bootstrapped.
         //
 
-        let kickstart_arguments = [LAUNCHCTL_EXECUTABLE_PATH, "kickstart", &service_target];
-        run_program_and_wait_for_its_exit_status(&kickstart_arguments, false)
+        let kickstart_arguments = ["kickstart", &service_target];
+        run_launchctl_and_wait_for_its_exit_status(&kickstart_arguments, false)
     }
 }
 
@@ -159,19 +112,10 @@ pub fn restart_launchd_service() -> i32 {
         );
     }
 
-    let service_target = format!(
-        "gui/{}/{}",
-        unsafe { libc::getuid() } as i32,
-        LAUNCHD_SERVICE_LABEL
-    );
+    let service_target = yabai_service_target_of_the_current_user();
 
-    let kickstart_arguments = [
-        LAUNCHCTL_EXECUTABLE_PATH,
-        "kickstart",
-        "-k",
-        &service_target,
-    ];
-    run_program_and_wait_for_its_exit_status(&kickstart_arguments, false)
+    let kickstart_arguments = ["kickstart", "-k", &service_target];
+    run_launchctl_and_wait_for_its_exit_status(&kickstart_arguments, false)
 }
 
 pub fn stop_launchd_service() -> i32 {
@@ -183,20 +127,16 @@ pub fn stop_launchd_service() -> i32 {
         );
     }
 
-    let service_target = format!(
-        "gui/{}/{}",
-        unsafe { libc::getuid() } as i32,
-        LAUNCHD_SERVICE_LABEL
-    );
+    let service_target = yabai_service_target_of_the_current_user();
 
-    let domain_target = format!("gui/{}", unsafe { libc::getuid() } as i32);
+    let domain_target = gui_domain_target_of_the_current_user();
 
     //
     // NOTE(asmvik): Check if service is bootstrapped
     //
 
-    let print_arguments = [LAUNCHCTL_EXECUTABLE_PATH, "print", &service_target];
-    let is_bootstrapped = run_program_and_wait_for_its_exit_status(&print_arguments, true);
+    let print_arguments = ["print", &service_target];
+    let is_bootstrapped = run_launchctl_and_wait_for_its_exit_status(&print_arguments, true);
 
     if is_bootstrapped != 0 {
         //
@@ -205,13 +145,8 @@ pub fn stop_launchd_service() -> i32 {
         // was bootstrapped**, so we tell it to stop said service.
         //
 
-        let kill_arguments = [
-            LAUNCHCTL_EXECUTABLE_PATH,
-            "kill",
-            "SIGTERM",
-            &service_target,
-        ];
-        run_program_and_wait_for_its_exit_status(&kill_arguments, false)
+        let kill_arguments = ["kill", "SIGTERM", &service_target];
+        run_launchctl_and_wait_for_its_exit_status(&kill_arguments, false)
     } else {
         //
         // NOTE(asmvik): Service is bootstrapped; we stop a potentially
@@ -223,16 +158,11 @@ pub fn stop_launchd_service() -> i32 {
         // it first).
         //
 
-        let bootout_arguments = [
-            LAUNCHCTL_EXECUTABLE_PATH,
-            "bootout",
-            &domain_target,
-            &yabai_plist_path,
-        ];
-        run_program_and_wait_for_its_exit_status(&bootout_arguments, false);
+        let bootout_arguments = ["bootout", &domain_target, &yabai_plist_path];
+        run_launchctl_and_wait_for_its_exit_status(&bootout_arguments, false);
 
-        let disable_arguments = [LAUNCHCTL_EXECUTABLE_PATH, "disable", &service_target];
-        run_program_and_wait_for_its_exit_status(&disable_arguments, false)
+        let disable_arguments = ["disable", &service_target];
+        run_launchctl_and_wait_for_its_exit_status(&disable_arguments, false)
     }
 }
 

@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::config_file::location::locate_the_config_file_warning_when_there_is_none;
-use crate::config_file::shell_run::run_config_file_in_a_forked_shell;
+use crate::config_file::shell_run::run_config_file_in_a_shell_without_waiting_for_it;
 use crate::state::process_wide::RELOAD_CONFIG_FILE_ON_CHANGE_ENABLED;
 use crate::support::file_change_watch::FileChangeWatch;
 
@@ -65,5 +65,5 @@ fn rerun_the_config_file_if_reloading_is_enabled_and_it_changed_since_it_last_ra
     }
 
     *contents_that_last_ran = Some(current_contents);
-    run_config_file_in_a_forked_shell(config_file);
+    run_config_file_in_a_shell_without_waiting_for_it(config_file);
 }

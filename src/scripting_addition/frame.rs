@@ -2,68 +2,66 @@ use crate::scripting_addition::client::send_frame_to_scripting_addition_and_wait
 
 include!(concat!(env!("OUT_DIR"), "/osax_common.rs"));
 
-pub(crate) fn append_field_to_frame_if_it_fits(
-    bytes: &mut [u8],
-    length: &mut i16,
-    value: &[u8],
-) -> bool {
-    let offset = *length as usize;
-    let Some(destination) = bytes.get_mut(offset..offset + value.len()) else {
-        return false;
-    };
-    destination.copy_from_slice(value);
-    *length += value.len() as i16;
-    true
+const LENGTH_OF_THE_HEADER_AND_OPCODE: usize = size_of::<i16>() + 1;
+
+pub(crate) struct ScriptingAdditionFrame {
+    bytes: [u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH],
+    length: usize,
+    a_field_did_not_fit: bool,
 }
 
-pub(crate) fn finish_frame_and_send_it_to_scripting_addition(
-    bytes: &mut [u8],
-    length: i16,
-    opcode: ScriptingAdditionOpcode,
-) -> bool {
-    write_length_header_and_opcode_into_frame(bytes, length, opcode);
-    send_frame_to_scripting_addition_and_wait_for_acknowledgement(&bytes[..length as usize])
-}
+impl ScriptingAdditionFrame {
+    pub(crate) fn new() -> ScriptingAdditionFrame {
+        ScriptingAdditionFrame {
+            bytes: [0; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH],
+            length: LENGTH_OF_THE_HEADER_AND_OPCODE,
+            a_field_did_not_fit: false,
+        }
+    }
 
-fn write_length_header_and_opcode_into_frame(
-    bytes: &mut [u8],
-    length: i16,
-    opcode: ScriptingAdditionOpcode,
-) {
-    bytes[..size_of::<i16>()]
-        .copy_from_slice(&((length as usize - size_of::<i16>()) as i16).to_ne_bytes());
-    bytes[size_of::<i16>()] = opcode as u8;
+    pub(crate) fn append(&mut self, field: &[u8]) -> &mut ScriptingAdditionFrame {
+        match self.bytes.get_mut(self.length..self.length + field.len()) {
+            Some(destination) if !self.a_field_did_not_fit => {
+                destination.copy_from_slice(field);
+                self.length += field.len();
+            }
+            _ => self.a_field_did_not_fit = true,
+        }
+        self
+    }
+
+    pub(crate) fn finish_with_opcode(&mut self, opcode: ScriptingAdditionOpcode) -> Option<&[u8]> {
+        if self.a_field_did_not_fit {
+            return None;
+        }
+        let length_without_its_own_field = (self.length - size_of::<i16>()) as i16;
+        self.bytes[..size_of::<i16>()].copy_from_slice(&length_without_its_own_field.to_ne_bytes());
+        self.bytes[size_of::<i16>()] = opcode as u8;
+        Some(&self.bytes[..self.length])
+    }
+
+    pub(crate) fn send_as(&mut self, opcode: ScriptingAdditionOpcode) -> bool {
+        self.finish_with_opcode(opcode)
+            .is_some_and(send_frame_to_scripting_addition_and_wait_for_acknowledgement)
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH, ScriptingAdditionOpcode,
-        append_field_to_frame_if_it_fits, write_length_header_and_opcode_into_frame,
+        SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH, ScriptingAdditionFrame, ScriptingAdditionOpcode,
     };
 
-    const LENGTH_OF_THE_HEADER_AND_OPCODE: i16 = 1 + 2;
-
-    fn append_every_field_to_frame(bytes: &mut [u8], length: &mut i16, fields: &[&[u8]]) {
+    fn frame_with_fields(fields: &[&[u8]], opcode: ScriptingAdditionOpcode) -> Option<Vec<u8>> {
+        let mut frame = ScriptingAdditionFrame::new();
         for field in fields {
-            assert!(
-                append_field_to_frame_if_it_fits(bytes, length, field),
-                "a field of {} bytes should fit",
-                field.len()
-            );
+            frame.append(field);
         }
-    }
-
-    fn frame_with_fields(fields: &[&[u8]], opcode: ScriptingAdditionOpcode) -> Vec<u8> {
-        let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-        let mut length = LENGTH_OF_THE_HEADER_AND_OPCODE;
-        append_every_field_to_frame(&mut bytes, &mut length, fields);
-        write_length_header_and_opcode_into_frame(&mut bytes, length, opcode);
-        bytes[..length as usize].to_vec()
+        frame.finish_with_opcode(opcode).map(<[u8]>::to_vec)
     }
 
     #[test]
-    fn a_space_move_frame_matches_the_bytes_the_c_macros_write() {
+    fn a_space_move_frame_matches_the_bytes_the_payload_parses() {
         let frame = frame_with_fields(
             &[
                 &0x1122334455667788u64.to_ne_bytes(),
@@ -75,7 +73,7 @@ mod tests {
         );
 
         assert_eq!(
-            frame,
+            frame.unwrap(),
             [
                 0x1a, 0x00, 0x05, 0x88, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x02, 0x00, 0x00,
                 0x00, 0x00, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
@@ -84,7 +82,7 @@ mod tests {
     }
 
     #[test]
-    fn a_window_scale_frame_packs_its_floats_without_padding_as_the_c_macros_do() {
+    fn a_window_scale_frame_packs_its_floats_without_padding() {
         let frame = frame_with_fields(
             &[
                 &0xABCDu32.to_ne_bytes(),
@@ -97,7 +95,7 @@ mod tests {
         );
 
         assert_eq!(
-            frame,
+            frame.unwrap(),
             [
                 0x15, 0x00, 0x0d, 0xcd, 0xab, 0x00, 0x00, 0x00, 0x00, 0xc0, 0x3f, 0x00, 0x00, 0x00,
                 0xc0, 0x00, 0x80, 0xc8, 0x42, 0x00, 0x00, 0x48, 0x42,
@@ -106,14 +104,14 @@ mod tests {
     }
 
     #[test]
-    fn a_space_focus_frame_matches_the_bytes_the_c_macros_write() {
+    fn a_space_focus_frame_matches_the_bytes_the_payload_parses() {
         let frame = frame_with_fields(
             &[&0x0102030405060708u64.to_ne_bytes()],
             ScriptingAdditionOpcode::SpaceFocus,
         );
 
         assert_eq!(
-            frame,
+            frame.unwrap(),
             [
                 0x09, 0x00, 0x02, 0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01
             ]
@@ -121,88 +119,40 @@ mod tests {
     }
 
     #[test]
-    fn the_header_holds_the_length_without_itself_as_a_native_order_i16_followed_by_the_opcode() {
-        let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-
-        write_length_header_and_opcode_into_frame(
-            &mut bytes,
-            0x0203,
-            ScriptingAdditionOpcode::WindowOrderIn,
-        );
-
-        assert_eq!(bytes[..2], 0x0201i16.to_ne_bytes());
-        assert_eq!(bytes[2], 0x11);
-    }
-
-    #[test]
-    fn append_field_to_frame_if_it_fits_advances_the_length_by_the_size_of_each_field() {
-        let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-        let mut length = LENGTH_OF_THE_HEADER_AND_OPCODE;
-
-        append_every_field_to_frame(
-            &mut bytes,
-            &mut length,
-            &[&[0xaa], &[0xbb, 0xcc], &[0xdd; 8]],
-        );
-
-        assert_eq!(length, 3 + 1 + 2 + 8);
+    fn a_frame_without_fields_holds_only_its_length_and_opcode() {
         assert_eq!(
-            bytes[3..14],
-            [
-                0xaa, 0xbb, 0xcc, 0xdd, 0xdd, 0xdd, 0xdd, 0xdd, 0xdd, 0xdd, 0xdd
-            ]
+            frame_with_fields(&[], ScriptingAdditionOpcode::WindowOrderIn).unwrap(),
+            [0x01, 0x00, 0x11]
         );
     }
 
     #[test]
-    fn append_field_to_frame_if_it_fits_accepts_a_field_that_ends_exactly_at_the_end_of_the_4096_byte_buffer()
-     {
-        let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-        let mut length: i16 = 4088;
+    fn a_field_that_ends_exactly_at_the_end_of_the_buffer_fits() {
+        let filler = [0x01; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH - 3 - 8];
+        let frame = frame_with_fields(
+            &[&filler, &u64::MAX.to_ne_bytes()],
+            ScriptingAdditionOpcode::SpaceFocus,
+        )
+        .unwrap();
 
-        assert!(append_field_to_frame_if_it_fits(
-            &mut bytes,
-            &mut length,
-            &u64::MAX.to_ne_bytes()
-        ));
-
-        assert_eq!(length, 4096);
-        assert_eq!(bytes[4088..], [0xff; 8]);
-    }
-
-    #[test]
-    fn append_field_to_frame_if_it_fits_refuses_a_field_that_would_overflow_the_buffer_and_leaves_length_and_bytes_alone()
-     {
-        let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-        let mut length: i16 = 4090;
-
-        assert!(!append_field_to_frame_if_it_fits(
-            &mut bytes,
-            &mut length,
-            &u64::MAX.to_ne_bytes()
-        ));
-
-        assert_eq!(length, 4090);
-        assert!(bytes.iter().all(|byte| *byte == 0));
-    }
-
-    #[test]
-    fn append_field_to_frame_if_it_fits_refuses_even_one_byte_once_the_buffer_is_full() {
-        let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-        let mut length = LENGTH_OF_THE_HEADER_AND_OPCODE;
-        append_every_field_to_frame(
-            &mut bytes,
-            &mut length,
-            &[&[0x01; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH - 3]],
+        assert_eq!(frame.len(), SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH);
+        assert_eq!(
+            frame[SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH - 8..],
+            [0xff; 8]
         );
+    }
 
-        assert!(!append_field_to_frame_if_it_fits(
-            &mut bytes,
-            &mut length,
-            &[0x02]
-        ));
+    #[test]
+    fn a_field_that_would_overflow_the_buffer_fails_the_whole_frame_even_if_a_later_one_fits() {
+        let filler = [0x01; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH - 3 - 6];
 
-        assert_eq!(length, 4096);
+        assert!(
+            frame_with_fields(
+                &[&filler, &u64::MAX.to_ne_bytes(), &[0x02]],
+                ScriptingAdditionOpcode::SpaceFocus,
+            )
+            .is_none()
+        );
     }
 
     #[test]

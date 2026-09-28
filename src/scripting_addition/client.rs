@@ -2,10 +2,7 @@ use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
 
 use crate::ffi::skylight::SLSWindowIsOrderedIn;
-use crate::scripting_addition::frame::{
-    SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH, ScriptingAdditionOpcode,
-    append_field_to_frame_if_it_fits, finish_frame_and_send_it_to_scripting_addition,
-};
+use crate::scripting_addition::frame::{ScriptingAdditionFrame, ScriptingAdditionOpcode};
 use crate::state::process_wide::{SCRIPTING_ADDITION_SOCKET_PATH, SKYLIGHT_CONNECTION_ID};
 use crate::support::handles::{SpaceId, WindowId};
 use crate::window::proxy_pairing::WindowProxyPairing;
@@ -63,44 +60,23 @@ pub(crate) fn send_frame_to_scripting_addition_and_wait_for_acknowledgement(byte
 }
 
 pub(crate) fn focus_space_through_scripting_addition(space_id: SpaceId) -> bool {
-    let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-    let mut length: i16 = 1 + 2;
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &space_id.0.to_ne_bytes()) {
-        return false;
-    }
-    finish_frame_and_send_it_to_scripting_addition(
-        &mut bytes,
-        length,
-        ScriptingAdditionOpcode::SpaceFocus,
-    )
+    ScriptingAdditionFrame::new()
+        .append(&space_id.0.to_ne_bytes())
+        .send_as(ScriptingAdditionOpcode::SpaceFocus)
 }
 
 pub(crate) fn create_space_on_display_of_space_through_scripting_addition(
     space_id: SpaceId,
 ) -> bool {
-    let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-    let mut length: i16 = 1 + 2;
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &space_id.0.to_ne_bytes()) {
-        return false;
-    }
-    finish_frame_and_send_it_to_scripting_addition(
-        &mut bytes,
-        length,
-        ScriptingAdditionOpcode::SpaceCreate,
-    )
+    ScriptingAdditionFrame::new()
+        .append(&space_id.0.to_ne_bytes())
+        .send_as(ScriptingAdditionOpcode::SpaceCreate)
 }
 
 pub(crate) fn destroy_space_through_scripting_addition(space_id: SpaceId) -> bool {
-    let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-    let mut length: i16 = 1 + 2;
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &space_id.0.to_ne_bytes()) {
-        return false;
-    }
-    finish_frame_and_send_it_to_scripting_addition(
-        &mut bytes,
-        length,
-        ScriptingAdditionOpcode::SpaceDestroy,
-    )
+    ScriptingAdditionFrame::new()
+        .append(&space_id.0.to_ne_bytes())
+        .send_as(ScriptingAdditionOpcode::SpaceDestroy)
 }
 
 pub(crate) fn move_space_to_display_through_scripting_addition(
@@ -109,34 +85,12 @@ pub(crate) fn move_space_to_display_through_scripting_addition(
     source_previous_space_id: SpaceId,
     focus: bool,
 ) -> bool {
-    let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-    let mut length: i16 = 1 + 2;
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &source_space_id.0.to_ne_bytes())
-    {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(
-        &mut bytes,
-        &mut length,
-        &destination_space_id.0.to_ne_bytes(),
-    ) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(
-        &mut bytes,
-        &mut length,
-        &source_previous_space_id.0.to_ne_bytes(),
-    ) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &[focus as u8]) {
-        return false;
-    }
-    finish_frame_and_send_it_to_scripting_addition(
-        &mut bytes,
-        length,
-        ScriptingAdditionOpcode::SpaceMove,
-    )
+    ScriptingAdditionFrame::new()
+        .append(&source_space_id.0.to_ne_bytes())
+        .append(&destination_space_id.0.to_ne_bytes())
+        .append(&source_previous_space_id.0.to_ne_bytes())
+        .append(&[focus as u8])
+        .send_as(ScriptingAdditionOpcode::SpaceMove)
 }
 
 pub(crate) fn move_space_after_space_through_scripting_addition(
@@ -144,50 +98,21 @@ pub(crate) fn move_space_after_space_through_scripting_addition(
     destination_space_id: SpaceId,
     focus: bool,
 ) -> bool {
-    let dummy_space_id: u64 = 0;
-    let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-    let mut length: i16 = 1 + 2;
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &source_space_id.0.to_ne_bytes())
-    {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(
-        &mut bytes,
-        &mut length,
-        &destination_space_id.0.to_ne_bytes(),
-    ) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &dummy_space_id.to_ne_bytes()) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &[focus as u8]) {
-        return false;
-    }
-    finish_frame_and_send_it_to_scripting_addition(
-        &mut bytes,
-        length,
-        ScriptingAdditionOpcode::SpaceMove,
-    )
+    let no_previous_space_id: u64 = 0;
+    ScriptingAdditionFrame::new()
+        .append(&source_space_id.0.to_ne_bytes())
+        .append(&destination_space_id.0.to_ne_bytes())
+        .append(&no_previous_space_id.to_ne_bytes())
+        .append(&[focus as u8])
+        .send_as(ScriptingAdditionOpcode::SpaceMove)
 }
 
 pub(crate) fn move_window_through_scripting_addition(window_id: WindowId, x: i32, y: i32) -> bool {
-    let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-    let mut length: i16 = 1 + 2;
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &window_id.0.to_ne_bytes()) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &x.to_ne_bytes()) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &y.to_ne_bytes()) {
-        return false;
-    }
-    finish_frame_and_send_it_to_scripting_addition(
-        &mut bytes,
-        length,
-        ScriptingAdditionOpcode::WindowMove,
-    )
+    ScriptingAdditionFrame::new()
+        .append(&window_id.0.to_ne_bytes())
+        .append(&x.to_ne_bytes())
+        .append(&y.to_ne_bytes())
+        .send_as(ScriptingAdditionOpcode::WindowMove)
 }
 
 pub(crate) fn set_window_opacity_through_scripting_addition(
@@ -195,80 +120,42 @@ pub(crate) fn set_window_opacity_through_scripting_addition(
     opacity: f32,
     duration: f32,
 ) -> bool {
-    let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-    let mut length: i16 = 1 + 2;
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &window_id.0.to_ne_bytes()) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &opacity.to_ne_bytes()) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &duration.to_ne_bytes()) {
-        return false;
-    }
-    finish_frame_and_send_it_to_scripting_addition(
-        &mut bytes,
-        length,
-        if duration > 0.0f32 {
+    ScriptingAdditionFrame::new()
+        .append(&window_id.0.to_ne_bytes())
+        .append(&opacity.to_ne_bytes())
+        .append(&duration.to_ne_bytes())
+        .send_as(if duration > 0.0f32 {
             ScriptingAdditionOpcode::WindowOpacityFade
         } else {
             ScriptingAdditionOpcode::WindowOpacity
-        },
-    )
+        })
 }
 
 pub(crate) fn set_window_layer_through_scripting_addition(window_id: WindowId, layer: i32) -> bool {
-    let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-    let mut length: i16 = 1 + 2;
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &window_id.0.to_ne_bytes()) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &layer.to_ne_bytes()) {
-        return false;
-    }
-    finish_frame_and_send_it_to_scripting_addition(
-        &mut bytes,
-        length,
-        ScriptingAdditionOpcode::WindowLayer,
-    )
+    ScriptingAdditionFrame::new()
+        .append(&window_id.0.to_ne_bytes())
+        .append(&layer.to_ne_bytes())
+        .send_as(ScriptingAdditionOpcode::WindowLayer)
 }
 
 pub(crate) fn set_window_sticky_through_scripting_addition(
     window_id: WindowId,
     sticky: bool,
 ) -> bool {
-    let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-    let mut length: i16 = 1 + 2;
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &window_id.0.to_ne_bytes()) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &[sticky as u8]) {
-        return false;
-    }
-    finish_frame_and_send_it_to_scripting_addition(
-        &mut bytes,
-        length,
-        ScriptingAdditionOpcode::WindowSticky,
-    )
+    ScriptingAdditionFrame::new()
+        .append(&window_id.0.to_ne_bytes())
+        .append(&[sticky as u8])
+        .send_as(ScriptingAdditionOpcode::WindowSticky)
 }
 
 pub(crate) fn set_window_shadow_through_scripting_addition(
     window_id: WindowId,
     shadow: bool,
 ) -> bool {
-    let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-    let mut length: i16 = 1 + 2;
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &window_id.0.to_ne_bytes()) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &[shadow as u8]) {
-        return false;
-    }
-    finish_frame_and_send_it_to_scripting_addition(
-        &mut bytes,
-        length,
-        ScriptingAdditionOpcode::WindowShadow,
-    )
+    ScriptingAdditionFrame::new()
+        .append(&window_id.0.to_ne_bytes())
+        .append(&[shadow as u8])
+        .send_as(ScriptingAdditionOpcode::WindowShadow)
 }
 
 pub(crate) fn scale_window_through_scripting_addition(
@@ -278,80 +165,40 @@ pub(crate) fn scale_window_through_scripting_addition(
     width: f32,
     height: f32,
 ) -> bool {
-    let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-    let mut length: i16 = 1 + 2;
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &window_id.0.to_ne_bytes()) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &x.to_ne_bytes()) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &y.to_ne_bytes()) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &width.to_ne_bytes()) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &height.to_ne_bytes()) {
-        return false;
-    }
-    finish_frame_and_send_it_to_scripting_addition(
-        &mut bytes,
-        length,
-        ScriptingAdditionOpcode::WindowScale,
-    )
+    ScriptingAdditionFrame::new()
+        .append(&window_id.0.to_ne_bytes())
+        .append(&x.to_ne_bytes())
+        .append(&y.to_ne_bytes())
+        .append(&width.to_ne_bytes())
+        .append(&height.to_ne_bytes())
+        .send_as(ScriptingAdditionOpcode::WindowScale)
 }
 
-fn pack_window_proxy_pairings(
-    bytes: &mut [u8],
-    length: &mut i16,
+fn append_window_proxy_pairings<'frame>(
+    frame: &'frame mut ScriptingAdditionFrame,
     pairing_list: &[WindowProxyPairing],
-) -> bool {
-    if !append_field_to_frame_if_it_fits(bytes, length, &(pairing_list.len() as i32).to_ne_bytes())
-    {
-        return false;
-    }
+) -> &'frame mut ScriptingAdditionFrame {
+    frame.append(&(pairing_list.len() as i32).to_ne_bytes());
     for pairing in pairing_list {
-        if !append_field_to_frame_if_it_fits(bytes, length, &pairing.real_window_id.0.to_ne_bytes())
-        {
-            return false;
-        }
-        if !append_field_to_frame_if_it_fits(bytes, length, &pairing.proxy_window_id.to_ne_bytes())
-        {
-            return false;
-        }
+        frame
+            .append(&pairing.real_window_id.0.to_ne_bytes())
+            .append(&pairing.proxy_window_id.to_ne_bytes());
     }
-    true
+    frame
 }
 
 pub(crate) fn swap_window_proxies_in_through_scripting_addition(
     pairing_list: &[WindowProxyPairing],
 ) -> bool {
-    let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-    let mut length: i16 = 1 + 2;
-    if !pack_window_proxy_pairings(&mut bytes, &mut length, pairing_list) {
-        return false;
-    }
-    finish_frame_and_send_it_to_scripting_addition(
-        &mut bytes,
-        length,
-        ScriptingAdditionOpcode::WindowSwapProxyIn,
-    )
+    append_window_proxy_pairings(&mut ScriptingAdditionFrame::new(), pairing_list)
+        .send_as(ScriptingAdditionOpcode::WindowSwapProxyIn)
 }
 
 pub(crate) fn swap_window_proxies_out_through_scripting_addition(
     pairing_list: &[WindowProxyPairing],
 ) -> bool {
-    let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-    let mut length: i16 = 1 + 2;
-    if !pack_window_proxy_pairings(&mut bytes, &mut length, pairing_list) {
-        return false;
-    }
-    finish_frame_and_send_it_to_scripting_addition(
-        &mut bytes,
-        length,
-        ScriptingAdditionOpcode::WindowSwapProxyOut,
-    )
+    append_window_proxy_pairings(&mut ScriptingAdditionFrame::new(), pairing_list)
+        .send_as(ScriptingAdditionOpcode::WindowSwapProxyOut)
 }
 
 pub(crate) fn order_window_relative_to_other_window_through_scripting_addition(
@@ -359,127 +206,75 @@ pub(crate) fn order_window_relative_to_other_window_through_scripting_addition(
     order: i32,
     b_window_id: WindowId,
 ) -> bool {
-    let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-    let mut length: i16 = 1 + 2;
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &a_window_id.0.to_ne_bytes()) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &order.to_ne_bytes()) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &b_window_id.0.to_ne_bytes()) {
-        return false;
-    }
-    finish_frame_and_send_it_to_scripting_addition(
-        &mut bytes,
-        length,
-        ScriptingAdditionOpcode::WindowOrder,
-    )
+    ScriptingAdditionFrame::new()
+        .append(&a_window_id.0.to_ne_bytes())
+        .append(&order.to_ne_bytes())
+        .append(&b_window_id.0.to_ne_bytes())
+        .send_as(ScriptingAdditionOpcode::WindowOrder)
+}
+
+fn is_window_ordered_in(window_id: WindowId) -> bool {
+    let mut ordered_in: u8 = 0;
+    unsafe {
+        SLSWindowIsOrderedIn(
+            *SKYLIGHT_CONNECTION_ID.get().unwrap(),
+            window_id.0,
+            &mut ordered_in,
+        )
+    };
+    ordered_in != 0
 }
 
 pub(crate) fn order_in_windows_not_yet_ordered_in_through_scripting_addition(
     window_list: &[WindowId],
 ) -> bool {
-    let dummy_window_id: u32 = 0;
-    let mut ordered_in: u8 = 0;
-
-    let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-    let mut length: i16 = 1 + 2;
-    if !append_field_to_frame_if_it_fits(
-        &mut bytes,
-        &mut length,
-        &(window_list.len() as i32).to_ne_bytes(),
-    ) {
-        return false;
-    }
+    let window_id_the_payload_skips: u32 = 0;
+    let mut frame = ScriptingAdditionFrame::new();
+    frame.append(&(window_list.len() as i32).to_ne_bytes());
     for window_id in window_list {
-        unsafe {
-            SLSWindowIsOrderedIn(
-                *SKYLIGHT_CONNECTION_ID.get().unwrap(),
-                window_id.0,
-                &mut ordered_in,
-            )
-        };
-        if ordered_in != 0 {
-            if !append_field_to_frame_if_it_fits(
-                &mut bytes,
-                &mut length,
-                &dummy_window_id.to_ne_bytes(),
-            ) {
-                return false;
-            }
+        if is_window_ordered_in(*window_id) {
+            frame.append(&window_id_the_payload_skips.to_ne_bytes());
         } else {
-            if !append_field_to_frame_if_it_fits(
-                &mut bytes,
-                &mut length,
-                &window_id.0.to_ne_bytes(),
-            ) {
-                return false;
-            }
+            frame.append(&window_id.0.to_ne_bytes());
         }
     }
-    finish_frame_and_send_it_to_scripting_addition(
-        &mut bytes,
-        length,
-        ScriptingAdditionOpcode::WindowOrderIn,
-    )
+    frame.send_as(ScriptingAdditionOpcode::WindowOrderIn)
 }
 
 pub(crate) fn move_window_list_to_space_through_scripting_addition(
     space_id: SpaceId,
     window_list: &[WindowId],
 ) -> bool {
-    let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-    let mut length: i16 = 1 + 2;
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &space_id.0.to_ne_bytes()) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(
-        &mut bytes,
-        &mut length,
-        &(window_list.len() as i32).to_ne_bytes(),
-    ) {
-        return false;
-    }
+    let mut frame = ScriptingAdditionFrame::new();
+    frame
+        .append(&space_id.0.to_ne_bytes())
+        .append(&(window_list.len() as i32).to_ne_bytes());
     for window_id in window_list {
-        if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &window_id.0.to_ne_bytes()) {
-            return false;
-        }
+        frame.append(&window_id.0.to_ne_bytes());
     }
-    finish_frame_and_send_it_to_scripting_addition(
-        &mut bytes,
-        length,
-        ScriptingAdditionOpcode::WindowListToSpace,
-    )
+    frame.send_as(ScriptingAdditionOpcode::WindowListToSpace)
 }
 
 pub(crate) fn move_window_to_space_through_scripting_addition(
     space_id: SpaceId,
     window_id: WindowId,
 ) -> bool {
-    let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-    let mut length: i16 = 1 + 2;
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &space_id.0.to_ne_bytes()) {
-        return false;
-    }
-    if !append_field_to_frame_if_it_fits(&mut bytes, &mut length, &window_id.0.to_ne_bytes()) {
-        return false;
-    }
-    finish_frame_and_send_it_to_scripting_addition(
-        &mut bytes,
-        length,
-        ScriptingAdditionOpcode::WindowToSpace,
-    )
+    ScriptingAdditionFrame::new()
+        .append(&space_id.0.to_ne_bytes())
+        .append(&window_id.0.to_ne_bytes())
+        .send_as(ScriptingAdditionOpcode::WindowToSpace)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::pack_window_proxy_pairings;
-    use crate::scripting_addition::frame::SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH;
+    use super::append_window_proxy_pairings;
+    use crate::scripting_addition::frame::{
+        SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH, ScriptingAdditionFrame, ScriptingAdditionOpcode,
+    };
     use crate::support::handles::WindowId;
     use crate::window::proxy_pairing::WindowProxyPairing;
 
-    const LENGTH_OF_THE_HEADER_AND_OPCODE: i16 = 1 + 2;
+    const LENGTH_OF_THE_HEADER_AND_OPCODE: usize = 1 + 2;
 
     fn pairing(real_window_id: u32, proxy_window_id: u32) -> WindowProxyPairing {
         WindowProxyPairing {
@@ -489,10 +284,9 @@ mod tests {
     }
 
     fn packed_payload_of(pairing_list: &[WindowProxyPairing]) -> Option<Vec<u8>> {
-        let mut bytes = [0u8; SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH];
-        let mut length = LENGTH_OF_THE_HEADER_AND_OPCODE;
-        pack_window_proxy_pairings(&mut bytes, &mut length, pairing_list)
-            .then(|| bytes[LENGTH_OF_THE_HEADER_AND_OPCODE as usize..length as usize].to_vec())
+        append_window_proxy_pairings(&mut ScriptingAdditionFrame::new(), pairing_list)
+            .finish_with_opcode(ScriptingAdditionOpcode::WindowSwapProxyIn)
+            .map(|frame| frame[LENGTH_OF_THE_HEADER_AND_OPCODE..].to_vec())
     }
 
     #[test]
@@ -524,7 +318,7 @@ mod tests {
         let packed_payload = packed_payload_of(&pairings_the_frame_holds).unwrap();
 
         assert_eq!(
-            LENGTH_OF_THE_HEADER_AND_OPCODE as usize + packed_payload.len(),
+            LENGTH_OF_THE_HEADER_AND_OPCODE + packed_payload.len(),
             SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH - 1
         );
         assert_eq!(packed_payload[..4], 511i32.to_ne_bytes());

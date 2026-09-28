@@ -79,6 +79,21 @@ pub(crate) fn resolve_window_selector_or_the_focused_window(
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
 ) -> Result<WindowId, String> {
+    resolve_window_selector_or_the_focused_window_if_there_is_one(
+        selector,
+        display_manager,
+        window_manager,
+        space_manager,
+    )?
+    .ok_or_else(|| String::from("could not locate the focused window."))
+}
+
+pub(crate) fn resolve_window_selector_or_the_focused_window_if_there_is_one(
+    selector: Option<&WindowSelector>,
+    display_manager: &mut DisplayManager,
+    window_manager: &mut WindowManager,
+    space_manager: &mut SpaceManager,
+) -> Result<Option<WindowId>, String> {
     let focused_window_id = query_focused_tracked_window(window_manager);
     match selector {
         Some(selector) => resolve_window_selector(
@@ -87,10 +102,9 @@ pub(crate) fn resolve_window_selector_or_the_focused_window(
             display_manager,
             window_manager,
             space_manager,
-        ),
-        None => {
-            focused_window_id.ok_or_else(|| String::from("could not locate the focused window."))
-        }
+        )
+        .map(Some),
+        None => Ok(focused_window_id),
     }
 }
 

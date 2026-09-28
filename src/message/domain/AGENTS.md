@@ -1,7 +1,6 @@
 # message/domain
 
-One executor per domain. Every domain but window takes a typed command; window still parses the
-old argument vector the bridge hands it.
+One executor per domain, each taking its typed command.
 
 ## Notes
 
@@ -18,6 +17,9 @@ old argument vector the bridge hands it.
   it; `space layout` is a different command that re-tiles without the flag.
 - `rule apply` with neither a rule nor a flag re-applies every stored rule but the one-shot ones;
   with flags it applies that rule once without storing it.
-- Handlers still parsing an old argument vector write through a `Response`; commands are tried
-  in order and the first match wins.
+- A display, space or window action resolves its acting selector first. A window action that
+  names a target (`focus`, `close`, `minimize`, `deminimize`) works without a focused window;
+  every other window action needs one. Relative selectors in an argument start from the acting
+  one, except the display or space something is sent to or created on, which starts from the
+  focused one.
 - Handlers run on the event-loop thread and take the managers they touch as explicit parameters.

@@ -13,6 +13,6 @@ manager, which crosses the socket as JSON.
   has to agree with itself.
 - Values are checked while parsing, so a bad value is a usage error before anything is sent.
   Selectors are only parsed here; the daemon resolves them against live state.
-- The hidden `-m` passes an old argument vector on as `DaemonCommand::NotYetTyped`, for the
-  window domain, which is not typed yet. It is a bridge, not a second grammar: nothing new goes
-  through it.
+- The acting display, space or window is a global `-d`, `-s` or `-w` option, so it may follow
+  the action. A display or space label is refused when the selector of its kind would read it as
+  anything else.

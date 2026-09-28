@@ -24,13 +24,11 @@ mod window;
 
 use std::path::PathBuf;
 
-use clap::error::ErrorKind;
-use clap::{CommandFactory, Parser};
+use clap::Parser;
 
 use crate::cli::client::send_command_to_the_running_window_manager_and_print_its_reply;
 use crate::cli::local_action::{run_launchd_service_action, run_scripting_addition_action};
 use crate::cli::screen_recording_permission_report::exit_status_reporting_whether_screen_recording_is_granted;
-use crate::command::not_yet_typed::command_not_yet_typed_from_the_message_arguments;
 use crate::command::{CommandLine, TopLevelCommand};
 use crate::startup::order::start_the_daemon_and_enter_the_main_run_loop;
 use crate::startup::requirements::ask_for_missing_permissions_then_exit_or_wait_until_the_system_meets_the_daemon_requirements;
@@ -49,16 +47,6 @@ fn main() {
 
     if command_line.report_screen_recording_permission {
         std::process::exit(exit_status_reporting_whether_screen_recording_is_granted());
-    }
-
-    if let Some(arguments) = command_line.message_to_a_domain_not_yet_typed {
-        let command =
-            command_not_yet_typed_from_the_message_arguments(arguments).unwrap_or_else(|failure| {
-                CommandLine::command()
-                    .error(ErrorKind::InvalidValue, failure)
-                    .exit()
-            });
-        std::process::exit(send_command_to_the_running_window_manager_and_print_its_reply(command));
     }
 
     match command_line.command {

@@ -82,11 +82,12 @@ mod tests {
         write_request_after_its_length,
     };
     use crate::command::DaemonCommand;
+    use crate::command::scratchpad::ScratchpadCommand;
 
-    fn command_not_yet_typed() -> DaemonCommand {
-        DaemonCommand::NotYetTyped {
-            arguments: vec![String::from("window"), String::from("--focus")],
-        }
+    fn a_command() -> DaemonCommand {
+        DaemonCommand::Scratchpad(ScratchpadCommand::Toggle {
+            name: String::from("terminal"),
+        })
     }
 
     fn framed_request_of(command: DaemonCommand) -> Vec<u8> {
@@ -98,7 +99,7 @@ mod tests {
 
     #[test]
     fn a_command_read_back_after_its_length_is_the_command_written() {
-        let framed_request = framed_request_of(command_not_yet_typed());
+        let framed_request = framed_request_of(a_command());
 
         let request_as_json =
             read_the_json_of_a_request_after_its_length(framed_request.as_slice()).unwrap();
@@ -107,13 +108,13 @@ mod tests {
 
         assert_eq!(
             serde_json::to_string(&command_read_back).unwrap(),
-            serde_json::to_string(&command_not_yet_typed()).unwrap()
+            serde_json::to_string(&a_command()).unwrap()
         );
     }
 
     #[test]
     fn the_length_before_the_request_is_native_endian_and_counts_the_json_bytes() {
-        let framed_request = framed_request_of(command_not_yet_typed());
+        let framed_request = framed_request_of(a_command());
 
         let (length_bytes, request_as_json) = framed_request.split_at(size_of::<u32>());
 
@@ -126,7 +127,7 @@ mod tests {
 
     #[test]
     fn a_request_cut_short_is_refused() {
-        let mut framed_request = framed_request_of(command_not_yet_typed());
+        let mut framed_request = framed_request_of(a_command());
         framed_request.truncate(framed_request.len() - 1);
 
         assert!(read_the_json_of_a_request_after_its_length(framed_request.as_slice()).is_err());

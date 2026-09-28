@@ -1,9 +1,8 @@
 # message
 
 The daemon side of client commands: the socket that accepts clients and decodes their requests,
-the dispatch of a typed command to its domain, the resolution of typed selectors against live
-state and, until window is typed, the bridge that runs its old argument vector through the
-tokenizer, selectors, labels, argument words and failure texts.
+the dispatch of a typed command to its domain and the resolution of typed selectors against live
+state.
 
 ## Notes
 
@@ -13,9 +12,3 @@ tokenizer, selectors, labels, argument words and failure texts.
   the managers explicitly.
 - A selector resolves relative to the focused display, space or window unless a command names
   another; a selector that does not resolve is a failure naming it.
-- The bridge rebuilds the old message: every argument null-terminated, then padding nulls. Tokens
-  are ranges over that buffer and `take_next_token` never steps past the final terminator. Some
-  parsers call libc's `sscanf` on a token.
-- An untyped handler writes through `support::response::Response`; a selector that parses but
-  cannot be resolved has already written its failure, and the caller acts only on a resolved
-  value.

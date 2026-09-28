@@ -40,18 +40,6 @@ pub(crate) fn scratchpad_window_with_label(
     None
 }
 
-pub(crate) fn toggle_scratchpad_window_with_label(
-    window_manager: &mut WindowManager,
-    label: &[u8],
-    process_manager: &mut ProcessManager,
-) -> bool {
-    let window = scratchpad_window_with_label(window_manager, label);
-    match window {
-        Some(window_id) => toggle_scratchpad_window(window_manager, window_id, 0, process_manager),
-        None => false,
-    }
-}
-
 pub(crate) fn toggle_scratchpad_window(
     window_manager: &mut WindowManager,
     window_id: WindowId,

@@ -3,6 +3,7 @@
 use core::ffi::c_void;
 use core::ptr::NonNull;
 
+use crate::command::values::AbsoluteOrRelativeChange;
 use crate::display::manager::DisplayManager;
 use crate::ffi::accessibility::{
     AXUIElementSetAttributeValue, AXValueCreate, AXValueType, kAXPositionAttribute,
@@ -23,7 +24,6 @@ use crate::space::manager::SpaceManager;
 use crate::support::direction::{DIRECTION_EAST, DIRECTION_NORTH, DIRECTION_SOUTH, DIRECTION_WEST};
 use crate::support::handles::{NodeId, WindowId};
 use crate::support::resize_handle::ResizeHandle;
-use crate::support::type_of_change::{CHANGE_TYPE_ABSOLUTE, CHANGE_TYPE_RELATIVE};
 use crate::window::animation::{
     WindowWithTargetFrame, move_window_to_its_target_frame_animating_if_enabled,
 };
@@ -33,7 +33,7 @@ use crate::window::model::read_window_frame_through_accessibility;
 pub(crate) fn adjust_split_ratio_of_managed_window_parent_node(
     window_manager: &mut WindowManager,
     window_id: WindowId,
-    type_of_change: i32,
+    change: AbsoluteOrRelativeChange,
     ratio: f32,
     space_manager: &mut SpaceManager,
 ) -> WindowOperationOutcome {
@@ -51,22 +51,14 @@ pub(crate) fn adjust_split_ratio_of_managed_window_parent_node(
         return WindowOperationOutcome::InvalidSourceNode;
     };
 
-    match type_of_change {
-        CHANGE_TYPE_RELATIVE => {
-            if let Some(parent_node) =
-                space_manager.find_node_mut_in_view_of_space(space_id, parent_node_id)
-            {
-                parent_node.ratio = (parent_node.ratio + ratio).clamp(0.1, 0.9);
-            }
-        }
-        CHANGE_TYPE_ABSOLUTE => {
-            if let Some(parent_node) =
-                space_manager.find_node_mut_in_view_of_space(space_id, parent_node_id)
-            {
-                parent_node.ratio = ratio.clamp(0.1, 0.9);
-            }
-        }
-        _ => {}
+    if let Some(parent_node) =
+        space_manager.find_node_mut_in_view_of_space(space_id, parent_node_id)
+    {
+        let unclamped_ratio = match change {
+            AbsoluteOrRelativeChange::To => ratio,
+            AbsoluteOrRelativeChange::By => parent_node.ratio + ratio,
+        };
+        parent_node.ratio = unclamped_ratio.clamp(0.1, 0.9);
     }
 
     recompute_areas_below_node_redrawing_insert_feedback(
@@ -93,7 +85,7 @@ pub(crate) fn adjust_split_ratio_of_managed_window_parent_node(
 pub(crate) fn move_floating_window_by_offset_or_to_position(
     window_manager: &mut WindowManager,
     window_id: WindowId,
-    type_of_change: i32,
+    change: AbsoluteOrRelativeChange,
     delta_x: f32,
     delta_y: f32,
 ) -> WindowOperationOutcome {
@@ -110,7 +102,7 @@ pub(crate) fn move_floating_window_by_offset_or_to_position(
     let mut delta_x = delta_x;
     let mut delta_y = delta_y;
 
-    if type_of_change == CHANGE_TYPE_RELATIVE {
+    if change == AbsoluteOrRelativeChange::By {
         delta_x = (delta_x as f64 + window_frame.origin.x) as f32;
         delta_y = (delta_y as f64 + window_frame.origin.y) as f32;
     }

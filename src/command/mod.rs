@@ -1,13 +1,14 @@
 pub mod config;
 pub mod display;
 pub mod labels;
-pub mod not_yet_typed;
 pub mod query;
 pub mod rule;
+pub mod scratchpad;
 pub mod selectors;
 pub mod signal;
 pub mod space;
 pub mod values;
+pub mod window;
 
 use std::path::PathBuf;
 
@@ -18,8 +19,10 @@ use crate::command::config::ConfigCommand;
 use crate::command::display::DisplayCommand;
 use crate::command::query::QueryCommand;
 use crate::command::rule::RuleCommand;
+use crate::command::scratchpad::ScratchpadCommand;
 use crate::command::signal::SignalCommand;
 use crate::command::space::SpaceCommand;
+use crate::command::window::WindowCommand;
 
 #[derive(Parser)]
 #[command(
@@ -41,16 +44,6 @@ pub(crate) struct CommandLine {
     pub(crate) verbose: bool,
     #[arg(long, hide = true, exclusive = true)]
     pub(crate) report_screen_recording_permission: bool,
-    #[arg(
-        short = 'm',
-        long = "message",
-        hide = true,
-        num_args = 1..,
-        allow_hyphen_values = true,
-        value_name = "ARGUMENTS",
-        conflicts_with_all = ["config", "verbose"]
-    )]
-    pub(crate) message_to_a_domain_not_yet_typed: Option<Vec<String>>,
     #[command(subcommand)]
     pub(crate) command: Option<TopLevelCommand>,
 }
@@ -100,6 +93,14 @@ pub(crate) enum DaemonCommand {
     Display(DisplayCommand),
     /// Focus, create, move, re-tile or label a space
     Space(SpaceCommand),
+    /// Focus, move, resize, tile or toggle a window
+    ///
+    /// Relative selectors in the arguments of an action (west, next, stack.next…) start from the
+    /// acting window.
+    Window(WindowCommand),
+    /// Show and hide windows by name
+    #[command(subcommand)]
+    Scratchpad(ScratchpadCommand),
     /// Print displays, spaces and windows as JSON
     #[command(subcommand)]
     Query(QueryCommand),
@@ -109,8 +110,6 @@ pub(crate) enum DaemonCommand {
     /// Add, remove or list the shell commands run after events
     #[command(subcommand)]
     Signal(SignalCommand),
-    #[command(skip)]
-    NotYetTyped { arguments: Vec<String> },
 }
 
 #[cfg(test)]
@@ -142,30 +141,21 @@ mod tests {
     }
 
     #[test]
-    fn no_arguments_run_the_window_manager_with_the_default_config_file() {
+    fn the_window_manager_takes_an_optional_config_file_and_verbose_output_but_no_command() {
         let command_line = parse(&[]).unwrap();
-
         assert!(command_line.command.is_none());
         assert!(command_line.config.is_none());
         assert!(!command_line.verbose);
-        assert!(command_line.message_to_a_domain_not_yet_typed.is_none());
-    }
 
-    #[test]
-    fn the_window_manager_takes_a_config_file_and_verbose_output() {
         let command_line = parse(&["-c", "/tmp/yabairc", "-v"]).unwrap();
-
         assert_eq!(command_line.config.unwrap().to_str(), Some("/tmp/yabairc"));
         assert!(command_line.verbose);
-    }
 
-    #[test]
-    fn a_config_file_is_refused_next_to_a_command() {
         assert!(parse(&["-c", "/tmp/yabairc", "service", "start"]).is_err());
     }
 
     #[test]
-    fn the_screen_recording_permission_report_stands_alone() {
+    fn the_screen_recording_permission_report_stands_alone_and_out_of_the_help() {
         assert!(
             parse(&[REPORT_SCREEN_RECORDING_PERMISSION_THROUGH_THE_EXIT_STATUS_OPTION])
                 .unwrap()
@@ -178,14 +168,12 @@ mod tests {
             ])
             .is_err()
         );
-    }
-
-    #[test]
-    fn the_screen_recording_permission_report_stays_out_of_the_help() {
-        let help = CommandLine::command().render_long_help().to_string();
-
-        assert!(!help.contains("report-screen-recording-permission"));
-        assert!(!help.contains("--message"));
+        assert!(
+            !CommandLine::command()
+                .render_long_help()
+                .to_string()
+                .contains("report-screen-recording-permission")
+        );
     }
 
     #[test]
@@ -246,6 +234,9 @@ mod tests {
             &["display", "show-space", "code"],
             &["space", "-s", "2", "padding", "by", "-10", "0", "5", "0"],
             &["space", "rotate", "90"],
+            &["window", "-w", "stack.3", "resize", "top-left", "-10", "0"],
+            &["window", "focus"],
+            &["scratchpad", "assign", "terminal", "-w", "mouse"],
         ] {
             let command = super::parse_daemon_command(arguments).unwrap();
             let command_as_json = serde_json::to_string(&command).unwrap();
@@ -258,30 +249,5 @@ mod tests {
                 "{arguments:?}"
             );
         }
-    }
-
-    #[test]
-    fn the_message_option_takes_every_argument_after_it_including_dashed_ones() {
-        let command_line = parse(&["-m", "window", "-w", "3", "--resize", "abs:-10:20"]).unwrap();
-
-        assert_eq!(
-            command_line.message_to_a_domain_not_yet_typed.unwrap(),
-            ["window", "-w", "3", "--resize", "abs:-10:20"]
-        );
-    }
-
-    #[test]
-    fn the_command_not_yet_typed_crosses_the_socket_unchanged() {
-        let command = DaemonCommand::NotYetTyped {
-            arguments: vec![String::from("space"), String::from("--balance")],
-        };
-
-        let command_read_back: DaemonCommand =
-            serde_json::from_str(&serde_json::to_string(&command).unwrap()).unwrap();
-
-        let DaemonCommand::NotYetTyped { arguments } = command_read_back else {
-            panic!("the command should come back not yet typed");
-        };
-        assert_eq!(arguments, ["space", "--balance"]);
     }
 }

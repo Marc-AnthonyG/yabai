@@ -4,9 +4,10 @@ use crate::message::domain::config::run_config_command;
 use crate::message::domain::display::run_display_command;
 use crate::message::domain::query::run_query_command;
 use crate::message::domain::rule::run_rule_command;
+use crate::message::domain::scratchpad::run_scratchpad_command;
 use crate::message::domain::signal::run_signal_command;
 use crate::message::domain::space::run_space_command;
-use crate::message::not_yet_typed_bridge::run_message_to_a_domain_not_yet_typed;
+use crate::message::domain::window::run_window_command;
 use crate::mouse::drag::MouseDragState;
 use crate::process::manager::ProcessManager;
 use crate::protocol::reply::DaemonReply;
@@ -77,14 +78,26 @@ pub(crate) fn run_daemon_command(
         DaemonCommand::Signal(signal_command) => {
             DaemonReply::printing_or_failing_with(run_signal_command(signal_command, signal_event))
         }
-        DaemonCommand::NotYetTyped { arguments } => run_message_to_a_domain_not_yet_typed(
-            &arguments,
-            process_manager,
-            display_manager,
-            window_manager,
-            space_manager,
-            mouse_drag_state,
-            mission_control_mode,
-        ),
+        DaemonCommand::Window(window_command) => {
+            DaemonReply::printing_or_failing_with(run_window_command(
+                window_command,
+                process_manager,
+                display_manager,
+                window_manager,
+                space_manager,
+                mouse_drag_state,
+            ))
+        }
+        DaemonCommand::Scratchpad(scratchpad_command) => {
+            DaemonReply::printing_or_failing_with(run_scratchpad_command(
+                scratchpad_command,
+                process_manager,
+                display_manager,
+                window_manager,
+                space_manager,
+                mouse_drag_state,
+                mission_control_mode,
+            ))
+        }
     }
 }

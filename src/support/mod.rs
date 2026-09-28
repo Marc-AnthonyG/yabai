@@ -1,4 +1,3 @@
-pub mod arithmetic;
 pub mod color;
 pub mod direction;
 pub mod easing;
@@ -14,7 +13,4 @@ pub mod notify;
 pub mod privilege;
 pub mod regex;
 pub mod resize_handle;
-pub mod response;
 pub mod spawned_program_exit_status;
-pub mod strings;
-pub mod type_of_change;

@@ -27,7 +27,7 @@ fn main() {
         "src/osax/arm64_payload.m",
         "src/osax/x64_payload.m",
         "src/osax/common.h",
-        "src/misc/hashtable.h",
+        "src/osax/hashtable.h",
         "assets/Info.plist",
     ] {
         println!("cargo:rerun-if-changed={dependency}");

@@ -5,7 +5,7 @@ use core::ptr::NonNull;
 use std::sync::OnceLock;
 use std::sync::atomic::Ordering;
 
-use crate::application::model::Application;
+use crate::application::Application;
 use crate::event::queue::{Event, post_event_to_event_loop};
 use crate::ffi::CFStringOwned;
 use crate::ffi::accessibility::{

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use crate::application::model::is_application_frontmost;
+use crate::application::is_application_frontmost;
 use crate::debug;
 use crate::display::manager::DisplayManager;
 use crate::event::queue::{Event, post_event_to_event_loop};

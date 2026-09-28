@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use crate::application::model::Application;
+use crate::application::Application;
 use crate::ffi::accessibility::{
     AXUIElementCreateSystemWide, AXUIElementRef, AXUIElementSetMessagingTimeout,
 };

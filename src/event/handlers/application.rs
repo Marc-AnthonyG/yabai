@@ -7,7 +7,7 @@ use std::sync::atomic::Ordering;
 
 use objc2::msg_send;
 
-use crate::application::model::{
+use crate::application::{
     Application, create_application_for_process,
     destroy_application_releasing_its_accessibility_element, read_focused_window_of_application,
 };

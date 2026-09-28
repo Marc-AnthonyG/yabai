@@ -3,7 +3,7 @@
 use core::ptr::NonNull;
 use std::sync::Arc;
 
-use crate::application::model::{
+use crate::application::{
     copy_accessibility_windows_of_application, create_application_for_process,
     destroy_application_releasing_its_accessibility_element,
 };

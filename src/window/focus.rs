@@ -1,6 +1,6 @@
 #![allow(deprecated)]
 
-use crate::application::model::read_focused_window_of_application;
+use crate::application::read_focused_window_of_application;
 use crate::ffi::accessibility::{AXUIElementPerformAction, AXUIElementRef, kAXRaiseAction};
 use crate::ffi::carbon_process::{
     CoreDockSendNotification, GetProcessPID, ProcessSerialNumber, is_same_process_serial_number,

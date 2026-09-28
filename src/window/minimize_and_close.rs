@@ -20,7 +20,7 @@ pub(crate) fn minimize_window_through_accessibility(
     window_id: WindowId,
     window_manager: &mut WindowManager,
 ) -> WindowOperationOutcome {
-    let Some(window) = window_manager.window.find(&window_id) else {
+    let Some(window) = window_manager.window.get(&window_id) else {
         return WindowOperationOutcome::CannotMinimize;
     };
 
@@ -49,7 +49,7 @@ pub(crate) fn deminimize_window_through_accessibility(
     window_id: WindowId,
     window_manager: &mut WindowManager,
 ) -> WindowOperationOutcome {
-    let Some(window) = window_manager.window.find(&window_id) else {
+    let Some(window) = window_manager.window.get(&window_id) else {
         return WindowOperationOutcome::NotMinimized;
     };
 
@@ -75,7 +75,7 @@ pub(crate) fn close_window_by_pressing_its_close_button(
     window_id: WindowId,
     window_manager: &mut WindowManager,
 ) -> bool {
-    let Some(window) = window_manager.window.find(&window_id) else {
+    let Some(window) = window_manager.window.get(&window_id) else {
         return false;
     };
 

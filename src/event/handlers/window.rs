@@ -222,9 +222,9 @@ pub(crate) fn handle_window_destroyed_event(
 
     let application_name = window_manager
         .window
-        .find(&window)
+        .get(&window)
         .and_then(|window| window.application)
-        .and_then(|application| window_manager.application.find(&application))
+        .and_then(|application| window_manager.application.get(&application))
         .map(|application| Arc::clone(&application.name));
     debug!(
         "{}: {} {}\n",
@@ -255,7 +255,7 @@ pub(crate) fn handle_window_destroyed_event(
 
     let is_eligible = window_manager
         .window
-        .find(&window)
+        .get(&window)
         .is_some_and(|window| window.is_eligible);
     if is_eligible {
         queue_pending_signal_for_its_subscribers(
@@ -311,7 +311,7 @@ pub(crate) fn handle_window_focused_event(
 
     let is_still_alive = window_manager
         .window
-        .find(&window)
+        .get(&window)
         .is_some_and(|window| window.liveness.is_still_alive());
     if !is_still_alive {
         debug!(
@@ -323,7 +323,7 @@ pub(crate) fn handle_window_focused_event(
 
     let is_minimized = window_manager
         .window
-        .find(&window)
+        .get(&window)
         .is_some_and(|window| is_window_flag_set(window, WindowFlag::MINIMIZED));
     if is_minimized {
         record_focused_event_that_arrived_before_window_was_tracked(window_manager, window);
@@ -332,9 +332,9 @@ pub(crate) fn handle_window_focused_event(
 
     let application = window_manager
         .window
-        .find(&window)
+        .get(&window)
         .and_then(|window| window.application)
-        .and_then(|application| window_manager.application.find(&application));
+        .and_then(|application| window_manager.application.get(&application));
     let Some(application) = application else {
         return;
     };
@@ -397,7 +397,7 @@ pub(crate) fn handle_window_moved_event(
 
     let is_still_alive = window_manager
         .window
-        .find(&window)
+        .get(&window)
         .is_some_and(|window| window.liveness.is_still_alive());
     if !is_still_alive {
         debug!(
@@ -409,9 +409,9 @@ pub(crate) fn handle_window_moved_event(
 
     let application = window_manager
         .window
-        .find(&window)
+        .get(&window)
         .and_then(|window| window.application)
-        .and_then(|application| window_manager.application.find(&application));
+        .and_then(|application| window_manager.application.get(&application));
     let application_is_hidden = application.is_some_and(|application| application.is_hidden);
     let application_name = application.map(|application| Arc::clone(&application.name));
     if application_is_hidden {
@@ -422,7 +422,7 @@ pub(crate) fn handle_window_moved_event(
         return;
     }
 
-    let Some(window_record) = window_manager.window.find(&window) else {
+    let Some(window_record) = window_manager.window.get(&window) else {
         return;
     };
     let new_origin = read_window_origin_through_accessibility(window_record);
@@ -452,7 +452,7 @@ pub(crate) fn handle_window_moved_event(
         space_manager,
         signal_storage,
     );
-    let Some(window_record) = window_manager.window.find_mut(&window) else {
+    let Some(window_record) = window_manager.window.get_mut(&window) else {
         return;
     };
     let windowed_fullscreen = CGRectEqualToRect(window_record.windowed_frame, window_record.frame);
@@ -466,7 +466,7 @@ pub(crate) fn handle_window_moved_event(
             if let Some(view) = view {
                 let node = leaf_holding_window(space_manager, view, window);
                 if let Some(node) = node
-                    && space_manager.view.find(&view).is_some_and(|view| {
+                    && space_manager.view.get(&view).is_some_and(|view| {
                         view.find_node(node).is_some_and(|window_node| {
                             let node_window_area = area_given_to_the_windows_of_tile(
                                 window_node.area,
@@ -507,7 +507,7 @@ pub(crate) fn handle_window_moved_event(
                             window_manager,
                             space_manager,
                         );
-                    } else if let Some(view) = space_manager.view.find_mut(&view) {
+                    } else if let Some(view) = space_manager.view.get_mut(&view) {
                         view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
                     }
                 }
@@ -533,7 +533,7 @@ pub(crate) fn handle_window_resized_event(
 
     let is_still_alive = window_manager
         .window
-        .find(&window)
+        .get(&window)
         .is_some_and(|window| window.liveness.is_still_alive());
     if !is_still_alive {
         debug!(
@@ -545,9 +545,9 @@ pub(crate) fn handle_window_resized_event(
 
     let application = window_manager
         .window
-        .find(&window)
+        .get(&window)
         .and_then(|window| window.application)
-        .and_then(|application| window_manager.application.find(&application));
+        .and_then(|application| window_manager.application.get(&application));
     let application_is_hidden = application.is_some_and(|application| application.is_hidden);
     let application_name = application.map(|application| Arc::clone(&application.name));
     if application_is_hidden {
@@ -558,7 +558,7 @@ pub(crate) fn handle_window_resized_event(
         return;
     }
 
-    let Some(window_record) = window_manager.window.find(&window) else {
+    let Some(window_record) = window_manager.window.get(&window) else {
         return;
     };
     let new_frame = read_window_frame_through_accessibility(window_record);
@@ -589,7 +589,7 @@ pub(crate) fn handle_window_resized_event(
         signal_storage,
     );
 
-    let Some(window_record) = window_manager.window.find_mut(&window) else {
+    let Some(window_record) = window_manager.window.get_mut(&window) else {
         return;
     };
     let was_fullscreen = is_window_flag_set(window_record, WindowFlag::IN_NATIVE_FULLSCREEN);
@@ -664,13 +664,13 @@ pub(crate) fn handle_window_resized_event(
         if mouse_drag_state.current_action == MouseMode::Move
             && mouse_drag_state.window_id == Some(window)
         {
-            if let Some(mouse_window) = window_manager.window.find(&window) {
+            if let Some(mouse_window) = window_manager.window.get(&window) {
                 mouse_drag_state.window_frame.size = mouse_window.frame.size;
             }
         }
 
         if !windowed_fullscreen {
-            if let Some(window_record) = window_manager.window.find_mut(&window) {
+            if let Some(window_record) = window_manager.window.get_mut(&window) {
                 clear_window_flag(window_record, WindowFlag::IN_WINDOWED_FULLSCREEN);
             }
 
@@ -679,7 +679,7 @@ pub(crate) fn handle_window_resized_event(
                 if let Some(view) = view {
                     let node = leaf_holding_window(space_manager, view, window);
                     if let Some(node) = node
-                        && space_manager.view.find(&view).is_some_and(|view| {
+                        && space_manager.view.get(&view).is_some_and(|view| {
                             view.find_node(node).is_some_and(|window_node| {
                                 let node_window_area = area_given_to_the_windows_of_tile(
                                     window_node.area,
@@ -732,7 +732,7 @@ pub(crate) fn handle_window_resized_event(
                                 window_manager,
                                 space_manager,
                             );
-                        } else if let Some(view) = space_manager.view.find_mut(&view) {
+                        } else if let Some(view) = space_manager.view.get_mut(&view) {
                             view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
                         }
                     }
@@ -759,7 +759,7 @@ pub(crate) fn handle_window_minimized_event(
 
     let is_still_alive = window_manager
         .window
-        .find(&window)
+        .get(&window)
         .is_some_and(|window| window.liveness.is_still_alive());
     if !is_still_alive {
         debug!(
@@ -771,9 +771,9 @@ pub(crate) fn handle_window_minimized_event(
 
     let application_name = window_manager
         .window
-        .find(&window)
+        .get(&window)
         .and_then(|window| window.application)
-        .and_then(|application| window_manager.application.find(&application))
+        .and_then(|application| window_manager.application.get(&application))
         .map(|application| Arc::clone(&application.name));
     debug!(
         "{}: {} {}\n",
@@ -781,7 +781,7 @@ pub(crate) fn handle_window_minimized_event(
         text_or_printf_null_placeholder(application_name.as_deref()),
         window.0 as i32
     );
-    let Some(window_record) = window_manager.window.find_mut(&window) else {
+    let Some(window_record) = window_manager.window.get_mut(&window) else {
         return;
     };
     set_window_flag(window_record, WindowFlag::MINIMIZED);
@@ -853,7 +853,7 @@ pub(crate) fn handle_window_deminimized_event(
 
     let is_still_alive = window_manager
         .window
-        .find(&window)
+        .get(&window)
         .is_some_and(|window| window.liveness.is_still_alive());
     if !is_still_alive {
         debug!(
@@ -864,7 +864,7 @@ pub(crate) fn handle_window_deminimized_event(
         return;
     }
 
-    let Some(window_record) = window_manager.window.find_mut(&window) else {
+    let Some(window_record) = window_manager.window.get_mut(&window) else {
         return;
     };
     clear_window_flag(window_record, WindowFlag::MINIMIZED);
@@ -891,7 +891,7 @@ pub(crate) fn handle_window_deminimized_event(
 
     let window_application = window_record.application;
     let application_name = window_application
-        .and_then(|application| window_manager.application.find(&application))
+        .and_then(|application| window_manager.application.get(&application))
         .map(|application| Arc::clone(&application.name));
 
     let space_id = query_current_space_of_the_focused_display(window_manager);
@@ -907,7 +907,7 @@ pub(crate) fn handle_window_deminimized_event(
         {
             let last_window = tracked_window_with_id(window_manager, window_manager.last_window_id);
             let last_window_application = last_window
-                .and_then(|last_window| window_manager.window.find(&last_window))
+                .and_then(|last_window| window_manager.window.get(&last_window))
                 .and_then(|last_window| last_window.application);
             let insertion_point = match last_window {
                 Some(last_window) if last_window_application != window_application => last_window,
@@ -970,7 +970,7 @@ pub(crate) fn handle_window_title_changed_event(
 
     let is_still_alive = window_manager
         .window
-        .find(&window)
+        .get(&window)
         .is_some_and(|window| window.liveness.is_still_alive());
     if !is_still_alive {
         debug!(
@@ -982,9 +982,9 @@ pub(crate) fn handle_window_title_changed_event(
 
     let application_name = window_manager
         .window
-        .find(&window)
+        .get(&window)
         .and_then(|window| window.application)
-        .and_then(|application| window_manager.application.find(&application))
+        .and_then(|application| window_manager.application.get(&application))
         .map(|application| Arc::clone(&application.name));
     debug!(
         "{}: {} {}\n",
@@ -993,7 +993,7 @@ pub(crate) fn handle_window_title_changed_event(
         window.0 as i32
     );
 
-    let Some(window_record) = window_manager.window.find_mut(&window) else {
+    let Some(window_record) = window_manager.window.get_mut(&window) else {
         return;
     };
 
@@ -1024,11 +1024,11 @@ pub(crate) fn handle_skylight_window_ordered_event(
         "{}: {}\n",
         "handle_skylight_window_ordered_event", window_id.0 as i32
     );
-    let node = window_manager.insert_feedback.find(&window_id).copied();
+    let node = window_manager.insert_feedback.get(&window_id).copied();
     let feedback_window_order = node.and_then(|(space_id, node_id)| {
         space_manager
             .view
-            .find(&space_id)
+            .get(&space_id)
             .and_then(|view| view.find_node(node_id))
             .map(|node| {
                 (
@@ -1078,7 +1078,7 @@ pub(crate) fn handle_skylight_window_destroyed_event(
 
     let claimed_for_destruction = window_manager
         .window
-        .find(&window)
+        .get(&window)
         .is_some_and(|window| window.liveness.claim_for_destruction());
     if !claimed_for_destruction {
         debug!(

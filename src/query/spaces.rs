@@ -197,5 +197,5 @@ pub(crate) fn find_view_for_query_creating_it_once_space_manager_started(
             window_manager,
         ));
     }
-    space_manager.view.find(&space_id).map(|_| space_id)
+    space_manager.view.get(&space_id).map(|_| space_id)
 }

@@ -82,9 +82,7 @@ pub(crate) fn swap_spaces_across_displays_by_exchanging_their_windows(
         return SpaceOperationOutcome::InvalidSource;
     };
     let Some(mut b_view) = space_manager.view.remove(&b_space_id) else {
-        space_manager
-            .view
-            .add_unless_key_already_present(a_space_id, a_view);
+        space_manager.view.insert(a_space_id, a_view);
         compiler_fence(Ordering::SeqCst);
         window_manager.window_animation_duration = window_animation_duration;
         return SpaceOperationOutcome::InvalidDestination;
@@ -95,12 +93,8 @@ pub(crate) fn swap_spaces_across_displays_by_exchanging_their_windows(
 
     std::mem::swap(&mut a_view.uuid, &mut b_view.uuid);
 
-    space_manager
-        .view
-        .add_unless_key_already_present(a_space_id, b_view);
-    space_manager
-        .view
-        .add_unless_key_already_present(b_space_id, a_view);
+    space_manager.view.insert(a_space_id, b_view);
+    space_manager.view.insert(b_space_id, a_view);
 
     point_view_handles_at_rekeyed_views(window_manager, mouse_drag_state, |space_id| {
         if space_id == a_space_id {

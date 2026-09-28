@@ -318,7 +318,7 @@ pub(crate) fn handle_application_launched_event(
                 display_manager,
                 window_manager,
             );
-            let view_layout = space_manager.view.find(&view).map(|view| view.layout);
+            let view_layout = space_manager.view.get(&view).map(|view| view.layout);
             if view_layout.is_some_and(|view_layout| view_layout != ViewLayout::Float) {
                 //
                 // @cleanup
@@ -346,7 +346,7 @@ pub(crate) fn handle_application_launched_event(
                     view,
                 );
 
-                if let Some(view) = space_manager.view.find_mut(&view) {
+                if let Some(view) = space_manager.view.get_mut(&view) {
                     view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
                 }
                 view_list.push(view);
@@ -388,7 +388,7 @@ pub(crate) fn handle_application_launched_event(
         }
 
         move_windows_below_node_into_their_areas(view, ROOT_NODE_ID, window_manager, space_manager);
-        if let Some(view) = space_manager.view.find_mut(&view) {
+        if let Some(view) = space_manager.view.get_mut(&view) {
             view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     }
@@ -448,10 +448,10 @@ pub(crate) fn handle_application_terminated_event(
 
                 let claimed_for_destruction = window_manager
                     .window
-                    .find(&window_id)
+                    .get(&window_id)
                     .is_some_and(|window| window.liveness.claim_for_destruction());
                 if !claimed_for_destruction {
-                    if let Some(window) = window_manager.window.find_mut(&window_id) {
+                    if let Some(window) = window_manager.window.get_mut(&window_id) {
                         window.application = None;
                     }
                     continue;
@@ -479,7 +479,7 @@ pub(crate) fn handle_application_terminated_event(
                     );
                     forget_managed_window(window_manager, window_id);
 
-                    if let Some(view) = space_manager.view.find_mut(&view) {
+                    if let Some(view) = space_manager.view.get_mut(&view) {
                         view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
                     }
                     view_list.push(view);
@@ -494,7 +494,7 @@ pub(crate) fn handle_application_terminated_event(
 
                 let is_eligible = window_manager
                     .window
-                    .find(&window_id)
+                    .get(&window_id)
                     .is_some_and(|window| window.is_eligible);
                 if is_eligible {
                     queue_pending_signal_for_its_subscribers(
@@ -555,7 +555,7 @@ pub(crate) fn handle_application_terminated_event(
                     window_manager,
                     space_manager,
                 );
-                if let Some(view) = space_manager.view.find_mut(&view) {
+                if let Some(view) = space_manager.view.get_mut(&view) {
                     view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
                 }
             }
@@ -596,7 +596,7 @@ pub(crate) fn handle_application_front_switched_event(
     if space_manager.skip_window_focus_animation {
         let application_connection = window_manager
             .application
-            .find(&application)
+            .get(&application)
             .map_or(0, |application| application.connection);
         let psn_space_id = query_space_of_first_window_owned_by_connection(application_connection);
 
@@ -606,7 +606,7 @@ pub(crate) fn handle_application_front_switched_event(
         if delta_time > 1500.0f32 {
             let application_element_ref = window_manager
                 .application
-                .find(&application)
+                .get(&application)
                 .map(|application| application.element_ref);
             if let Some(application_element_ref) = application_element_ref {
                 let mut dummy: *const CFType = core::ptr::null();
@@ -686,7 +686,7 @@ pub(crate) fn handle_application_front_switched_event(
         if application == window_manager.applications_to_refresh[index] {
             let application_name = window_manager
                 .application
-                .find(&application)
+                .get(&application)
                 .map(|application| Arc::clone(&application.name));
             debug!(
                 "{}: {} has windows that are not yet resolved\n",
@@ -709,7 +709,7 @@ pub(crate) fn handle_application_front_switched_event(
 
     let application_focused_window_id = window_manager
         .application
-        .find(&application)
+        .get(&application)
         .map_or(WindowId(0), read_focused_window_of_application);
     if application_focused_window_id.0 == 0 {
         let focused_window =
@@ -727,7 +727,7 @@ pub(crate) fn handle_application_front_switched_event(
         window_manager.focused_window_id = WindowId(0);
         let application_process_serial_number = window_manager
             .application
-            .find(&application)
+            .get(&application)
             .map(|application| application.process_serial_number);
         if let Some(application_process_serial_number) = application_process_serial_number {
             window_manager.focused_window_process_serial_number = application_process_serial_number;
@@ -786,14 +786,14 @@ pub(crate) fn handle_application_visible_event(
 
     let application_name = window_manager
         .application
-        .find(&application)
+        .get(&application)
         .map(|application| Arc::clone(&application.name));
     debug!(
         "{}: {}\n",
         "handle_application_visible_event",
         text_or_printf_null_placeholder(application_name.as_deref())
     );
-    if let Some(application) = window_manager.application.find_mut(&application) {
+    if let Some(application) = window_manager.application.get_mut(&application) {
         application.is_hidden = false;
     }
 
@@ -814,7 +814,7 @@ pub(crate) fn handle_application_visible_event(
                 display_manager,
                 window_manager,
             );
-            let Some(view_layout) = space_manager.view.find(&view).map(|view| view.layout) else {
+            let Some(view_layout) = space_manager.view.get(&view).map(|view| view.layout) else {
                 continue;
             };
             if view_layout == ViewLayout::Float {
@@ -847,7 +847,7 @@ pub(crate) fn handle_application_visible_event(
                 view,
             );
 
-            if let Some(view) = space_manager.view.find_mut(&view) {
+            if let Some(view) = space_manager.view.get_mut(&view) {
                 view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
             view_list.push(view);
@@ -875,7 +875,7 @@ pub(crate) fn handle_application_visible_event(
         }
 
         move_windows_below_node_into_their_areas(view, ROOT_NODE_ID, window_manager, space_manager);
-        if let Some(view) = space_manager.view.find_mut(&view) {
+        if let Some(view) = space_manager.view.get_mut(&view) {
             view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     }
@@ -909,14 +909,14 @@ pub(crate) fn handle_application_hidden_event(
 
     let application_name = window_manager
         .application
-        .find(&application)
+        .get(&application)
         .map(|application| Arc::clone(&application.name));
     debug!(
         "{}: {}\n",
         "handle_application_hidden_event",
         text_or_printf_null_placeholder(application_name.as_deref())
     );
-    if let Some(application) = window_manager.application.find_mut(&application) {
+    if let Some(application) = window_manager.application.get_mut(&application) {
         application.is_hidden = true;
     }
 
@@ -951,7 +951,7 @@ pub(crate) fn handle_application_hidden_event(
             forget_managed_window(window_manager, window_id);
             apply_shadow_removal_mode_to_window(window_manager, window_id);
 
-            if let Some(view) = space_manager.view.find_mut(&view) {
+            if let Some(view) = space_manager.view.get_mut(&view) {
                 view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
             view_list.push(view);
@@ -977,7 +977,7 @@ pub(crate) fn handle_application_hidden_event(
         }
 
         move_windows_below_node_into_their_areas(view, ROOT_NODE_ID, window_manager, space_manager);
-        if let Some(view) = space_manager.view.find_mut(&view) {
+        if let Some(view) = space_manager.view.get_mut(&view) {
             view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     }

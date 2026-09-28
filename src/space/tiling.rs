@@ -29,7 +29,7 @@ pub(crate) fn untile_window_from_view_of_space(
     window_manager: &mut WindowManager,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return;
     };
     if view.layout == ViewLayout::Float {
@@ -51,7 +51,7 @@ pub(crate) fn untile_window_from_view_of_space(
 
     if is_space_visible_on_its_display(space_id) {
         move_windows_below_node_into_their_areas(space_id, node_id, window_manager, space_manager);
-    } else if let Some(view) = space_manager.view.find_mut(&space_id) {
+    } else if let Some(view) = space_manager.view.get_mut(&space_id) {
         view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
     }
 }
@@ -65,7 +65,7 @@ pub(crate) fn rotate_view_of_space_by_degrees(
 ) -> bool {
     let space_id =
         find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return false;
     };
     if view.layout != ViewLayout::BinarySpacePartitioning {
@@ -97,7 +97,7 @@ pub(crate) fn mirror_view_of_space_along_axis(
 ) -> bool {
     let space_id =
         find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return false;
     };
     if view.layout != ViewLayout::BinarySpacePartitioning {
@@ -129,7 +129,7 @@ pub(crate) fn reset_split_ratios_in_view_of_space_to_the_global_ratio(
 ) -> bool {
     let space_id =
         find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return false;
     };
     if view.layout != ViewLayout::BinarySpacePartitioning {
@@ -166,7 +166,7 @@ pub(crate) fn balance_split_ratios_in_view_of_space(
 ) -> bool {
     let space_id =
         find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return false;
     };
     if view.layout != ViewLayout::BinarySpacePartitioning {
@@ -204,7 +204,7 @@ pub(crate) fn tile_window_on_space_preferring_insertion_point(
 ) -> SpaceId {
     let space_id =
         find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return space_id;
     };
     if view.layout == ViewLayout::Float {
@@ -231,7 +231,7 @@ pub(crate) fn tile_window_on_space_preferring_insertion_point(
                 space_manager,
             );
         }
-    } else if let Some(view) = space_manager.view.find_mut(&space_id) {
+    } else if let Some(view) = space_manager.view.get_mut(&space_id) {
         view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
     }
 
@@ -267,7 +267,7 @@ pub(crate) fn toggle_split_direction_of_the_parent_of_window_leaf(
         display_manager,
         window_manager,
     );
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return;
     };
     if view.layout != ViewLayout::BinarySpacePartitioning {
@@ -278,7 +278,7 @@ pub(crate) fn toggle_split_direction_of_the_parent_of_window_leaf(
     if let Some(node_id) = node_id
         && is_node_below_the_root(space_id, node_id, space_manager)
     {
-        let Some(view) = space_manager.view.find_mut(&space_id) else {
+        let Some(view) = space_manager.view.get_mut(&space_id) else {
             return;
         };
         let Some(parent_node_id) = view.node(node_id).parent else {
@@ -324,7 +324,7 @@ pub(crate) fn toggle_split_direction_of_the_parent_of_window_leaf(
                     window_manager,
                     space_manager,
                 );
-            } else if let Some(view) = space_manager.view.find_mut(&space_id) {
+            } else if let Some(view) = space_manager.view.get_mut(&space_id) {
                 view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
         }

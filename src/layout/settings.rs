@@ -39,7 +39,7 @@ pub(crate) fn effective_child_for_new_window_in_node(
     node_id: NodeId,
     space_manager: &mut SpaceManager,
 ) -> WindowNodeChild {
-    let child = match space_manager.view.find(&space_id) {
+    let child = match space_manager.view.get(&space_id) {
         Some(view) => view.node(node_id).child,
         None => WindowNodeChild::None,
     };
@@ -56,7 +56,7 @@ pub(crate) fn effective_split_of_node(
     space_id: SpaceId,
     node_id: NodeId,
 ) -> WindowNodeSplit {
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return WindowNodeSplit::None;
     };
     let view_split_type = view.split_type;
@@ -88,7 +88,7 @@ pub(crate) fn effective_ratio_of_node(
     node_id: NodeId,
     space_manager: &mut SpaceManager,
 ) -> f32 {
-    let ratio = match space_manager.view.find(&space_id) {
+    let ratio = match space_manager.view.get(&space_id) {
         Some(view) => view.node(node_id).ratio,
         None => return space_manager.split_ratio,
     };
@@ -104,7 +104,7 @@ pub(crate) fn effective_window_gap_of_view(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
 ) -> i32 {
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return 0;
     };
 

@@ -1,5 +1,6 @@
 use core::ffi::c_ulong;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
 
 use crate::ffi::carbon_events::{
     EventHandlerRef, EventHandlerUPP, EventTypeSpec, GetApplicationEventTarget,
@@ -15,7 +16,6 @@ use crate::process::model::{
 };
 use crate::support::handles::ProcessId;
 use crate::support::strings::are_both_strings_present_and_equal;
-use crate::support::table::Table;
 
 pub(crate) struct ProcessManager {
     pub(crate) front_process_id: ProcessId,
@@ -24,12 +24,8 @@ pub(crate) struct ProcessManager {
     pub(crate) finder_process_serial_number: ProcessSerialNumber,
 }
 
-pub(crate) static PROCESS_TABLE: OnceLock<Mutex<Table<ProcessSerialNumber, Arc<Process>>>> =
-    OnceLock::new();
-
-pub(crate) fn hash_process_serial_number(key: &ProcessSerialNumber) -> u64 {
-    key.low_long_of_psn as u64
-}
+pub(crate) static PROCESS_TABLE: Mutex<BTreeMap<ProcessSerialNumber, Arc<Process>>> =
+    Mutex::new(BTreeMap::new());
 
 pub(crate) fn add_every_running_process_to_the_process_table(process_manager: &mut ProcessManager) {
     let mut process_serial_number = ProcessSerialNumber {
@@ -63,11 +59,10 @@ pub(crate) fn add_every_running_process_to_the_process_table(process_manager: &m
         }
 
         PROCESS_TABLE
-            .get()
-            .unwrap()
             .lock()
             .unwrap()
-            .add_unless_key_already_present(process.process_serial_number, process);
+            .entry(process.process_serial_number)
+            .or_insert(process);
     }
 }
 
@@ -90,7 +85,6 @@ pub(crate) fn start_process_manager_observing_application_events(
             event_kind: kEventAppFrontSwitched,
         },
     ];
-    PROCESS_TABLE.get_or_init(|| Mutex::new(Table::new(125, hash_process_serial_number)));
 
     objc2::rc::autoreleasepool(|_| add_every_running_process_to_the_process_table(process_manager));
 
@@ -127,10 +121,8 @@ pub(crate) fn process_with_process_serial_number(
     process_serial_number: &ProcessSerialNumber,
 ) -> Option<Arc<Process>> {
     PROCESS_TABLE
-        .get()
-        .unwrap()
         .lock()
         .unwrap()
-        .find(process_serial_number)
+        .get(process_serial_number)
         .map(Arc::clone)
 }

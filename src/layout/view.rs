@@ -89,7 +89,7 @@ pub(crate) fn has_view_out_of_date_areas(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
 ) -> bool {
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return false;
     };
 
@@ -100,7 +100,7 @@ pub(crate) fn has_view_windows_awaiting_their_areas(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
 ) -> bool {
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return false;
     };
 
@@ -112,7 +112,7 @@ pub(crate) fn move_view_windows_into_their_areas_or_defer_until_space_is_visible
     space_id: SpaceId,
     window_manager: &mut WindowManager,
 ) {
-    if space_manager.view.find(&space_id).is_none() {
+    if !space_manager.view.contains_key(&space_id) {
         return;
     }
 
@@ -123,10 +123,10 @@ pub(crate) fn move_view_windows_into_their_areas_or_defer_until_space_is_visible
             window_manager,
             space_manager,
         );
-        if let Some(view) = space_manager.view.find_mut(&space_id) {
+        if let Some(view) = space_manager.view.get_mut(&space_id) {
             view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
-    } else if let Some(view) = space_manager.view.find_mut(&space_id) {
+    } else if let Some(view) = space_manager.view.get_mut(&space_id) {
         view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
     }
 }
@@ -137,7 +137,7 @@ pub(crate) fn recompute_view_areas_from_display_bounds_and_padding(
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
 ) {
-    if space_manager.view.find(&space_id).is_none() {
+    if !space_manager.view.contains_key(&space_id) {
         return;
     }
 
@@ -145,7 +145,7 @@ pub(crate) fn recompute_view_areas_from_display_bounds_and_padding(
     let frame = query_bounds_of_display_left_for_windows(display_id, false, display_manager);
 
     {
-        let Some(view) = space_manager.view.find_mut(&space_id) else {
+        let Some(view) = space_manager.view.get_mut(&space_id) else {
             return;
         };
         let enable_padding = view.has_flag(ViewFlag::PADDING_IS_ENABLED);
@@ -172,7 +172,7 @@ pub(crate) fn recompute_view_areas_from_display_bounds_and_padding(
         window_manager,
     );
 
-    if let Some(view) = space_manager.view.find_mut(&space_id) {
+    if let Some(view) = space_manager.view.get_mut(&space_id) {
         view.set_flag(ViewFlag::AREAS_ARE_UP_TO_DATE);
         view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
     }
@@ -239,9 +239,7 @@ pub(crate) fn create_view_for_space_from_global_settings(
         if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_SPLIT_TYPE) {
             view.split_type = space_manager.split_type;
         }
-        space_manager
-            .view
-            .add_unless_key_already_present(space_id, view);
+        space_manager.view.entry(space_id).or_insert(view);
         recompute_view_areas_from_display_bounds_and_padding(
             space_manager,
             space_id,
@@ -250,9 +248,7 @@ pub(crate) fn create_view_for_space_from_global_settings(
         );
     } else {
         view.layout = ViewLayout::Float;
-        space_manager
-            .view
-            .add_unless_key_already_present(space_id, view);
+        space_manager.view.entry(space_id).or_insert(view);
     }
 
     space_id
@@ -265,7 +261,7 @@ pub(crate) fn clear_view_tree_unmanaging_every_window(
     window_manager: &mut WindowManager,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    let (left, right) = match space_manager.view.find(&space_id) {
+    let (left, right) = match space_manager.view.get(&space_id) {
         Some(view) => {
             let root = view.node(ROOT_NODE_ID);
             (root.left, root.right)
@@ -292,7 +288,7 @@ pub(crate) fn clear_view_tree_unmanaging_every_window(
         );
     }
 
-    let window_ids = match space_manager.view.find(&space_id) {
+    let window_ids = match space_manager.view.get(&space_id) {
         Some(view) => {
             let root = view.node(ROOT_NODE_ID);
             root.window_list[..root.window_count as usize].to_vec()
@@ -305,7 +301,7 @@ pub(crate) fn clear_view_tree_unmanaging_every_window(
     }
 
     destroy_insert_feedback_of_node(space_id, ROOT_NODE_ID, window_manager, space_manager);
-    if let Some(view) = space_manager.view.find_mut(&space_id) {
+    if let Some(view) = space_manager.view.get_mut(&space_id) {
         *view.node_mut(ROOT_NODE_ID) = WindowNode::default();
     }
     recompute_view_areas_from_display_bounds_and_padding(
@@ -330,7 +326,7 @@ pub(crate) fn free_view_tree_and_release_its_uuid(
         mouse_drag_state,
     );
 
-    if let Some(view) = space_manager.view.find_mut(&space_id) {
+    if let Some(view) = space_manager.view.get_mut(&space_id) {
         if view.uuid.is_some() {
             drop(view.uuid.take());
         }

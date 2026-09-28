@@ -77,7 +77,7 @@ pub(crate) fn untile_windows_no_longer_on_space(
             forget_managed_window(window_manager, window);
             apply_shadow_removal_mode_to_window(window_manager, window);
 
-            if let Some(view) = space_manager.view.find_mut(&space_id) {
+            if let Some(view) = space_manager.view.get_mut(&space_id) {
                 view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
         }
@@ -103,7 +103,7 @@ pub(crate) fn tile_manageable_windows_found_on_space(
 
         let existing_view = space_managing_window(window_manager, window);
         let existing_view_layout = existing_view
-            .and_then(|existing_space_id| space_manager.view.find(&existing_space_id))
+            .and_then(|existing_space_id| space_manager.view.get(&existing_space_id))
             .map(|view| view.layout);
         if let Some(existing_space_id) = existing_view
             && existing_view_layout != Some(ViewLayout::Float)
@@ -130,7 +130,7 @@ pub(crate) fn tile_manageable_windows_found_on_space(
             set_window_layer_unless_explicitly_set(window, LAYER_NORMAL, window_manager);
             forget_managed_window(window_manager, window);
             apply_shadow_removal_mode_to_window(window_manager, window);
-            if let Some(view) = space_manager.view.find_mut(&existing_space_id) {
+            if let Some(view) = space_manager.view.get_mut(&existing_space_id) {
                 view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
         }
@@ -162,7 +162,7 @@ pub(crate) fn tile_manageable_windows_found_on_space(
                 space_manager,
                 space_id,
             );
-            if let Some(view) = space_manager.view.find_mut(&space_id) {
+            if let Some(view) = space_manager.view.get_mut(&space_id) {
                 view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
         }
@@ -202,7 +202,7 @@ pub(crate) fn reconcile_space_view_with_windows_on_space(
         find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
     if space_manager
         .view
-        .find(&view)
+        .get(&view)
         .is_none_or(|view| view.layout == ViewLayout::Float)
     {
         return;
@@ -239,7 +239,7 @@ pub(crate) fn reconcile_space_view_with_windows_on_space(
         && has_view_windows_awaiting_their_areas(space_manager, view)
     {
         move_windows_below_node_into_their_areas(view, ROOT_NODE_ID, window_manager, space_manager);
-        if let Some(view) = space_manager.view.find_mut(&view) {
+        if let Some(view) = space_manager.view.get_mut(&view) {
             view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     }
@@ -310,7 +310,7 @@ pub(crate) fn reconcile_views_after_display_added_or_removed(
                 );
                 if space_manager
                     .view
-                    .find(&view)
+                    .get(&view)
                     .is_some_and(|view| view.layout != ViewLayout::Float)
                 {
                     tile_manageable_windows_found_on_space(

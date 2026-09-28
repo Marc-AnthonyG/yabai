@@ -124,14 +124,14 @@ pub(crate) fn focus_display_through_its_front_window_or_a_click_at_its_center(
         WindowId(0),
     );
     if let Some(window_id) = window_id {
-        let Some(window) = window_manager.window.find(&window_id) else {
+        let Some(window) = window_manager.window.get(&window_id) else {
             return;
         };
         let window_element_ref = window.element_ref;
         let Some(window_process_id) = window.application else {
             return;
         };
-        let Some(application) = window_manager.application.find(&window_process_id) else {
+        let Some(application) = window_manager.application.get(&window_process_id) else {
             return;
         };
         let window_process_serial_number = application.process_serial_number;

@@ -743,7 +743,7 @@ pub(crate) fn is_window_root_according_to_accessibility(
     if error == kAXErrorSuccess {
         let application_ref = window
             .application
-            .and_then(|process_id| window_manager.application.find(&process_id))
+            .and_then(|process_id| window_manager.application.get(&process_id))
             .and_then(|application| unsafe { application.element_ref.as_ref() });
 
         result = !(match &value {

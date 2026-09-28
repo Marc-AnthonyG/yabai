@@ -59,7 +59,7 @@ pub(crate) fn queue_pending_signal_for_its_subscribers(
             let SignalContext::Application(process_id) = context else {
                 return;
             };
-            let Some(application) = window_manager.application.find(&process_id) else {
+            let Some(application) = window_manager.application.get(&process_id) else {
                 return;
             };
 
@@ -74,7 +74,7 @@ pub(crate) fn queue_pending_signal_for_its_subscribers(
             let SignalContext::Application(process_id) = context else {
                 return;
             };
-            let Some(application) = window_manager.application.find(&process_id) else {
+            let Some(application) = window_manager.application.get(&process_id) else {
                 return;
             };
 
@@ -115,7 +115,7 @@ pub(crate) fn queue_pending_signal_for_its_subscribers(
             let SignalContext::Application(process_id) = context else {
                 return;
             };
-            let Some(application) = window_manager.application.find(&process_id) else {
+            let Some(application) = window_manager.application.get(&process_id) else {
                 return;
             };
 
@@ -131,7 +131,7 @@ pub(crate) fn queue_pending_signal_for_its_subscribers(
             let SignalContext::Window(window_id) = context else {
                 return;
             };
-            let Some(window) = window_manager.window.find(&window_id) else {
+            let Some(window) = window_manager.window.get(&window_id) else {
                 return;
             };
 
@@ -143,7 +143,7 @@ pub(crate) fn queue_pending_signal_for_its_subscribers(
             let Some(application_process_id) = window.application else {
                 return;
             };
-            let Some(application) = window_manager.application.find(&application_process_id) else {
+            let Some(application) = window_manager.application.get(&application_process_id) else {
                 return;
             };
 
@@ -154,7 +154,7 @@ pub(crate) fn queue_pending_signal_for_its_subscribers(
             let SignalContext::Window(window_id) = context else {
                 return;
             };
-            let Some(window) = window_manager.window.find(&window_id) else {
+            let Some(window) = window_manager.window.get(&window_id) else {
                 return;
             };
 
@@ -164,7 +164,7 @@ pub(crate) fn queue_pending_signal_for_its_subscribers(
             ));
 
             let application = window.application.and_then(|application_process_id| {
-                window_manager.application.find(&application_process_id)
+                window_manager.application.get(&application_process_id)
             });
             event_signal.app = match application {
                 Some(application) => Some(application.name.to_string()),
@@ -179,7 +179,7 @@ pub(crate) fn queue_pending_signal_for_its_subscribers(
             let SignalContext::Window(window_id) = context else {
                 return;
             };
-            let Some(window) = window_manager.window.find(&window_id) else {
+            let Some(window) = window_manager.window.get(&window_id) else {
                 return;
             };
 
@@ -191,7 +191,7 @@ pub(crate) fn queue_pending_signal_for_its_subscribers(
             let Some(application_process_id) = window.application else {
                 return;
             };
-            let Some(application) = window_manager.application.find(&application_process_id) else {
+            let Some(application) = window_manager.application.get(&application_process_id) else {
                 return;
             };
 

@@ -113,7 +113,7 @@ pub(crate) fn query_windows_on_spaces_owned_by_connection(
         } else {
             let found_window_id = tracked_window_with_id(window_manager, window_id);
             let window = found_window_id
-                .and_then(|found_window_id| window_manager.window.find(&found_window_id));
+                .and_then(|found_window_id| window_manager.window.get(&found_window_id));
             if window.is_some_and(|window| !is_window_flag_set(window, WindowFlag::MINIMIZED)) {
                 window_list.push(window_id);
             } else if parent_window_id == 0 {

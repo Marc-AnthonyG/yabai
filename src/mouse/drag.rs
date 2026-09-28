@@ -35,7 +35,7 @@ pub(crate) fn measure_dragged_window_frame_delta(
 ) {
     let Some(frame) = mouse_drag_state
         .window_id
-        .and_then(|window_id| window_manager.window.find(&window_id))
+        .and_then(|window_id| window_manager.window.get(&window_id))
         .map(|window| window.frame)
     else {
         return;

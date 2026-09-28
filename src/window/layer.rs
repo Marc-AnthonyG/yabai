@@ -14,7 +14,7 @@ pub(crate) fn set_window_layer_unless_explicitly_set(
     layer: i32,
     window_manager: &mut WindowManager,
 ) {
-    let Some(window) = window_manager.window.find(&window_id) else {
+    let Some(window) = window_manager.window.get(&window_id) else {
         return;
     };
     if window.layer != LAYER_AUTO {
@@ -41,7 +41,7 @@ pub(crate) fn set_window_layer_for_it_and_its_child_windows(
         child_layer = LAYER_NORMAL;
     }
 
-    let Some(window) = window_manager.window.find_mut(&window_id) else {
+    let Some(window) = window_manager.window.get_mut(&window_id) else {
         return false;
     };
     window.layer = layer;

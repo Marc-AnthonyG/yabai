@@ -44,12 +44,12 @@ pub(crate) fn is_window_matched_by_rule(
 ) -> bool {
     let Some(application_process_id) = window_manager
         .window
-        .find(&window_id)
+        .get(&window_id)
         .and_then(|window| window.application)
     else {
         return false;
     };
-    let Some(application) = window_manager.application.find(&application_process_id) else {
+    let Some(application) = window_manager.application.get(&application_process_id) else {
         return false;
     };
     let application_name = CString::new(application.name.as_bytes()).unwrap();
@@ -115,7 +115,7 @@ pub(crate) fn apply_manage_effect_of_rule_to_window(
     mouse_drag_state: &mut MouseDragState,
 ) {
     if effects.manage == RULE_PROPERTY_ON {
-        if let Some(window) = window_manager.window.find_mut(&window_id) {
+        if let Some(window) = window_manager.window.get_mut(&window_id) {
             set_window_rule_flag(window, WindowRuleFlag::MANAGE_FORCED_ON);
         }
         set_whether_window_floats(
@@ -128,7 +128,7 @@ pub(crate) fn apply_manage_effect_of_rule_to_window(
             mouse_drag_state,
         );
     } else if effects.manage == RULE_PROPERTY_OFF {
-        if let Some(window) = window_manager.window.find_mut(&window_id) {
+        if let Some(window) = window_manager.window.get_mut(&window_id) {
             clear_window_rule_flag(window, WindowRuleFlag::MANAGE_FORCED_ON);
         }
         set_whether_window_floats(
@@ -156,7 +156,7 @@ pub(crate) fn apply_effects_other_than_manage_of_rule_to_window(
     if effects.space_id.0 != 0 || effects.display_id.0 != 0 {
         let window_is_in_native_fullscreen = window_manager
             .window
-            .find(&window_id)
+            .get(&window_id)
             .is_some_and(is_window_in_native_fullscreen_according_to_accessibility);
 
         if !window_is_in_native_fullscreen
@@ -211,12 +211,12 @@ pub(crate) fn apply_effects_other_than_manage_of_rule_to_window(
     }
 
     if effects.mff == RULE_PROPERTY_ON {
-        if let Some(window) = window_manager.window.find_mut(&window_id) {
+        if let Some(window) = window_manager.window.get_mut(&window_id) {
             set_window_rule_flag(window, WindowRuleFlag::OVERRIDES_MOUSE_FOLLOWS_FOCUS);
             set_window_rule_flag(window, WindowRuleFlag::MOUSE_FOLLOWS_FOCUS_OVERRIDE_IS_ON);
         }
     } else if effects.mff == RULE_PROPERTY_OFF {
-        if let Some(window) = window_manager.window.find_mut(&window_id) {
+        if let Some(window) = window_manager.window.get_mut(&window_id) {
             set_window_rule_flag(window, WindowRuleFlag::OVERRIDES_MOUSE_FOLLOWS_FOCUS);
             clear_window_rule_flag(window, WindowRuleFlag::MOUSE_FOLLOWS_FOCUS_OVERRIDE_IS_ON);
         }
@@ -229,7 +229,7 @@ pub(crate) fn apply_effects_other_than_manage_of_rule_to_window(
     if RuleEffectsFlag(effects.flags).contains(RuleEffectsFlag::OPACITY_IS_SET)
         && is_within_range_including_both_bounds(effects.opacity, 0.0f32, 1.0f32)
     {
-        if let Some(window) = window_manager.window.find_mut(&window_id) {
+        if let Some(window) = window_manager.window.get_mut(&window_id) {
             window.opacity = effects.opacity;
         }
         apply_opacity_to_window_through_scripting_addition(
@@ -240,7 +240,7 @@ pub(crate) fn apply_effects_other_than_manage_of_rule_to_window(
     }
 
     if effects.fullscreen == RULE_PROPERTY_ON {
-        if let Some(window) = window_manager.window.find_mut(&window_id) {
+        if let Some(window) = window_manager.window.get_mut(&window_id) {
             let window_element_ref = window.element_ref;
             unsafe {
                 AXUIElementSetAttributeValue(
@@ -379,12 +379,9 @@ pub(crate) fn apply_effects_other_than_manage_of_matching_rules_to_window(
                 window_manager,
             ) {
                 let window_is_managed_by_rule =
-                    window_manager
-                        .window
-                        .find(&window_id)
-                        .is_some_and(|window| {
-                            is_window_rule_flag_set(window, WindowRuleFlag::MANAGE_FORCED_ON)
-                        });
+                    window_manager.window.get(&window_id).is_some_and(|window| {
+                        is_window_rule_flag_set(window, WindowRuleFlag::MANAGE_FORCED_ON)
+                    });
                 if !window_is_managed_by_rule {
                     if rules[index].role_regex.is_none()
                         && !are_both_strings_present_and_equal(Some(window_role), Some("AXWindow"))
@@ -437,8 +434,8 @@ pub(crate) fn reapply_every_rule_except_one_shot_rules_to_every_root_window(
     mouse_drag_state: &mut MouseDragState,
     mission_control_mode: &mut MissionControlMode,
 ) {
-    for window_id in window_manager.window.keys_in_bucket_order() {
-        let Some(window) = window_manager.window.find(&window_id) else {
+    for window_id in window_manager.window.keys().copied().collect::<Vec<_>>() {
+        let Some(window) = window_manager.window.get(&window_id) else {
             continue;
         };
 
@@ -460,7 +457,7 @@ pub(crate) fn reapply_every_rule_except_one_shot_rules_to_every_root_window(
             );
 
             if is_window_eligible_for_management(window_id, window_manager) {
-                if let Some(window) = window_manager.window.find_mut(&window_id) {
+                if let Some(window) = window_manager.window.get_mut(&window_id) {
                     window.is_eligible = true;
                 }
                 apply_effects_other_than_manage_of_matching_rules_to_window(
@@ -557,8 +554,8 @@ pub(crate) fn apply_rule_to_every_matching_root_window(
     mouse_drag_state: &mut MouseDragState,
     mission_control_mode: &mut MissionControlMode,
 ) {
-    for window_id in window_manager.window.keys_in_bucket_order() {
-        let Some(window) = window_manager.window.find(&window_id) else {
+    for window_id in window_manager.window.keys().copied().collect::<Vec<_>>() {
+        let Some(window) = window_manager.window.get(&window_id) else {
             continue;
         };
 
@@ -585,7 +582,7 @@ pub(crate) fn apply_rule_to_every_matching_root_window(
                 );
 
                 if is_window_eligible_for_management(window_id, window_manager) {
-                    if let Some(window) = window_manager.window.find_mut(&window_id) {
+                    if let Some(window) = window_manager.window.get_mut(&window_id) {
                         window.is_eligible = true;
                     }
                     apply_effects_other_than_manage_of_rule_to_window(

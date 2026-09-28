@@ -1,5 +1,6 @@
 #![allow(deprecated)]
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use crate::application::Application;
@@ -16,7 +17,6 @@ use crate::space::manager::SpaceManager;
 use crate::support::color::{RgbaColor, rgba_color_from_packed_argb};
 use crate::support::easing::AnimationEasingType;
 use crate::support::handles::{NodeId, ProcessId, SpaceId, WindowId};
-use crate::support::table::Table;
 use crate::window::animator::WindowAnimator;
 use crate::window::model::{
     Window, WindowFlag, WindowRuleFlag, is_window_a_standard_floating_or_dialog_window,
@@ -74,13 +74,13 @@ pub(crate) enum WindowOriginDisplayMode {
 
 pub(crate) struct WindowManager {
     pub(crate) system_element: AXUIElementRef,
-    pub(crate) application: Table<ProcessId, Application>,
-    pub(crate) window: Table<WindowId, Window>,
-    pub(crate) managed_window: Table<WindowId, SpaceId>,
-    pub(crate) window_lost_focused_event: Table<WindowId, ()>,
-    pub(crate) application_lost_front_switched_event: Table<ProcessId, ()>,
+    pub(crate) application: BTreeMap<ProcessId, Application>,
+    pub(crate) window: BTreeMap<WindowId, Window>,
+    pub(crate) managed_window: BTreeMap<WindowId, SpaceId>,
+    pub(crate) window_lost_focused_event: BTreeSet<WindowId>,
+    pub(crate) application_lost_front_switched_event: BTreeSet<ProcessId>,
     pub(crate) window_animator: Arc<WindowAnimator>,
-    pub(crate) insert_feedback: Table<WindowId, (SpaceId, NodeId)>,
+    pub(crate) insert_feedback: BTreeMap<WindowId, (SpaceId, NodeId)>,
     pub(crate) rules: Vec<Rule>,
     pub(crate) applications_to_refresh: Vec<ProcessId>,
     pub(crate) focused_window_id: WindowId,
@@ -111,19 +111,11 @@ pub(crate) static FOCUS_FOLLOWS_MOUSE_MODE_NAMES: [&str; 3] =
 
 pub(crate) static WINDOW_ORIGIN_DISPLAY_MODE_NAMES: [&str; 3] = ["default", "focused", "cursor"];
 
-pub(crate) fn hash_window_id_for_table(key: &WindowId) -> u64 {
-    key.0 as u64
-}
-
-pub(crate) fn hash_process_id_for_table(key: &ProcessId) -> u64 {
-    key.0 as u32 as u64
-}
-
 pub(crate) fn is_window_eligible_for_management(
     window_id: WindowId,
     window_manager: &mut WindowManager,
 ) -> bool {
-    let Some(window) = window_manager.window.find(&window_id) else {
+    let Some(window) = window_manager.window.get(&window_id) else {
         return false;
     };
 
@@ -137,7 +129,7 @@ pub(crate) fn should_window_be_managed(
     window_id: WindowId,
     window_manager: &mut WindowManager,
 ) -> bool {
-    let Some(window) = window_manager.window.find(&window_id) else {
+    let Some(window) = window_manager.window.get(&window_id) else {
         return false;
     };
 
@@ -156,7 +148,7 @@ pub(crate) fn should_window_be_managed(
 
     let application_is_hidden = match window.application {
         Some(application_process_id) => {
-            match window_manager.application.find(&application_process_id) {
+            match window_manager.application.get(&application_process_id) {
                 Some(application) => application.is_hidden,
                 None => return false,
             }
@@ -177,7 +169,7 @@ pub(crate) fn space_managing_window(
     window_manager: &mut WindowManager,
     window_id: WindowId,
 ) -> Option<SpaceId> {
-    window_manager.managed_window.find(&window_id).copied()
+    window_manager.managed_window.get(&window_id).copied()
 }
 
 pub(crate) fn forget_managed_window(window_manager: &mut WindowManager, window_id: WindowId) {
@@ -190,7 +182,7 @@ pub(crate) fn record_managed_window_on_space_updating_its_shadow(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
 ) {
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return;
     };
     if view.layout == ViewLayout::Float {
@@ -198,7 +190,8 @@ pub(crate) fn record_managed_window_on_space_updating_its_shadow(
     }
     window_manager
         .managed_window
-        .add_unless_key_already_present(window_id, space_id);
+        .entry(window_id)
+        .or_insert(space_id);
     apply_shadow_removal_mode_to_window(window_manager, window_id);
 }
 
@@ -208,8 +201,7 @@ pub(crate) fn has_front_switched_event_arrived_before_application_was_tracked(
 ) -> bool {
     window_manager
         .application_lost_front_switched_event
-        .find(&process_id)
-        .is_some()
+        .contains(&process_id)
 }
 
 pub(crate) fn forget_front_switched_event_that_arrived_before_application_was_tracked(
@@ -227,7 +219,7 @@ pub(crate) fn record_front_switched_event_that_arrived_before_application_was_tr
 ) {
     window_manager
         .application_lost_front_switched_event
-        .add_unless_key_already_present(process_id, ());
+        .insert(process_id);
 }
 
 pub(crate) fn has_focused_event_arrived_before_window_was_tracked(
@@ -236,8 +228,7 @@ pub(crate) fn has_focused_event_arrived_before_window_was_tracked(
 ) -> bool {
     window_manager
         .window_lost_focused_event
-        .find(&window_id)
-        .is_some()
+        .contains(&window_id)
 }
 
 pub(crate) fn forget_focused_event_that_arrived_before_window_was_tracked(
@@ -251,9 +242,7 @@ pub(crate) fn record_focused_event_that_arrived_before_window_was_tracked(
     window_manager: &mut WindowManager,
     window_id: WindowId,
 ) {
-    window_manager
-        .window_lost_focused_event
-        .add_unless_key_already_present(window_id, ());
+    window_manager.window_lost_focused_event.insert(window_id);
 }
 
 pub(crate) fn tracked_window_with_id(
@@ -262,7 +251,7 @@ pub(crate) fn tracked_window_with_id(
 ) -> Option<WindowId> {
     window_manager
         .window
-        .find(&window_id)
+        .get(&window_id)
         .map(|window| window.id)
 }
 
@@ -274,9 +263,7 @@ pub(crate) fn stop_tracking_window(
 }
 
 pub(crate) fn start_tracking_window(window_manager: &mut WindowManager, window: Window) {
-    window_manager
-        .window
-        .add_unless_key_already_present(window.id, window);
+    window_manager.window.entry(window.id).or_insert(window);
 }
 
 pub(crate) fn tracked_application_with_process_id(
@@ -285,7 +272,7 @@ pub(crate) fn tracked_application_with_process_id(
 ) -> Option<ProcessId> {
     window_manager
         .application
-        .find(&process_id)
+        .get(&process_id)
         .map(|application| application.process_id)
 }
 
@@ -302,22 +289,20 @@ pub(crate) fn start_tracking_application(
 ) {
     window_manager
         .application
-        .add_unless_key_already_present(application.process_id, application);
+        .entry(application.process_id)
+        .or_insert(application);
 }
 
 pub(crate) fn tracked_windows_of_application(
     window_manager: &mut WindowManager,
     process_id: ProcessId,
 ) -> Vec<WindowId> {
-    let mut window_list: Vec<WindowId> = Vec::with_capacity(window_manager.window.len() as usize);
-
-    for window in window_manager.window.values() {
-        if window.application == Some(process_id) {
-            window_list.push(window.id);
-        }
-    }
-
-    window_list
+    window_manager
+        .window
+        .values()
+        .filter(|window| window.application == Some(process_id))
+        .map(|window| window.id)
+        .collect()
 }
 
 pub(crate) fn initialize_window_manager(window_manager: &mut WindowManager) {
@@ -342,27 +327,26 @@ pub(crate) fn initialize_window_manager(window_manager: &mut WindowManager) {
     window_manager.group_header_style = group_header_style_with_its_initial_settings();
     window_manager.group_headers_are_hidden_during_mission_control = false;
 
-    window_manager.application = Table::new(150, hash_process_id_for_table);
-    window_manager.window = Table::new(150, hash_window_id_for_table);
-    window_manager.managed_window = Table::new(150, hash_window_id_for_table);
-    window_manager.window_lost_focused_event = Table::new(150, hash_window_id_for_table);
-    window_manager.application_lost_front_switched_event =
-        Table::new(150, hash_process_id_for_table);
+    window_manager.application = BTreeMap::new();
+    window_manager.window = BTreeMap::new();
+    window_manager.managed_window = BTreeMap::new();
+    window_manager.window_lost_focused_event = BTreeSet::new();
+    window_manager.application_lost_front_switched_event = BTreeSet::new();
     window_manager.window_animator = Arc::new(WindowAnimator::new());
-    window_manager.insert_feedback = Table::new(150, hash_window_id_for_table);
+    window_manager.insert_feedback = BTreeMap::new();
 }
 
 #[cfg(test)]
 pub(crate) fn create_window_manager_tracking_nothing_with_its_initial_settings() -> WindowManager {
     WindowManager {
         system_element: core::ptr::null(),
-        application: Table::new(150, hash_process_id_for_table),
-        window: Table::new(150, hash_window_id_for_table),
-        managed_window: Table::new(150, hash_window_id_for_table),
-        window_lost_focused_event: Table::new(150, hash_window_id_for_table),
-        application_lost_front_switched_event: Table::new(150, hash_process_id_for_table),
+        application: BTreeMap::new(),
+        window: BTreeMap::new(),
+        managed_window: BTreeMap::new(),
+        window_lost_focused_event: BTreeSet::new(),
+        application_lost_front_switched_event: BTreeSet::new(),
         window_animator: Arc::new(WindowAnimator::new()),
-        insert_feedback: Table::new(150, hash_window_id_for_table),
+        insert_feedback: BTreeMap::new(),
         rules: Vec::new(),
         applications_to_refresh: Vec::new(),
         focused_window_id: WindowId(0),

@@ -46,7 +46,7 @@ pub(crate) fn adjust_split_ratio_of_managed_window_parent_node(
     let parent_node_id = node_id.and_then(|node_id| {
         space_manager
             .view
-            .find(&space_id)
+            .get(&space_id)
             .and_then(|view| view.find_node(node_id))
             .and_then(|node| node.parent)
     });
@@ -56,14 +56,14 @@ pub(crate) fn adjust_split_ratio_of_managed_window_parent_node(
 
     match type_of_change {
         CHANGE_TYPE_RELATIVE => {
-            if let Some(view) = space_manager.view.find_mut(&space_id)
+            if let Some(view) = space_manager.view.get_mut(&space_id)
                 && let Some(parent_node) = view.find_node_mut(parent_node_id)
             {
                 parent_node.ratio = clamp_float_to_range(parent_node.ratio + ratio, 0.1f32, 0.9f32);
             }
         }
         CHANGE_TYPE_ABSOLUTE => {
-            if let Some(view) = space_manager.view.find_mut(&space_id)
+            if let Some(view) = space_manager.view.get_mut(&space_id)
                 && let Some(parent_node) = view.find_node_mut(parent_node_id)
             {
                 parent_node.ratio = clamp_float_to_range(ratio, 0.1f32, 0.9f32);
@@ -86,7 +86,7 @@ pub(crate) fn adjust_split_ratio_of_managed_window_parent_node(
             window_manager,
             space_manager,
         );
-    } else if let Some(view) = space_manager.view.find_mut(&space_id) {
+    } else if let Some(view) = space_manager.view.get_mut(&space_id) {
         view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
     }
 
@@ -105,7 +105,7 @@ pub(crate) fn move_floating_window_by_offset_or_to_position(
         return WindowOperationOutcome::InvalidSourceView;
     }
 
-    let Some(window) = window_manager.window.find(&window_id) else {
+    let Some(window) = window_manager.window.get(&window_id) else {
         return WindowOperationOutcome::Success;
     };
     let window_frame = window.frame;
@@ -188,12 +188,12 @@ pub(crate) fn resize_floating_window_by_dragging_edges(
     } else {
         let Some(application_process_id) = window_manager
             .window
-            .find(&window_id)
+            .get(&window_id)
             .and_then(|window| window.application)
         else {
             return;
         };
-        let Some(application) = window_manager.application.find(&application_process_id) else {
+        let Some(application) = window_manager.application.get(&application_process_id) else {
             return;
         };
         let application_element_ref = application.element_ref;
@@ -270,7 +270,7 @@ pub(crate) fn resize_window_by_dragging_edges_or_to_absolute_size(
         }
 
         if let Some(y_fence) = y_fence
-            && let Some(view) = space_manager.view.find_mut(&space_id)
+            && let Some(view) = space_manager.view.get_mut(&space_id)
             && let Some(y_fence_node) = view.find_node_mut(y_fence)
         {
             let scaled_ratio = y_fence_node.ratio + delta_x / y_fence_node.area.width;
@@ -278,7 +278,7 @@ pub(crate) fn resize_window_by_dragging_edges_or_to_absolute_size(
         }
 
         if let Some(x_fence) = x_fence
-            && let Some(view) = space_manager.view.find_mut(&space_id)
+            && let Some(view) = space_manager.view.get_mut(&space_id)
             && let Some(x_fence_node) = view.find_node_mut(x_fence)
         {
             let scaled_ratio = x_fence_node.ratio + delta_y / x_fence_node.area.height;
@@ -299,7 +299,7 @@ pub(crate) fn resize_window_by_dragging_edges_or_to_absolute_size(
     } else {
         if direction == ResizeHandle::ABSOLUTE.0 as i32 {
             if animate {
-                let Some(window) = window_manager.window.find(&window_id) else {
+                let Some(window) = window_manager.window.get(&window_id) else {
                     return WindowOperationOutcome::Success;
                 };
                 let window_frame = window.frame;
@@ -316,12 +316,12 @@ pub(crate) fn resize_window_by_dragging_edges_or_to_absolute_size(
             } else {
                 let Some(application_process_id) = window_manager
                     .window
-                    .find(&window_id)
+                    .get(&window_id)
                     .and_then(|window| window.application)
                 else {
                     return WindowOperationOutcome::Success;
                 };
-                let Some(application) = window_manager.application.find(&application_process_id)
+                let Some(application) = window_manager.application.get(&application_process_id)
                 else {
                     return WindowOperationOutcome::Success;
                 };
@@ -337,7 +337,7 @@ pub(crate) fn resize_window_by_dragging_edges_or_to_absolute_size(
                 });
             }
         } else {
-            let Some(window) = window_manager.window.find(&window_id) else {
+            let Some(window) = window_manager.window.get(&window_id) else {
                 return WindowOperationOutcome::Success;
             };
             let frame = read_window_frame_through_accessibility(window);
@@ -362,7 +362,7 @@ pub(crate) fn move_window_through_accessibility(
     y: f32,
     window_manager: &mut WindowManager,
 ) {
-    let Some(window) = window_manager.window.find(&window_id) else {
+    let Some(window) = window_manager.window.get(&window_id) else {
         return;
     };
     let window_element_ref = window.element_ref;
@@ -394,7 +394,7 @@ pub(crate) fn resize_window_through_accessibility(
     height: f32,
     window_manager: &mut WindowManager,
 ) {
-    let Some(window) = window_manager.window.find(&window_id) else {
+    let Some(window) = window_manager.window.get(&window_id) else {
         return;
     };
     let window_element_ref = window.element_ref;
@@ -438,13 +438,14 @@ pub(crate) fn move_and_resize_window_through_accessibility(
     // track changes to the window frame in real-time without delay.
     //
 
-    let Some(window) = window_manager.window.find(&window_id) else {
+    let Some(window) = window_manager.window.get(&window_id) else {
         return;
     };
     let window_element_ref = window.element_ref;
-    let Some(application) = window.application.and_then(|application_process_id| {
-        window_manager.application.find(&application_process_id)
-    }) else {
+    let Some(application) = window
+        .application
+        .and_then(|application_process_id| window_manager.application.get(&application_process_id))
+    else {
         return;
     };
     let application_element_ref = application.element_ref;

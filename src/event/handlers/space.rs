@@ -70,7 +70,7 @@ pub(crate) fn handle_skylight_space_destroyed_event(
     signal_storage: &mut Vec<PendingSignal>,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    if space_manager.view.find(&space_id).is_some() {
+    if space_manager.view.contains_key(&space_id) {
         debug!(
             "{}: {}\n",
             "handle_skylight_space_destroyed_event", space_id.0 as i64
@@ -188,7 +188,7 @@ pub(crate) fn handle_space_changed_event(
                 window_manager,
                 space_manager,
             );
-            if let Some(view) = space_manager.view.find_mut(&view) {
+            if let Some(view) = space_manager.view.get_mut(&view) {
                 view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
         }

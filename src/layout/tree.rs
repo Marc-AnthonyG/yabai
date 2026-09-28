@@ -103,7 +103,7 @@ pub(crate) fn divide_node_area_between_its_children(
     let ratio = effective_ratio_of_node(space_id, node_id, space_manager);
     let gap = effective_window_gap_of_view(space_manager, space_id);
 
-    let Some(view) = space_manager.view.find_mut(&space_id) else {
+    let Some(view) = space_manager.view.get_mut(&space_id) else {
         return;
     };
     let node = view.node(node_id);
@@ -131,7 +131,7 @@ pub(crate) fn is_node_holding_any_window(
     node_id: NodeId,
     space_manager: &mut SpaceManager,
 ) -> bool {
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return false;
     };
 
@@ -143,7 +143,7 @@ pub(crate) fn is_node_below_the_root(
     node_id: NodeId,
     space_manager: &mut SpaceManager,
 ) -> bool {
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return false;
     };
 
@@ -155,7 +155,7 @@ pub(crate) fn is_leaf_node(
     node_id: NodeId,
     space_manager: &mut SpaceManager,
 ) -> bool {
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return false;
     };
     let node = view.node(node_id);
@@ -168,7 +168,7 @@ pub(crate) fn is_node_the_left_child_of_its_parent(
     node_id: NodeId,
     space_manager: &mut SpaceManager,
 ) -> bool {
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return false;
     };
 
@@ -183,7 +183,7 @@ pub(crate) fn is_node_the_right_child_of_its_parent(
     node_id: NodeId,
     space_manager: &mut SpaceManager,
 ) -> bool {
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return false;
     };
 
@@ -199,7 +199,7 @@ pub(crate) fn reset_split_ratios_below_node_to_the_global_ratio(
     axis_flag: u32,
     space_manager: &mut SpaceManager,
 ) {
-    let (left, right) = match space_manager.view.find(&space_id) {
+    let (left, right) = match space_manager.view.get(&space_id) {
         Some(view) => {
             let node = view.node(node_id);
             (node.left, node.right)
@@ -220,7 +220,7 @@ pub(crate) fn reset_split_ratios_below_node_to_the_global_ratio(
     }
 
     let split_ratio = space_manager.split_ratio;
-    let Some(view) = space_manager.view.find_mut(&space_id) else {
+    let Some(view) = space_manager.view.get_mut(&space_id) else {
         return;
     };
     let node = view.node_mut(node_id);
@@ -255,7 +255,7 @@ pub(crate) fn balance_split_ratios_below_node_giving_each_leaf_an_equal_share(
     space_manager: &mut SpaceManager,
 ) -> LeafCountsPerSplitAxis {
     if is_leaf_node(space_id, node_id, space_manager) {
-        let Some(view) = space_manager.view.find(&space_id) else {
+        let Some(view) = space_manager.view.get(&space_id) else {
             return LeafCountsPerSplitAxis {
                 y_count: 0,
                 x_count: 0,
@@ -274,7 +274,7 @@ pub(crate) fn balance_split_ratios_below_node_giving_each_leaf_an_equal_share(
         };
     }
 
-    let (left, right) = match space_manager.view.find(&space_id) {
+    let (left, right) = match space_manager.view.get(&space_id) {
         Some(view) => {
             let node = view.node(node_id);
             (node.left, node.right)
@@ -313,7 +313,7 @@ pub(crate) fn balance_split_ratios_below_node_giving_each_leaf_an_equal_share(
     };
     let mut total_leafs = add_leaf_counts_per_split_axis(left_leafs, right_leafs);
 
-    let Some(view) = space_manager.view.find_mut(&space_id) else {
+    let Some(view) = space_manager.view.get_mut(&space_id) else {
         return total_leafs;
     };
     let node = view.node_mut(node_id);
@@ -351,7 +351,7 @@ pub(crate) fn split_leaf_node_to_hold_a_new_window(
     let window_zoom_persist = space_manager.window_zoom_persist;
 
     let (left, right, zoom) = {
-        let Some(view) = space_manager.view.find_mut(&space_id) else {
+        let Some(view) = space_manager.view.get_mut(&space_id) else {
             return;
         };
         let left = view.allocate_empty_node_reusing_a_freed_id();
@@ -374,7 +374,7 @@ pub(crate) fn split_leaf_node_to_hold_a_new_window(
     if effective_child_for_new_window_in_node(space_id, node_id, space_manager)
         == WindowNodeChild::Second
     {
-        let Some(view) = space_manager.view.find_mut(&space_id) else {
+        let Some(view) = space_manager.view.get_mut(&space_id) else {
             return;
         };
         let node = view.node(node_id);
@@ -395,7 +395,7 @@ pub(crate) fn split_leaf_node_to_hold_a_new_window(
         right_node.window_order[0] = window_id;
         right_node.window_count = 1;
     } else {
-        let Some(view) = space_manager.view.find_mut(&space_id) else {
+        let Some(view) = space_manager.view.get_mut(&space_id) else {
             return;
         };
         let node = view.node(node_id);
@@ -418,7 +418,7 @@ pub(crate) fn split_leaf_node_to_hold_a_new_window(
     }
 
     {
-        let Some(view) = space_manager.view.find_mut(&space_id) else {
+        let Some(view) = space_manager.view.get_mut(&space_id) else {
             return;
         };
         view.node_mut(left).parent = Some(node_id);
@@ -441,7 +441,7 @@ pub(crate) fn recompute_areas_below_node_redrawing_insert_feedback(
     window_manager: &mut WindowManager,
 ) {
     if is_leaf_node(space_id, node_id, space_manager) {
-        let insert_direction = match space_manager.view.find(&space_id) {
+        let insert_direction = match space_manager.view.get(&space_id) {
             Some(view) => view.node(node_id).insert_direction,
             None => return,
         };
@@ -451,7 +451,7 @@ pub(crate) fn recompute_areas_below_node_redrawing_insert_feedback(
     } else {
         divide_node_area_between_its_children(space_manager, space_id, node_id);
 
-        let (left, right) = match space_manager.view.find(&space_id) {
+        let (left, right) = match space_manager.view.get(&space_id) {
             Some(view) => {
                 let node = view.node(node_id);
                 (node.left, node.right)
@@ -486,13 +486,13 @@ pub(crate) fn free_node_subtree_unmanaging_its_windows(
     mouse_drag_state: &mut MouseDragState,
 ) {
     let mut node_ids = Vec::new();
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return;
     };
     collect_node_subtree_in_post_order(view, node_id, &mut node_ids);
 
     for node_id in node_ids {
-        let window_ids = match space_manager.view.find(&space_id) {
+        let window_ids = match space_manager.view.get(&space_id) {
             Some(view) => {
                 let node = view.node(node_id);
                 node.window_list[..node.window_count as usize].to_vec()
@@ -520,7 +520,7 @@ pub(crate) fn clear_zoom_of_node_subtree(
     node_id: NodeId,
     space_manager: &mut SpaceManager,
 ) {
-    let Some(view) = space_manager.view.find_mut(&space_id) else {
+    let Some(view) = space_manager.view.get_mut(&space_id) else {
         return;
     };
     let node = view.node_mut(node_id);
@@ -546,7 +546,7 @@ pub(crate) fn collect_windows_below_node_with_their_target_areas(
     space_manager: &mut SpaceManager,
 ) {
     if is_leaf_node(space_id, node_id, space_manager) {
-        let (window_count, node_window_list, area) = match space_manager.view.find(&space_id) {
+        let (window_count, node_window_list, area) = match space_manager.view.get(&space_id) {
             Some(view) => {
                 let node = view.node(node_id);
                 let area = area_given_to_the_windows_of_node(view, node, window_manager);
@@ -567,7 +567,7 @@ pub(crate) fn collect_windows_below_node_with_their_target_areas(
             }
         }
     } else {
-        let (left, right) = match space_manager.view.find(&space_id) {
+        let (left, right) = match space_manager.view.get(&space_id) {
             Some(view) => {
                 let node = view.node(node_id);
                 (node.left, node.right)
@@ -622,7 +622,7 @@ pub(crate) fn is_window_in_node(
     window_id: WindowId,
     space_manager: &mut SpaceManager,
 ) -> bool {
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return false;
     };
     let node = view.node(node_id);
@@ -642,7 +642,7 @@ pub(crate) fn stack_index_of_window_in_node(
     window_id: WindowId,
     space_manager: &mut SpaceManager,
 ) -> i32 {
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return 0;
     };
     let node = view.node(node_id);
@@ -663,7 +663,7 @@ pub(crate) fn swap_windows_between_nodes_clearing_their_zoom(
     b_node_id: NodeId,
     space_manager: &mut SpaceManager,
 ) {
-    let (a_window_list, a_window_order, a_window_count) = match space_manager.view.find(&a_space_id)
+    let (a_window_list, a_window_order, a_window_count) = match space_manager.view.get(&a_space_id)
     {
         Some(view) => {
             let node = view.node(a_node_id);
@@ -671,7 +671,7 @@ pub(crate) fn swap_windows_between_nodes_clearing_their_zoom(
         }
         None => return,
     };
-    let (b_window_list, b_window_order, b_window_count) = match space_manager.view.find(&b_space_id)
+    let (b_window_list, b_window_order, b_window_count) = match space_manager.view.get(&b_space_id)
     {
         Some(view) => {
             let node = view.node(b_node_id);
@@ -681,7 +681,7 @@ pub(crate) fn swap_windows_between_nodes_clearing_their_zoom(
     };
 
     {
-        let Some(view) = space_manager.view.find_mut(&a_space_id) else {
+        let Some(view) = space_manager.view.get_mut(&a_space_id) else {
             return;
         };
         let node = view.node_mut(a_node_id);
@@ -693,7 +693,7 @@ pub(crate) fn swap_windows_between_nodes_clearing_their_zoom(
     }
 
     {
-        let Some(view) = space_manager.view.find_mut(&b_space_id) else {
+        let Some(view) = space_manager.view.get_mut(&b_space_id) else {
             return;
         };
         let node = view.node_mut(b_node_id);
@@ -704,10 +704,10 @@ pub(crate) fn swap_windows_between_nodes_clearing_their_zoom(
         node.window_count = a_window_count;
     }
 
-    if let Some(view) = space_manager.view.find_mut(&a_space_id) {
+    if let Some(view) = space_manager.view.get_mut(&a_space_id) {
         view.node_mut(a_node_id).zoom = None;
     }
-    if let Some(view) = space_manager.view.find_mut(&b_space_id) {
+    if let Some(view) = space_manager.view.get_mut(&b_space_id) {
         view.node_mut(b_node_id).zoom = None;
     }
 }
@@ -719,7 +719,7 @@ pub(crate) fn first_leaf_below_node(
 ) -> NodeId {
     let mut node_id = root_node_id;
     while !is_leaf_node(space_id, node_id, space_manager) {
-        node_id = match space_manager.view.find(&space_id) {
+        node_id = match space_manager.view.get(&space_id) {
             Some(view) => match view.node(node_id).left {
                 Some(left) => left,
                 None => return node_id,
@@ -737,7 +737,7 @@ pub(crate) fn last_leaf_below_node(
 ) -> NodeId {
     let mut node_id = root_node_id;
     while !is_leaf_node(space_id, node_id, space_manager) {
-        node_id = match space_manager.view.find(&space_id) {
+        node_id = match space_manager.view.get(&space_id) {
             Some(view) => match view.node(node_id).right {
                 Some(right) => right,
                 None => return node_id,
@@ -753,7 +753,7 @@ pub(crate) fn previous_leaf_in_tree_order(
     node_id: NodeId,
     space_manager: &mut SpaceManager,
 ) -> Option<NodeId> {
-    let parent = match space_manager.view.find(&space_id) {
+    let parent = match space_manager.view.get(&space_id) {
         Some(view) => view.node(node_id).parent,
         None => return None,
     };
@@ -765,7 +765,7 @@ pub(crate) fn previous_leaf_in_tree_order(
         return previous_leaf_in_tree_order(space_id, parent, space_manager);
     }
 
-    let parent_left = match space_manager.view.find(&space_id) {
+    let parent_left = match space_manager.view.get(&space_id) {
         Some(view) => view.node(parent).left,
         None => return None,
     };
@@ -777,7 +777,7 @@ pub(crate) fn previous_leaf_in_tree_order(
         return Some(parent_left);
     }
 
-    let parent_left_right = match space_manager.view.find(&space_id) {
+    let parent_left_right = match space_manager.view.get(&space_id) {
         Some(view) => view.node(parent_left).right,
         None => return None,
     };
@@ -797,7 +797,7 @@ pub(crate) fn next_leaf_in_tree_order(
     node_id: NodeId,
     space_manager: &mut SpaceManager,
 ) -> Option<NodeId> {
-    let parent = match space_manager.view.find(&space_id) {
+    let parent = match space_manager.view.get(&space_id) {
         Some(view) => view.node(node_id).parent,
         None => return None,
     };
@@ -809,7 +809,7 @@ pub(crate) fn next_leaf_in_tree_order(
         return next_leaf_in_tree_order(space_id, parent, space_manager);
     }
 
-    let parent_right = match space_manager.view.find(&space_id) {
+    let parent_right = match space_manager.view.get(&space_id) {
         Some(view) => view.node(parent).right,
         None => return None,
     };
@@ -821,7 +821,7 @@ pub(crate) fn next_leaf_in_tree_order(
         return Some(parent_right);
     }
 
-    let parent_right_left = match space_manager.view.find(&space_id) {
+    let parent_right_left = match space_manager.view.get(&space_id) {
         Some(view) => view.node(parent_right).left,
         None => return None,
     };
@@ -843,7 +843,7 @@ pub(crate) fn rotate_node_subtree_by_degrees(
     space_manager: &mut SpaceManager,
 ) {
     let (left, right) = {
-        let Some(view) = space_manager.view.find_mut(&space_id) else {
+        let Some(view) = space_manager.view.get_mut(&space_id) else {
             return;
         };
         let node = view.node_mut(node_id);
@@ -886,7 +886,7 @@ pub(crate) fn mirror_node_subtree_along_axis(
     space_manager: &mut SpaceManager,
 ) -> NodeId {
     if !is_leaf_node(space_id, node_id, space_manager) {
-        let (node_left, node_right) = match space_manager.view.find(&space_id) {
+        let (node_left, node_right) = match space_manager.view.get(&space_id) {
             Some(view) => {
                 let node = view.node(node_id);
                 (node.left, node.right)
@@ -899,7 +899,7 @@ pub(crate) fn mirror_node_subtree_along_axis(
         let right = node_right
             .map(|right| mirror_node_subtree_along_axis(space_id, right, axis, space_manager));
 
-        let Some(view) = space_manager.view.find_mut(&space_id) else {
+        let Some(view) = space_manager.view.get_mut(&space_id) else {
             return node_id;
         };
         let node = view.node_mut(node_id);
@@ -918,7 +918,7 @@ pub(crate) fn ancestor_whose_split_borders_node_in_direction(
     direction: i32,
     space_manager: &mut SpaceManager,
 ) -> Option<NodeId> {
-    let (node_area, mut parent_id) = match space_manager.view.find(&space_id) {
+    let (node_area, mut parent_id) = match space_manager.view.get(&space_id) {
         Some(view) => {
             let node = view.node(node_id);
             (node.area, node.parent)
@@ -927,7 +927,7 @@ pub(crate) fn ancestor_whose_split_borders_node_in_direction(
     };
 
     while let Some(parent) = parent_id {
-        let Some(view) = space_manager.view.find(&space_id) else {
+        let Some(view) = space_manager.view.get(&space_id) else {
             return None;
         };
         let parent_node = view.node(parent);
@@ -967,7 +967,7 @@ pub(crate) fn shallowest_leaf_below_node(
             return Some(current_node_id);
         }
 
-        let (left, right) = match space_manager.view.find(&space_id) {
+        let (left, right) = match space_manager.view.get(&space_id) {
             Some(view) => {
                 let node = view.node(current_node_id);
                 (node.left, node.right)
@@ -998,18 +998,14 @@ pub(crate) fn closest_leaf_in_direction_of_node(
     let mut best_distance = i32::MAX;
     let mut best_rank = i32::MAX;
     let mut best_node: Option<NodeId> = None;
-    let source_area = space_manager
-        .view
-        .find(&space_id)?
-        .node(source_node_id)
-        .area;
+    let source_area = space_manager.view.get(&space_id)?.node(source_node_id).area;
     let source_area_max = bottom_right_pixel_inside_area(source_area);
 
     let mut target = Some(first_leaf_below_node(space_id, ROOT_NODE_ID, space_manager));
     while let Some(target_node_id) = target {
         if source_node_id != target_node_id {
             let (target_area, target_first_window_id) = {
-                let target_node = space_manager.view.find(&space_id)?.node(target_node_id);
+                let target_node = space_manager.view.get(&space_id)?.node(target_node_id);
                 (target_node.area, target_node.window_order[0])
             };
 
@@ -1072,12 +1068,12 @@ pub(crate) fn remove_window_from_view_tree(
 
     if space_manager
         .view
-        .find(&space_id)?
+        .get(&space_id)?
         .node(node_id)
         .window_count
         > 1
     {
-        let view = space_manager.view.find_mut(&space_id)?;
+        let view = space_manager.view.get_mut(&space_id)?;
         let node = view.node_mut(node_id);
         let mut removed_entry = false;
         let mut removed_order = false;
@@ -1120,9 +1116,9 @@ pub(crate) fn remove_window_from_view_tree(
     }
 
     if node_id == ROOT_NODE_ID {
-        space_manager.view.find_mut(&space_id)?.insertion_point = WindowId(0);
+        space_manager.view.get_mut(&space_id)?.insertion_point = WindowId(0);
         destroy_insert_feedback_of_node(space_id, node_id, window_manager, space_manager);
-        *space_manager.view.find_mut(&space_id)?.node_mut(node_id) = WindowNode::default();
+        *space_manager.view.get_mut(&space_id)?.node_mut(node_id) = WindowNode::default();
         recompute_view_areas_from_display_bounds_and_padding(
             space_manager,
             space_id,
@@ -1151,7 +1147,7 @@ pub(crate) fn remove_window_from_view_tree(
         child_split,
         child_child,
     ) = {
-        let view = space_manager.view.find(&space_id)?;
+        let view = space_manager.view.get(&space_id)?;
         let parent_id = view.node(node_id).parent?;
         let parent = view.node(parent_id);
         let child_id = if parent.right == Some(node_id) {
@@ -1190,7 +1186,7 @@ pub(crate) fn remove_window_from_view_tree(
     };
 
     {
-        let view = space_manager.view.find_mut(&space_id)?;
+        let view = space_manager.view.get_mut(&space_id)?;
         let parent = view.node_mut(parent_id);
         parent.window_list[..child_window_count as usize]
             .copy_from_slice(&child_window_list[..child_window_count as usize]);
@@ -1205,7 +1201,7 @@ pub(crate) fn remove_window_from_view_tree(
 
     if child_insert_direction != 0 {
         let parent_first_window_id = {
-            let view = space_manager.view.find_mut(&space_id)?;
+            let view = space_manager.view.get_mut(&space_id)?;
             let feedback_window = view.node_mut(child_id).feedback_window.take();
             let parent = view.node_mut(parent_id);
             parent.feedback_window = feedback_window;
@@ -1216,10 +1212,7 @@ pub(crate) fn remove_window_from_view_tree(
         };
         window_manager
             .insert_feedback
-            .remove(&parent_first_window_id);
-        window_manager
-            .insert_feedback
-            .add_unless_key_already_present(parent_first_window_id, (space_id, parent_id));
+            .insert(parent_first_window_id, (space_id, parent_id));
         if mouse_drag_state.feedback_node == Some((space_id, child_id)) {
             mouse_drag_state.feedback_node = Some((space_id, parent_id));
         }
@@ -1228,7 +1221,7 @@ pub(crate) fn remove_window_from_view_tree(
 
     if child_parent.is_some() && !(child_left.is_none() && child_right.is_none()) {
         {
-            let view = space_manager.view.find_mut(&space_id)?;
+            let view = space_manager.view.get_mut(&space_id)?;
 
             view.node_mut(parent_id).left = child_left;
             if let Some(left) = child_left {
@@ -1289,7 +1282,7 @@ pub(crate) fn remove_window_from_view_tree(
         mouse_drag_state,
     );
 
-    let auto_balance = space_manager.view.find(&space_id)?.auto_balance;
+    let auto_balance = space_manager.view.get(&space_id)?.auto_balance;
     if auto_balance != WindowNodeSplit::None as u32 {
         balance_split_ratios_below_node_giving_each_leaf_an_equal_share(
             space_id,
@@ -1315,7 +1308,7 @@ pub(crate) fn stack_window_in_node_as_its_front_window(
     window_id: WindowId,
     space_manager: &mut SpaceManager,
 ) {
-    let Some(view) = space_manager.view.find_mut(&space_id) else {
+    let Some(view) = space_manager.view.get_mut(&space_id) else {
         return;
     };
     let node = view.node_mut(node_id);
@@ -1360,7 +1353,7 @@ pub(crate) fn add_window_to_view_tree_preferring_insertion_point(
     {
         let root = space_manager
             .view
-            .find_mut(&space_id)?
+            .get_mut(&space_id)?
             .node_mut(ROOT_NODE_ID);
         root.window_list[0] = window_id;
         root.window_order[0] = window_id;
@@ -1368,26 +1361,26 @@ pub(crate) fn add_window_to_view_tree_preferring_insertion_point(
         return Some(ROOT_NODE_ID);
     }
 
-    let layout = space_manager.view.find(&space_id)?.layout;
+    let layout = space_manager.view.get(&space_id)?.layout;
 
     if layout == ViewLayout::BinarySpacePartitioning {
         let mut previous_insertion_point = WindowId(0);
         let mut leaf: Option<NodeId> = None;
 
         if insertion_point != WindowId(0) {
-            let view = space_manager.view.find_mut(&space_id)?;
+            let view = space_manager.view.get_mut(&space_id)?;
             previous_insertion_point = view.insertion_point;
             view.insertion_point = insertion_point;
         }
 
-        let view_insertion_point = space_manager.view.find(&space_id)?.insertion_point;
+        let view_insertion_point = space_manager.view.get(&space_id)?.insertion_point;
         if view_insertion_point != WindowId(0) {
             leaf = leaf_holding_window(space_manager, space_id, view_insertion_point);
-            space_manager.view.find_mut(&space_id)?.insertion_point = previous_insertion_point;
+            space_manager.view.get_mut(&space_id)?.insertion_point = previous_insertion_point;
 
             if let Some(leaf) = leaf {
                 let do_stack = {
-                    let leaf_node = space_manager.view.find_mut(&space_id)?.node_mut(leaf);
+                    let leaf_node = space_manager.view.get_mut(&space_id)?.node_mut(leaf);
                     let do_stack = leaf_node.insert_direction == DIRECTION_STACK_INSTEAD_OF_SPLIT;
 
                     leaf_node.insert_direction = 0;
@@ -1426,7 +1419,7 @@ pub(crate) fn add_window_to_view_tree_preferring_insertion_point(
 
         split_leaf_node_to_hold_a_new_window(space_manager, space_id, leaf, window_id);
 
-        let auto_balance = space_manager.view.find(&space_id)?.auto_balance;
+        let auto_balance = space_manager.view.get(&space_id)?.auto_balance;
         if auto_balance != WindowNodeSplit::None as u32 {
             balance_split_ratios_below_node_giving_each_leaf_an_equal_share(
                 space_id,
@@ -1475,13 +1468,13 @@ pub(crate) fn collect_windows_of_view_in_tree_order(
 ) -> Vec<WindowId> {
     let mut window_list: Vec<WindowId> = Vec::new();
 
-    if space_manager.view.find(&space_id).is_none() {
+    if !space_manager.view.contains_key(&space_id) {
         return window_list;
     }
 
     let mut node = Some(first_leaf_below_node(space_id, ROOT_NODE_ID, space_manager));
     while let Some(node_id) = node {
-        if let Some(view) = space_manager.view.find(&space_id) {
+        if let Some(view) = space_manager.view.get(&space_id) {
             let leaf = view.node(node_id);
             for index in 0..leaf.window_count {
                 window_list.push(leaf.window_list[index as usize]);
@@ -1515,7 +1508,7 @@ pub(crate) fn free_node_scrubbing_every_reference_to_it(
         window_manager.insert_feedback.remove(&window_id);
     }
 
-    let Some(view) = space_manager.view.find_mut(&space_id) else {
+    let Some(view) = space_manager.view.get_mut(&space_id) else {
         return;
     };
     view.nodes[node_id.0 as usize] = None;

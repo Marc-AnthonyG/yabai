@@ -100,7 +100,7 @@ pub(crate) fn toggle_window_native_fullscreen(
         unsafe { libc::usleep(100000) };
     }
 
-    if let Some(window) = window_manager.window.find(&window_id) {
+    if let Some(window) = window_manager.window.get(&window_id) {
         if !is_window_in_native_fullscreen_according_to_accessibility(window) {
             unsafe {
                 AXUIElementSetAttributeValue(
@@ -139,7 +139,7 @@ pub(crate) fn toggle_managed_window_zoom_parent(
     };
     if space_manager
         .view
-        .find(&space_id)
+        .get(&space_id)
         .is_none_or(|view| view.layout != ViewLayout::BinarySpacePartitioning)
     {
         return;
@@ -153,7 +153,7 @@ pub(crate) fn toggle_managed_window_zoom_parent(
 
     let Some((node_parent, node_zoom)) = space_manager
         .view
-        .find(&space_id)
+        .get(&space_id)
         .and_then(|view| view.find_node(node_id))
         .map(|node| (node.parent, node.zoom))
     else {
@@ -165,7 +165,7 @@ pub(crate) fn toggle_managed_window_zoom_parent(
     }
 
     if node_zoom == node_parent {
-        if let Some(view) = space_manager.view.find_mut(&space_id)
+        if let Some(view) = space_manager.view.get_mut(&space_id)
             && let Some(node) = view.find_node_mut(node_id)
         {
             node.zoom = None;
@@ -177,11 +177,11 @@ pub(crate) fn toggle_managed_window_zoom_parent(
                 window_manager,
                 space_manager,
             );
-        } else if let Some(view) = space_manager.view.find_mut(&space_id) {
+        } else if let Some(view) = space_manager.view.get_mut(&space_id) {
             view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     } else {
-        if let Some(view) = space_manager.view.find_mut(&space_id)
+        if let Some(view) = space_manager.view.get_mut(&space_id)
             && let Some(node) = view.find_node_mut(node_id)
         {
             node.zoom = node_parent;
@@ -193,7 +193,7 @@ pub(crate) fn toggle_managed_window_zoom_parent(
                 window_manager,
                 space_manager,
             );
-        } else if let Some(view) = space_manager.view.find_mut(&space_id) {
+        } else if let Some(view) = space_manager.view.get_mut(&space_id) {
             view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     }
@@ -210,7 +210,7 @@ pub(crate) fn toggle_managed_window_zoom_fullscreen(
     };
     if space_manager
         .view
-        .find(&space_id)
+        .get(&space_id)
         .is_none_or(|view| view.layout != ViewLayout::BinarySpacePartitioning)
     {
         return;
@@ -228,7 +228,7 @@ pub(crate) fn toggle_managed_window_zoom_fullscreen(
 
     let Some(node_zoom) = space_manager
         .view
-        .find(&space_id)
+        .get(&space_id)
         .and_then(|view| view.find_node(node_id))
         .map(|node| node.zoom)
     else {
@@ -236,7 +236,7 @@ pub(crate) fn toggle_managed_window_zoom_fullscreen(
     };
 
     if node_zoom == Some(ROOT_NODE_ID) {
-        if let Some(view) = space_manager.view.find_mut(&space_id)
+        if let Some(view) = space_manager.view.get_mut(&space_id)
             && let Some(node) = view.find_node_mut(node_id)
         {
             node.zoom = None;
@@ -248,11 +248,11 @@ pub(crate) fn toggle_managed_window_zoom_fullscreen(
                 window_manager,
                 space_manager,
             );
-        } else if let Some(view) = space_manager.view.find_mut(&space_id) {
+        } else if let Some(view) = space_manager.view.get_mut(&space_id) {
             view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     } else {
-        if let Some(view) = space_manager.view.find_mut(&space_id)
+        if let Some(view) = space_manager.view.get_mut(&space_id)
             && let Some(node) = view.find_node_mut(node_id)
         {
             node.zoom = Some(ROOT_NODE_ID);
@@ -264,7 +264,7 @@ pub(crate) fn toggle_managed_window_zoom_fullscreen(
                 window_manager,
                 space_manager,
             );
-        } else if let Some(view) = space_manager.view.find_mut(&space_id) {
+        } else if let Some(view) = space_manager.view.get_mut(&space_id) {
             view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     }
@@ -280,7 +280,7 @@ pub(crate) fn toggle_window_windowed_fullscreen(
         return;
     }
 
-    let Some(window) = window_manager.window.find_mut(&window_id) else {
+    let Some(window) = window_manager.window.get_mut(&window_id) else {
         return;
     };
 
@@ -330,7 +330,7 @@ pub(crate) fn toggle_window_picture_in_picture(
         find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
 
     let mut bounds = query_bounds_of_display_left_for_windows(display_id, false, display_manager);
-    if let Some(view) = space_manager.view.find(&display_view)
+    if let Some(view) = space_manager.view.get(&display_view)
         && view.has_flag(ViewFlag::PADDING_IS_ENABLED)
     {
         bounds.origin.x += view.left_padding as f64;

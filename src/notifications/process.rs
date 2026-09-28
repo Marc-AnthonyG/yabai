@@ -72,14 +72,10 @@ pub(crate) unsafe extern "C-unwind" fn handle_carbon_application_event_callback(
             };
 
             PROCESS_TABLE
-                .get()
-                .unwrap()
                 .lock()
                 .unwrap()
-                .add_unless_key_already_present(
-                    process.process_serial_number,
-                    Arc::clone(&process),
-                );
+                .entry(process.process_serial_number)
+                .or_insert(Arc::clone(&process));
             post_event_to_event_loop(Event::ApplicationLaunched(process));
         }
         kEventAppTerminated => {
@@ -88,12 +84,7 @@ pub(crate) unsafe extern "C-unwind" fn handle_carbon_application_event_callback(
             };
 
             process.terminated.store(true, Ordering::Release);
-            PROCESS_TABLE
-                .get()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .remove(&process_serial_number);
+            PROCESS_TABLE.lock().unwrap().remove(&process_serial_number);
             stop_observing_application_launch_and_activation_policy(
                 WORKSPACE_CONTEXT.get().unwrap(),
                 &process,

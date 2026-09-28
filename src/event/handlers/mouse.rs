@@ -90,7 +90,7 @@ pub(crate) fn handle_mouse_down_event(
     let Some(window) = window else {
         return;
     };
-    let Some(window_record) = window_manager.window.find(&window) else {
+    let Some(window_record) = window_manager.window.get(&window) else {
         return;
     };
     if is_window_flag_set(window_record, WindowFlag::IN_NATIVE_FULLSCREEN) {
@@ -154,7 +154,7 @@ pub(crate) fn handle_mouse_up_event(
 
             let is_still_alive = window_manager
                 .window
-                .find(&mouse_window)
+                .get(&mouse_window)
                 .is_some_and(|window| window.liveness.is_still_alive());
             if !is_still_alive {
                 debug!(
@@ -166,7 +166,7 @@ pub(crate) fn handle_mouse_up_event(
 
             let is_fullscreen = window_manager
                 .window
-                .find(&mouse_window)
+                .get(&mouse_window)
                 .is_some_and(|window| is_window_flag_set(window, WindowFlag::IN_NATIVE_FULLSCREEN));
             if is_fullscreen {
                 debug!(
@@ -232,7 +232,7 @@ pub(crate) fn handle_mouse_up_event(
                     {
                         if let Some(feedback_node) = space_manager
                             .view
-                            .find_mut(&feedback_space_id)
+                            .get_mut(&feedback_space_id)
                             .and_then(|view| view.find_node_mut(feedback_node_id))
                         {
                             feedback_node.insert_direction = 0;
@@ -399,7 +399,7 @@ pub(crate) fn handle_mouse_dragged_event(
 
     let is_still_alive = window_manager
         .window
-        .find(&mouse_window)
+        .get(&mouse_window)
         .is_some_and(|window| window.liveness.is_still_alive());
     if !is_still_alive {
         debug!(
@@ -460,7 +460,7 @@ pub(crate) fn handle_mouse_dragged_event(
 
         let Some(mouse_window_frame) = window_manager
             .window
-            .find(&mouse_window)
+            .get(&mouse_window)
             .map(|window| window.frame)
         else {
             return;
@@ -526,7 +526,7 @@ pub(crate) fn handle_mouse_dragged_event(
             {
                 if let Some(feedback_node) = space_manager
                     .view
-                    .find_mut(&feedback_space_id)
+                    .get_mut(&feedback_space_id)
                     .and_then(|view| view.find_node_mut(feedback_node_id))
                 {
                     feedback_node.insert_direction = 0;
@@ -579,7 +579,7 @@ pub(crate) fn handle_mouse_dragged_event(
 
             let b_node_insert_direction = space_manager
                 .view
-                .find(&destination_view)
+                .get(&destination_view)
                 .and_then(|view| view.find_node(b_node))
                 .map(|node| node.insert_direction);
             if let Some(b_node_insert_direction) = b_node_insert_direction
@@ -587,7 +587,7 @@ pub(crate) fn handle_mouse_dragged_event(
             {
                 if let Some(node) = space_manager
                     .view
-                    .find_mut(&destination_view)
+                    .get_mut(&destination_view)
                     .and_then(|view| view.find_node_mut(b_node))
                 {
                     node.insert_direction = insert_direction;
@@ -616,7 +616,7 @@ pub(crate) fn handle_mouse_dragged_event(
             if let Some((feedback_space_id, feedback_node_id)) = mouse_drag_state.feedback_node {
                 if let Some(feedback_node) = space_manager
                     .view
-                    .find_mut(&feedback_space_id)
+                    .get_mut(&feedback_space_id)
                     .and_then(|view| view.find_node_mut(feedback_node_id))
                 {
                     feedback_node.insert_direction = 0;

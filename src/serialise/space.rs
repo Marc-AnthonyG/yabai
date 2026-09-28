@@ -54,7 +54,7 @@ pub(crate) fn write_space_as_json_object(
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
 ) {
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return;
     };
     let layout = view.layout;
@@ -79,7 +79,7 @@ pub(crate) fn write_space_as_json_object(
 
         let uuid = space_manager
             .view
-            .find(&space_id)
+            .get(&space_id)
             .and_then(|view| view.uuid.as_ref())
             .and_then(|uuid| cfstring_to_string(uuid.as_ref()));
         response.write(format_args!(
@@ -173,7 +173,7 @@ pub(crate) fn write_space_as_json_object(
         let first_leaf = first_leaf_below_node(space_id, ROOT_NODE_ID, space_manager);
         let first_window_id = space_manager
             .view
-            .find(&space_id)
+            .get(&space_id)
             .map_or(WindowId(0), |view| view.node(first_leaf).window_order[0]);
         response.write(format_args!(
             "\t\"first-window\":{}",
@@ -190,7 +190,7 @@ pub(crate) fn write_space_as_json_object(
         let last_leaf = last_leaf_below_node(space_id, ROOT_NODE_ID, space_manager);
         let last_window_id = space_manager
             .view
-            .find(&space_id)
+            .get(&space_id)
             .map_or(WindowId(0), |view| view.node(last_leaf).window_order[0]);
         response.write(format_args!(
             "\t\"last-window\":{}",

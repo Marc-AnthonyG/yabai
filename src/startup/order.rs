@@ -1,4 +1,5 @@
 use core::ptr::null_mut;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -29,9 +30,7 @@ use crate::notifications::skylight_connection::handle_skylight_connection_notifi
 use crate::notifications::window::request_skylight_notifications_for_windows_that_need_them;
 use crate::notifications::workspace::detect_macos_version_and_start_observing_workspace_notifications;
 use crate::process::manager::{ProcessManager, start_process_manager_observing_application_events};
-use crate::space::manager::{
-    SpaceManager, hash_view_key, start_space_manager_creating_a_view_for_every_space,
-};
+use crate::space::manager::{SpaceManager, start_space_manager_creating_a_view_for_every_space};
 use crate::state::event_loop_owned::EventLoopOwnedState;
 use crate::state::mission_control_mode::MissionControlMode;
 use crate::state::process_wide::{MESSAGE_SOCKET_PATH, SKYLIGHT_CONNECTION_ID};
@@ -42,12 +41,11 @@ use crate::support::macos_version::{
     is_running_on_macos_monterey, is_running_on_macos_sequoia, is_running_on_macos_sonoma,
     is_running_on_macos_tahoe, is_running_on_macos_ventura,
 };
-use crate::support::table::Table;
 use crate::window::animator::WindowAnimator;
 use crate::window::discovery::start_tracking_running_applications_and_their_windows;
 use crate::window::manager::{
     FocusFollowsMouseMode, ShadowRemovalMode, WindowManager, WindowOriginDisplayMode,
-    hash_process_id_for_table, hash_window_id_for_table, initialize_window_manager,
+    initialize_window_manager,
 };
 
 pub(crate) fn start_the_daemon_and_enter_the_main_run_loop() {
@@ -67,13 +65,13 @@ pub(crate) fn start_the_daemon_and_enter_the_main_run_loop() {
         display_manager: DisplayManager::default(),
         window_manager: WindowManager {
             system_element: core::ptr::null(),
-            application: Table::new(0, hash_process_id_for_table),
-            window: Table::new(0, hash_window_id_for_table),
-            managed_window: Table::new(0, hash_window_id_for_table),
-            window_lost_focused_event: Table::new(0, hash_window_id_for_table),
-            application_lost_front_switched_event: Table::new(0, hash_process_id_for_table),
+            application: BTreeMap::new(),
+            window: BTreeMap::new(),
+            managed_window: BTreeMap::new(),
+            window_lost_focused_event: BTreeSet::new(),
+            application_lost_front_switched_event: BTreeSet::new(),
             window_animator: Arc::new(WindowAnimator::new()),
-            insert_feedback: Table::new(0, hash_window_id_for_table),
+            insert_feedback: BTreeMap::new(),
             rules: Vec::new(),
             applications_to_refresh: Vec::new(),
             focused_window_id: WindowId(0),
@@ -106,7 +104,7 @@ pub(crate) fn start_the_daemon_and_enter_the_main_run_loop() {
             group_headers_are_hidden_during_mission_control: false,
         },
         space_manager: SpaceManager {
-            view: Table::new(0, hash_view_key),
+            view: BTreeMap::new(),
             current_space_id: SpaceId(0),
             last_space_id: SpaceId(0),
             did_begin: false,

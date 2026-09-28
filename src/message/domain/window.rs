@@ -177,11 +177,11 @@ pub(crate) fn run_window_command(
             }
 
             if let Some(acting_window) = acting_window_id {
-                let window = window_manager.window.find(&acting_window);
+                let window = window_manager.window.get(&acting_window);
                 let window_element_ref = window.map(|window| window.element_ref);
                 let window_process_serial_number = window
                     .and_then(|window| window.application)
-                    .and_then(|process_id| window_manager.application.find(&process_id))
+                    .and_then(|process_id| window_manager.application.get(&process_id))
                     .map(|application| application.process_serial_number);
                 if let (Some(window_process_serial_number), Some(window_element_ref)) =
                     (window_process_serial_number, window_element_ref)
@@ -660,7 +660,7 @@ pub(crate) fn run_window_command(
                 if let Some(acting_window) = acting_window_id {
                     let should_float = window_manager
                         .window
-                        .find(&acting_window)
+                        .get(&acting_window)
                         .map(|window| !is_window_flag_set(window, WindowFlag::FLOATING));
                     if let Some(should_float) = should_float {
                         set_whether_window_floats(
@@ -684,7 +684,7 @@ pub(crate) fn run_window_command(
                 if let Some(acting_window) = acting_window_id {
                     let should_sticky = window_manager
                         .window
-                        .find(&acting_window)
+                        .get(&acting_window)
                         .map(|window| !is_window_flag_set(window, WindowFlag::STICKY));
                     if let Some(should_sticky) = should_sticky {
                         set_whether_window_is_sticky(
@@ -912,7 +912,7 @@ pub(crate) fn run_window_command(
                         acting_window,
                         float_value,
                     ) {
-                        if let Some(window) = window_manager.window.find_mut(&acting_window) {
+                        if let Some(window) = window_manager.window.get_mut(&acting_window) {
                             window.opacity = float_value;
                         }
                     } else {

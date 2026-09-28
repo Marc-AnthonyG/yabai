@@ -973,7 +973,7 @@ pub(crate) fn run_config_command(
                     display_manager,
                     window_manager,
                 );
-                if let Some(view) = space_manager.view.find_mut(&view_space_id) {
+                if let Some(view) = space_manager.view.get_mut(&view_space_id) {
                     if let TokenValueType::Invalid = value.type_of_value {
                         response.write(format_args!("{}\n", view.top_padding));
                     } else if let TokenValueType::Integer(int_value) = value.type_of_value {
@@ -1034,7 +1034,7 @@ pub(crate) fn run_config_command(
                     display_manager,
                     window_manager,
                 );
-                if let Some(view) = space_manager.view.find_mut(&view_space_id) {
+                if let Some(view) = space_manager.view.get_mut(&view_space_id) {
                     if let TokenValueType::Invalid = value.type_of_value {
                         response.write(format_args!("{}\n", view.bottom_padding));
                     } else if let TokenValueType::Integer(int_value) = value.type_of_value {
@@ -1091,7 +1091,7 @@ pub(crate) fn run_config_command(
                     display_manager,
                     window_manager,
                 );
-                if let Some(view) = space_manager.view.find_mut(&view_space_id) {
+                if let Some(view) = space_manager.view.get_mut(&view_space_id) {
                     if let TokenValueType::Invalid = value.type_of_value {
                         response.write(format_args!("{}\n", view.left_padding));
                     } else if let TokenValueType::Integer(int_value) = value.type_of_value {
@@ -1152,7 +1152,7 @@ pub(crate) fn run_config_command(
                     display_manager,
                     window_manager,
                 );
-                if let Some(view) = space_manager.view.find_mut(&view_space_id) {
+                if let Some(view) = space_manager.view.get_mut(&view_space_id) {
                     if let TokenValueType::Invalid = value.type_of_value {
                         response.write(format_args!("{}\n", view.right_padding));
                     } else if let TokenValueType::Integer(int_value) = value.type_of_value {
@@ -1209,7 +1209,7 @@ pub(crate) fn run_config_command(
                     display_manager,
                     window_manager,
                 );
-                if let Some(view) = space_manager.view.find_mut(&view_space_id) {
+                if let Some(view) = space_manager.view.get_mut(&view_space_id) {
                     if let TokenValueType::Invalid = value.type_of_value {
                         response.write(format_args!("{}\n", view.window_gap));
                     } else if let TokenValueType::Integer(int_value) = value.type_of_value {
@@ -1264,7 +1264,7 @@ pub(crate) fn run_config_command(
                     window_manager,
                 );
                 if !value.is_not_empty() {
-                    if let Some(view) = space_manager.view.find(&view_space_id) {
+                    if let Some(view) = space_manager.view.get(&view_space_id) {
                         response.write(format_args!(
                             "{}\n",
                             VIEW_LAYOUT_NAMES[view.layout as usize]
@@ -1276,7 +1276,7 @@ pub(crate) fn run_config_command(
                     ARGUMENT_CONFIG_LAYOUT_BINARY_SPACE_PARTITIONING,
                 ) {
                     if is_user_space(selector_space_id) {
-                        if let Some(view) = space_manager.view.find_mut(&view_space_id) {
+                        if let Some(view) = space_manager.view.get_mut(&view_space_id) {
                             view.set_flag(ViewFlag::OVERRIDES_GLOBAL_LAYOUT);
                             view.layout = ViewLayout::BinarySpacePartitioning;
                         }
@@ -1306,7 +1306,7 @@ pub(crate) fn run_config_command(
                     ARGUMENT_CONFIG_LAYOUT_STACK,
                 ) {
                     if is_user_space(selector_space_id) {
-                        if let Some(view) = space_manager.view.find_mut(&view_space_id) {
+                        if let Some(view) = space_manager.view.get_mut(&view_space_id) {
                             view.set_flag(ViewFlag::OVERRIDES_GLOBAL_LAYOUT);
                             view.layout = ViewLayout::Stack;
                         }
@@ -1336,7 +1336,7 @@ pub(crate) fn run_config_command(
                     ARGUMENT_CONFIG_LAYOUT_FLOAT,
                 ) {
                     if is_user_space(selector_space_id) {
-                        if let Some(view) = space_manager.view.find_mut(&view_space_id) {
+                        if let Some(view) = space_manager.view.get_mut(&view_space_id) {
                             view.set_flag(ViewFlag::OVERRIDES_GLOBAL_LAYOUT);
                             view.layout = ViewLayout::Float;
                         }
@@ -1438,7 +1438,7 @@ pub(crate) fn run_config_command(
                     display_manager,
                     window_manager,
                 );
-                if let Some(view) = space_manager.view.find_mut(&view_space_id) {
+                if let Some(view) = space_manager.view.get_mut(&view_space_id) {
                     if !value.is_not_empty() {
                         response.write(format_args!(
                             "{}\n",
@@ -1519,7 +1519,7 @@ pub(crate) fn run_config_command(
                     display_manager,
                     window_manager,
                 );
-                if let Some(view) = space_manager.view.find_mut(&view_space_id) {
+                if let Some(view) = space_manager.view.get_mut(&view_space_id) {
                     if !value.is_not_empty() {
                         response.write(format_args!(
                             "{}\n",
@@ -1882,7 +1882,7 @@ fn move_the_windows_of_every_view_into_their_areas(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
 ) {
-    for space_id in space_manager.view.keys_in_bucket_order() {
+    for space_id in space_manager.view.keys().copied().collect::<Vec<_>>() {
         move_view_windows_into_their_areas_or_defer_until_space_is_visible(
             space_manager,
             space_id,

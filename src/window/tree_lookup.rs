@@ -35,7 +35,7 @@ pub(crate) fn closest_managed_window_in_direction(
 
     let closest_window_id = space_manager
         .view
-        .find(&space_id)?
+        .get(&space_id)?
         .find_node(closest_node_id)?
         .window_order[0];
     tracked_window_with_id(window_manager, closest_window_id)
@@ -53,7 +53,7 @@ pub(crate) fn managed_window_before_window_in_active_space(
         display_manager,
         window_manager,
     );
-    if space_manager.view.find(&space_id).is_none() {
+    if !space_manager.view.contains_key(&space_id) {
         return None;
     }
 
@@ -68,7 +68,7 @@ pub(crate) fn managed_window_before_window_in_active_space(
 
     let previous_window_id = space_manager
         .view
-        .find(&space_id)?
+        .get(&space_id)?
         .find_node(previous_node_id)?
         .window_order[0];
     tracked_window_with_id(window_manager, previous_window_id)
@@ -86,7 +86,7 @@ pub(crate) fn managed_window_after_window_in_active_space(
         display_manager,
         window_manager,
     );
-    if space_manager.view.find(&space_id).is_none() {
+    if !space_manager.view.contains_key(&space_id) {
         return None;
     }
 
@@ -100,7 +100,7 @@ pub(crate) fn managed_window_after_window_in_active_space(
 
     let next_window_id = space_manager
         .view
-        .find(&space_id)?
+        .get(&space_id)?
         .find_node(next_node_id)?
         .window_order[0];
     tracked_window_with_id(window_manager, next_window_id)
@@ -117,7 +117,7 @@ pub(crate) fn first_managed_window_in_active_space(
         display_manager,
         window_manager,
     );
-    if space_manager.view.find(&space_id).is_none() {
+    if !space_manager.view.contains_key(&space_id) {
         return None;
     }
 
@@ -125,7 +125,7 @@ pub(crate) fn first_managed_window_in_active_space(
 
     let first_window_id = space_manager
         .view
-        .find(&space_id)?
+        .get(&space_id)?
         .find_node(first_node_id)?
         .window_order[0];
     tracked_window_with_id(window_manager, first_window_id)
@@ -142,7 +142,7 @@ pub(crate) fn last_managed_window_in_active_space(
         display_manager,
         window_manager,
     );
-    if space_manager.view.find(&space_id).is_none() {
+    if !space_manager.view.contains_key(&space_id) {
         return None;
     }
 
@@ -150,7 +150,7 @@ pub(crate) fn last_managed_window_in_active_space(
 
     let last_window_id = space_manager
         .view
-        .find(&space_id)?
+        .get(&space_id)?
         .find_node(last_node_id)?
         .window_order[0];
     tracked_window_with_id(window_manager, last_window_id)
@@ -182,7 +182,7 @@ pub(crate) fn largest_managed_window_in_active_space(
         display_manager,
         window_manager,
     );
-    if space_manager.view.find(&space_id).is_none() {
+    if !space_manager.view.contains_key(&space_id) {
         return None;
     }
 
@@ -192,7 +192,7 @@ pub(crate) fn largest_managed_window_in_active_space(
     let mut node = Some(first_leaf_below_node(space_id, ROOT_NODE_ID, space_manager));
     while let Some(node_id) = node {
         let (node_area, node_first_window_id) = {
-            let leaf_node = space_manager.view.find(&space_id)?.find_node(node_id)?;
+            let leaf_node = space_manager.view.get(&space_id)?.find_node(node_id)?;
             (leaf_node.area, leaf_node.window_order[0])
         };
         let area = (node_area.width * node_area.height) as u32;
@@ -221,7 +221,7 @@ pub(crate) fn smallest_managed_window_in_active_space(
         display_manager,
         window_manager,
     );
-    if space_manager.view.find(&space_id).is_none() {
+    if !space_manager.view.contains_key(&space_id) {
         return None;
     }
 
@@ -231,7 +231,7 @@ pub(crate) fn smallest_managed_window_in_active_space(
     let mut node = Some(first_leaf_below_node(space_id, ROOT_NODE_ID, space_manager));
     while let Some(node_id) = node {
         let (node_area, node_first_window_id) = {
-            let leaf_node = space_manager.view.find(&space_id)?.find_node(node_id)?;
+            let leaf_node = space_manager.view.get(&space_id)?.find_node(node_id)?;
             (leaf_node.area, leaf_node.window_order[0])
         };
         let area = (node_area.width * node_area.height) as u32;
@@ -258,7 +258,7 @@ fn sibling_of_node_under_parent(
     let node_is_left_child = is_node_the_left_child_of_its_parent(space_id, node_id, space_manager);
     let parent_node = space_manager
         .view
-        .find(&space_id)?
+        .get(&space_id)?
         .find_node(parent_node_id)?;
     if node_is_left_child {
         parent_node.right
@@ -275,7 +275,7 @@ fn most_recently_focused_window_of_node(
     Some(
         space_manager
             .view
-            .find(&space_id)?
+            .get(&space_id)?
             .find_node(node_id)?
             .window_order[0],
     )
@@ -294,7 +294,7 @@ pub(crate) fn sibling_window_of_managed_window(
     let parent = node.and_then(|node_id| {
         space_manager
             .view
-            .find(&space_id)
+            .get(&space_id)
             .and_then(|view| view.find_node(node_id))
             .and_then(|node| node.parent)
     });
@@ -326,7 +326,7 @@ pub(crate) fn first_nephew_window_of_managed_window(
     let parent = node.and_then(|node_id| {
         space_manager
             .view
-            .find(&space_id)
+            .get(&space_id)
             .and_then(|view| view.find_node(node_id))
             .and_then(|node| node.parent)
     });
@@ -338,7 +338,7 @@ pub(crate) fn first_nephew_window_of_managed_window(
         sibling_of_node_under_parent(space_manager, space_id, node_id, parent_node_id)?;
     let sibling_left_node_id = space_manager
         .view
-        .find(&space_id)?
+        .get(&space_id)?
         .find_node(sibling_node_id)?
         .left;
     if is_leaf_node(space_id, sibling_node_id, space_manager)
@@ -365,7 +365,7 @@ pub(crate) fn second_nephew_window_of_managed_window(
     let parent = node.and_then(|node_id| {
         space_manager
             .view
-            .find(&space_id)
+            .get(&space_id)
             .and_then(|view| view.find_node(node_id))
             .and_then(|node| node.parent)
     });
@@ -377,7 +377,7 @@ pub(crate) fn second_nephew_window_of_managed_window(
         sibling_of_node_under_parent(space_manager, space_id, node_id, parent_node_id)?;
     let sibling_right_node_id = space_manager
         .view
-        .find(&space_id)?
+        .get(&space_id)?
         .find_node(sibling_node_id)?
         .right;
     if is_leaf_node(space_id, sibling_node_id, space_manager)
@@ -404,7 +404,7 @@ pub(crate) fn uncle_window_of_managed_window(
     let parent = node.and_then(|node_id| {
         space_manager
             .view
-            .find(&space_id)
+            .get(&space_id)
             .and_then(|view| view.find_node(node_id))
             .and_then(|node| node.parent)
     });
@@ -414,7 +414,7 @@ pub(crate) fn uncle_window_of_managed_window(
 
     let grandparent = space_manager
         .view
-        .find(&space_id)?
+        .get(&space_id)?
         .find_node(parent_node_id)?
         .parent;
     let Some(grandparent_node_id) = grandparent else {
@@ -445,7 +445,7 @@ pub(crate) fn first_cousin_window_of_managed_window(
     let parent = node.and_then(|node_id| {
         space_manager
             .view
-            .find(&space_id)
+            .get(&space_id)
             .and_then(|view| view.find_node(node_id))
             .and_then(|node| node.parent)
     });
@@ -455,7 +455,7 @@ pub(crate) fn first_cousin_window_of_managed_window(
 
     let grandparent = space_manager
         .view
-        .find(&space_id)?
+        .get(&space_id)?
         .find_node(parent_node_id)?
         .parent;
     let Some(grandparent_node_id) = grandparent else {
@@ -466,7 +466,7 @@ pub(crate) fn first_cousin_window_of_managed_window(
         sibling_of_node_under_parent(space_manager, space_id, parent_node_id, grandparent_node_id)?;
     let uncle_left_node_id = space_manager
         .view
-        .find(&space_id)?
+        .get(&space_id)?
         .find_node(uncle_node_id)?
         .left;
     if is_leaf_node(space_id, uncle_node_id, space_manager)
@@ -493,7 +493,7 @@ pub(crate) fn second_cousin_window_of_managed_window(
     let parent = node.and_then(|node_id| {
         space_manager
             .view
-            .find(&space_id)
+            .get(&space_id)
             .and_then(|view| view.find_node(node_id))
             .and_then(|node| node.parent)
     });
@@ -503,7 +503,7 @@ pub(crate) fn second_cousin_window_of_managed_window(
 
     let grandparent = space_manager
         .view
-        .find(&space_id)?
+        .get(&space_id)?
         .find_node(parent_node_id)?
         .parent;
     let Some(grandparent_node_id) = grandparent else {
@@ -514,7 +514,7 @@ pub(crate) fn second_cousin_window_of_managed_window(
         sibling_of_node_under_parent(space_manager, space_id, parent_node_id, grandparent_node_id)?;
     let uncle_right_node_id = space_manager
         .view
-        .find(&space_id)?
+        .get(&space_id)?
         .find_node(uncle_node_id)?
         .right;
     if is_leaf_node(space_id, uncle_node_id, space_manager)

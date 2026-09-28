@@ -77,9 +77,9 @@ pub(crate) fn send_window_to_space(
     );
     if let Some(application) = window_manager
         .window
-        .find(&window_id)
+        .get(&window_id)
         .and_then(|window| window.application)
-        .and_then(|application_process_id| window_manager.application.find(&application_process_id))
+        .and_then(|application_process_id| window_manager.application.get(&application_process_id))
     {
         unsafe {
             SLSSpaceSetFrontPSN(

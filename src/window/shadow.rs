@@ -10,7 +10,7 @@ pub(crate) fn set_shadow_removal_mode_for_every_eligible_window(
     mode: ShadowRemovalMode,
 ) {
     window_manager.shadow_removal_mode = mode;
-    for window_id in window_manager.window.keys_in_bucket_order() {
+    for window_id in window_manager.window.keys().copied().collect::<Vec<_>>() {
         if is_window_eligible_for_management(window_id, window_manager) {
             apply_shadow_removal_mode_to_window(window_manager, window_id);
         }
@@ -38,7 +38,7 @@ pub(crate) fn apply_shadow_removal_mode_to_window(
     }
 
     if set_window_shadow_through_scripting_addition(window_id, value != 0) {
-        let Some(window) = window_manager.window.find_mut(&window_id) else {
+        let Some(window) = window_manager.window.get_mut(&window_id) else {
             return;
         };
         if value != 0 {
@@ -50,13 +50,13 @@ pub(crate) fn apply_shadow_removal_mode_to_window(
 }
 
 pub(crate) fn toggle_window_shadow(window_id: WindowId, window_manager: &mut WindowManager) {
-    let Some(window) = window_manager.window.find(&window_id) else {
+    let Some(window) = window_manager.window.get(&window_id) else {
         return;
     };
 
     let shadow = !is_window_flag_set(window, WindowFlag::HAS_SHADOW);
     if set_window_shadow_through_scripting_addition(window_id, shadow) {
-        let Some(window) = window_manager.window.find_mut(&window_id) else {
+        let Some(window) = window_manager.window.get_mut(&window_id) else {
             return;
         };
         if shadow {

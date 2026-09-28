@@ -22,7 +22,7 @@ fn stack_holding_window_in_active_space_view(
         display_manager,
         window_manager,
     );
-    if space_manager.view.find(&space_id).is_none() {
+    if !space_manager.view.contains_key(&space_id) {
         return None;
     }
 
@@ -30,7 +30,7 @@ fn stack_holding_window_in_active_space_view(
         return None;
     };
 
-    let node = space_manager.view.find(&space_id)?.find_node(node_id)?;
+    let node = space_manager.view.get(&space_id)?.find_node(node_id)?;
     Some((node.window_list, node.window_order, node.window_count))
 }
 

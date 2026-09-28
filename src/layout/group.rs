@@ -46,7 +46,7 @@ pub(crate) fn is_window_in_a_group(
     };
     space_manager
         .view
-        .find(&space_id)
+        .get(&space_id)
         .is_some_and(|view| is_node_a_group(view, view.node(node_id), window_manager))
 }
 
@@ -55,7 +55,7 @@ pub(crate) fn set_whether_window_stays_a_group_on_its_own(
     window_id: WindowId,
     stays_a_group_on_its_own: bool,
 ) {
-    if let Some(window) = window_manager.window.find_mut(&window_id) {
+    if let Some(window) = window_manager.window.get_mut(&window_id) {
         window.stays_a_group_on_its_own = stays_a_group_on_its_own;
     }
 }
@@ -85,7 +85,7 @@ pub(crate) fn remember_the_groups_of_view_as_it_leaves_bsp(
     let mut remembered_groups = Vec::new();
     let mut node = Some(first_leaf_below_node(space_id, ROOT_NODE_ID, space_manager));
     while let Some(node_id) = node {
-        if let Some(view) = space_manager.view.find(&space_id) {
+        if let Some(view) = space_manager.view.get(&space_id) {
             let leaf = view.node(node_id);
             if leaf.window_count > 1 {
                 remembered_groups.push(RememberedGroup {
@@ -97,7 +97,7 @@ pub(crate) fn remember_the_groups_of_view_as_it_leaves_bsp(
         node = next_leaf_in_tree_order(space_id, node_id, space_manager);
     }
 
-    if let Some(view) = space_manager.view.find_mut(&space_id) {
+    if let Some(view) = space_manager.view.get_mut(&space_id) {
         view.groups_remembered_outside_bsp = remembered_groups;
     }
 }
@@ -129,7 +129,7 @@ pub(crate) fn put_the_rejoined_groups_back_in_order_and_forget_them(
     space_id: SpaceId,
     window_manager: &mut WindowManager,
 ) -> Vec<RejoinedGroup> {
-    let remembered_groups = match space_manager.view.find_mut(&space_id) {
+    let remembered_groups = match space_manager.view.get_mut(&space_id) {
         Some(view) if view.layout == ViewLayout::BinarySpacePartitioning => {
             std::mem::take(&mut view.groups_remembered_outside_bsp)
         }
@@ -147,7 +147,7 @@ pub(crate) fn put_the_rejoined_groups_back_in_order_and_forget_them(
         };
         let Some(node) = space_manager
             .view
-            .find_mut(&space_id)
+            .get_mut(&space_id)
             .and_then(|view| view.find_node_mut(leaf))
         else {
             continue;
@@ -208,7 +208,7 @@ fn leaf_holding_another_member_of_the_remembered_group_of(
     space_id: SpaceId,
     window_id: WindowId,
 ) -> Option<NodeId> {
-    let view = space_manager.view.find(&space_id)?;
+    let view = space_manager.view.get(&space_id)?;
     if view.layout != ViewLayout::BinarySpacePartitioning {
         return None;
     }
@@ -227,7 +227,7 @@ fn leaf_holding_another_member_of_the_remembered_group_of(
         .find_map(|member| leaf_holding_window(space_manager, space_id, member))?;
     let leaf_has_room = space_manager
         .view
-        .find(&space_id)
+        .get(&space_id)
         .and_then(|view| view.find_node(leaf))
         .is_some_and(|node| (node.window_count as usize) < MOST_WINDOWS_A_NODE_CAN_HOLD);
     leaf_has_room.then_some(leaf)
@@ -239,7 +239,7 @@ fn does_window_stay_a_group_on_its_own(
 ) -> bool {
     window_manager
         .window
-        .find(&window_id)
+        .get(&window_id)
         .is_some_and(|window| window.stays_a_group_on_its_own)
 }
 

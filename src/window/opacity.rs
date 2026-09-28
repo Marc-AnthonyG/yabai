@@ -10,10 +10,10 @@ pub(crate) fn set_window_opacity_enabled_for_every_eligible_window(
     enabled: bool,
 ) {
     window_manager.enable_window_opacity = enabled;
-    for window_id in window_manager.window.keys_in_bucket_order() {
+    for window_id in window_manager.window.keys().copied().collect::<Vec<_>>() {
         if is_window_eligible_for_management(window_id, window_manager) {
             let opacity = if enabled {
-                match window_manager.window.find(&window_id) {
+                match window_manager.window.get(&window_id) {
                     Some(window) => window.opacity,
                     None => continue,
                 }
@@ -62,7 +62,7 @@ pub(crate) fn set_window_opacity_unless_disabled_or_fixed_by_rule(
     if !is_window_eligible_for_management(window_id, window_manager) {
         return;
     }
-    let Some(window) = window_manager.window.find(&window_id) else {
+    let Some(window) = window_manager.window.get(&window_id) else {
         return;
     };
     if window.opacity != 0.0f32 {
@@ -99,7 +99,7 @@ pub(crate) fn set_normal_window_opacity_applying_it_to_every_unfocused_window(
     opacity: f32,
 ) {
     window_manager.normal_window_opacity = opacity;
-    for window_id in window_manager.window.keys_in_bucket_order() {
+    for window_id in window_manager.window.keys().copied().collect::<Vec<_>>() {
         if window_id == window_manager.focused_window_id {
             continue;
         }

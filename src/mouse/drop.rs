@@ -56,19 +56,19 @@ pub(crate) fn determine_drop_action_for_dragged_window(
 ) -> MouseDropAction {
     let Some(destination_window_frame) = window_manager
         .window
-        .find(&destination_window_id)
+        .get(&destination_window_id)
         .map(|window| window.frame)
     else {
         return MouseDropAction::None;
     };
     let source_node_window_count = space_manager
         .view
-        .find(&source_space_id)
+        .get(&source_space_id)
         .and_then(|view| view.find_node(source_node_id))
         .map(|node| node.window_count);
     let destination_node_is_a_group = space_manager
         .view
-        .find(&destination_space_id)
+        .get(&destination_space_id)
         .and_then(|view| {
             view.find_node(destination_node_id)
                 .map(|node| is_node_a_group(view, node, window_manager))
@@ -216,7 +216,7 @@ pub(crate) fn stack_dropped_window_onto_destination_window(
     };
     let Some(destination_node_window_count) = space_manager
         .view
-        .find(&destination_space_id)
+        .get(&destination_space_id)
         .and_then(|view| view.find_node(destination_node))
         .map(|node| node.window_count)
     else {
@@ -237,7 +237,7 @@ pub(crate) fn stack_dropped_window_onto_destination_window(
         );
         set_window_layer_unless_explicitly_set(source_window_id, LAYER_BELOW, window_manager);
 
-        let Some(view) = space_manager.view.find(&destination_space_id) else {
+        let Some(view) = space_manager.view.get(&destination_space_id) else {
             return;
         };
         let Some(node) = view.find_node(destination_node) else {
@@ -270,11 +270,11 @@ pub(crate) fn swap_dropped_window_with_destination_window(
 ) {
     let source_view_insertion_point = space_manager
         .view
-        .find(&source_space_id)
+        .get(&source_space_id)
         .map_or(WindowId(0), |view| view.insertion_point);
     let destination_view_insertion_point = space_manager
         .view
-        .find(&destination_space_id)
+        .get(&destination_space_id)
         .map_or(WindowId(0), |view| view.insertion_point);
     if is_window_in_node(
         source_space_id,
@@ -282,7 +282,7 @@ pub(crate) fn swap_dropped_window_with_destination_window(
         source_view_insertion_point,
         space_manager,
     ) {
-        if let Some(source_view) = space_manager.view.find_mut(&source_space_id) {
+        if let Some(source_view) = space_manager.view.get_mut(&source_space_id) {
             source_view.insertion_point = destination_window_id;
         }
     } else if is_window_in_node(
@@ -291,7 +291,7 @@ pub(crate) fn swap_dropped_window_with_destination_window(
         destination_view_insertion_point,
         space_manager,
     ) {
-        if let Some(destination_view) = space_manager.view.find_mut(&destination_space_id) {
+        if let Some(destination_view) = space_manager.view.get_mut(&destination_space_id) {
             destination_view.insertion_point = source_window_id;
         }
     }
@@ -307,7 +307,7 @@ pub(crate) fn swap_dropped_window_with_destination_window(
     if source_space_id != destination_space_id {
         let source_node_window_list: Vec<WindowId> = space_manager
             .view
-            .find(&source_space_id)
+            .get(&source_space_id)
             .and_then(|view| view.find_node(source_node_id))
             .map_or(Vec::new(), |node| {
                 node.window_list[..node.window_count as usize].to_vec()
@@ -328,7 +328,7 @@ pub(crate) fn swap_dropped_window_with_destination_window(
 
         let destination_node_window_list: Vec<WindowId> = space_manager
             .view
-            .find(&destination_space_id)
+            .get(&destination_space_id)
             .and_then(|view| view.find_node(destination_node_id))
             .map_or(Vec::new(), |node| {
                 node.window_list[..node.window_count as usize].to_vec()
@@ -382,12 +382,12 @@ pub(crate) fn warp_dropped_window_beside_destination_window(
 ) {
     let source_node = space_manager
         .view
-        .find(&source_space_id)
+        .get(&source_space_id)
         .and_then(|view| view.find_node(source_node_id))
         .map(|node| (node.parent, node.window_count));
     let destination_node_parent = space_manager
         .view
-        .find(&destination_space_id)
+        .get(&destination_space_id)
         .and_then(|view| view.find_node(destination_node_id))
         .and_then(|node| node.parent);
     let Some((source_node_parent, source_node_window_count)) = source_node else {
@@ -404,7 +404,7 @@ pub(crate) fn warp_dropped_window_beside_destination_window(
         };
         let Some(destination_node_parent) = space_manager
             .view
-            .find_mut(&destination_space_id)
+            .get_mut(&destination_space_id)
             .and_then(|view| view.find_node_mut(destination_node_parent))
         else {
             return;
@@ -427,7 +427,7 @@ pub(crate) fn warp_dropped_window_beside_destination_window(
         }
     } else if let Some(destination_node) = space_manager
         .view
-        .find_mut(&destination_space_id)
+        .get_mut(&destination_space_id)
         .and_then(|view| view.find_node_mut(destination_node_id))
     {
         destination_node.split = split;
@@ -475,7 +475,7 @@ pub(crate) fn warp_dropped_window_beside_destination_window(
     if let Some(source_node_add) = source_node_add {
         let source_node_add_parent = space_manager
             .view
-            .find(&destination_space_id)
+            .get(&destination_space_id)
             .and_then(|view| view.find_node(source_node_add))
             .and_then(|node| node.parent);
         let source_node_remove = source_node_remove.map(|node_id| (source_space_id, node_id));
@@ -552,7 +552,7 @@ pub(crate) fn adjust_split_ratios_to_mouse_moved_window_or_restore_its_frame(
     let mut success = true;
 
     'end: {
-        let view_layout = space_manager.view.find(&space_id).map(|view| view.layout);
+        let view_layout = space_manager.view.get(&space_id).map(|view| view.layout);
         if view_layout != Some(ViewLayout::BinarySpacePartitioning) {
             success = false;
             break 'end;

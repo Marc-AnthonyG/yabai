@@ -158,7 +158,7 @@ pub(crate) fn handle_display_changed_event(
                 window_manager,
                 space_manager,
             );
-            if let Some(view) = space_manager.view.find_mut(&view) {
+            if let Some(view) = space_manager.view.get_mut(&view) {
                 view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
         }

@@ -70,7 +70,7 @@ pub(crate) fn start_observing_window_notifications_reporting_whether_all_registe
 ) -> bool {
     let observer_ref = window
         .application
-        .and_then(|process_id| window_manager.application.find(&process_id))
+        .and_then(|process_id| window_manager.application.get(&process_id))
         .map(|application| application.observer_ref);
     let Some(observer) = observer_ref.and_then(|observer_ref| unsafe { observer_ref.as_ref() })
     else {
@@ -127,7 +127,7 @@ pub(crate) fn stop_observing_window_notifications(
 
     let observer_ref = window
         .application
-        .and_then(|process_id| window_manager.application.find(&process_id))
+        .and_then(|process_id| window_manager.application.get(&process_id))
         .and_then(|application| NonNull::new(application.observer_ref))
         .map(|observer| CFRetainedAssumedSendAndSync(unsafe { CFRetained::retain(observer) }));
 
@@ -184,7 +184,7 @@ pub(crate) fn request_skylight_notifications_for_windows_that_need_them(
         for (space_id, node_id) in window_manager.insert_feedback.values() {
             let Some(node) = space_manager
                 .view
-                .find(space_id)
+                .get(space_id)
                 .and_then(|view| view.find_node(*node_id))
             else {
                 continue;

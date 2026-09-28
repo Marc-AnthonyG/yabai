@@ -115,7 +115,7 @@ pub(crate) fn focus_the_window_at_point_the_way_focus_follows_mouse_does(
                         continue;
                     };
 
-                    let Some(child_record) = window_manager.window.find(&child) else {
+                    let Some(child_record) = window_manager.window.get(&child) else {
                         continue;
                     };
                     let role = window_role(child_record);
@@ -137,9 +137,9 @@ pub(crate) fn focus_the_window_at_point_the_way_focus_follows_mouse_does(
 
             let window_process_serial_number = window_manager
                 .window
-                .find(&window)
+                .get(&window)
                 .and_then(|window| window.application)
-                .and_then(|application| window_manager.application.find(&application))
+                .and_then(|application| window_manager.application.get(&application))
                 .map(|application| application.process_serial_number);
             let Some(window_process_serial_number) = window_process_serial_number else {
                 return;
@@ -175,7 +175,7 @@ pub(crate) fn focus_the_window_at_point_the_way_focus_follows_mouse_does(
                     let Some(sub_window) = sub_window else {
                         continue;
                     };
-                    let Some(sub_window_record) = window_manager.window.find(&sub_window) else {
+                    let Some(sub_window_record) = window_manager.window.get(&sub_window) else {
                         continue;
                     };
 
@@ -195,7 +195,7 @@ pub(crate) fn focus_the_window_at_point_the_way_focus_follows_mouse_does(
 
                     let window_frame = window_manager
                         .window
-                        .find(&window)
+                        .get(&window)
                         .map(|window| window.frame);
                     if let Some(window_frame) = window_frame
                         && CGRectContainsRect(window_frame, sub_window_record.frame)
@@ -207,13 +207,13 @@ pub(crate) fn focus_the_window_at_point_the_way_focus_follows_mouse_does(
             }
 
             if !occludes_window {
-                let Some(window_record) = window_manager.window.find(&window) else {
+                let Some(window_record) = window_manager.window.get(&window) else {
                     return;
                 };
                 let window_element_ref = window_record.element_ref;
                 let window_process_serial_number = window_record
                     .application
-                    .and_then(|application| window_manager.application.find(&application))
+                    .and_then(|application| window_manager.application.get(&application))
                     .map(|application| application.process_serial_number);
                 let Some(window_process_serial_number) = window_process_serial_number else {
                     return;

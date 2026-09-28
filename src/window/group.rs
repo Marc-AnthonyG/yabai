@@ -29,7 +29,7 @@ pub(crate) fn toggle_group_of_window(
     };
     if space_manager
         .view
-        .find(&space_id)
+        .get(&space_id)
         .is_none_or(|view| view.layout != ViewLayout::BinarySpacePartitioning)
     {
         return WindowOperationOutcome::InvalidSourceView;
@@ -40,7 +40,7 @@ pub(crate) fn toggle_group_of_window(
 
     let is_already_a_group = space_manager
         .view
-        .find(&space_id)
+        .get(&space_id)
         .is_some_and(|view| is_node_a_group(view, view.node(node_id), window_manager));
     if is_already_a_group {
         ungroup_node_giving_each_window_its_own_tile(
@@ -69,7 +69,7 @@ fn ungroup_node_giving_each_window_its_own_tile(
     mouse_drag_state: &mut MouseDragState,
 ) {
     let Some((front_window, windows_leaving_the_group)) =
-        space_manager.view.find(&space_id).map(|view| {
+        space_manager.view.get(&space_id).map(|view| {
             let node = view.node(node_id);
             let front_window = node.window_order[0];
             let windows_leaving_the_group: Vec<WindowId> = node.window_list
@@ -117,7 +117,7 @@ fn ungroup_node_giving_each_window_its_own_tile(
 
     let auto_balance = space_manager
         .view
-        .find(&space_id)
+        .get(&space_id)
         .map_or(WindowNodeSplit::None as u32, |view| view.auto_balance);
     if auto_balance != WindowNodeSplit::None as u32 {
         balance_split_ratios_below_node_giving_each_leaf_an_equal_share(

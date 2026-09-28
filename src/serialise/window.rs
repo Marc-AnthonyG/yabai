@@ -156,7 +156,7 @@ pub(crate) fn write_tracked_window_as_json_object(
         }));
     }
 
-    let Some(window) = window_manager.window.find(&window_id) else {
+    let Some(window) = window_manager.window.get(&window_id) else {
         return;
     };
 
@@ -173,7 +173,7 @@ pub(crate) fn write_tracked_window_as_json_object(
 
     let application = window
         .application
-        .and_then(|process_id| window_manager.application.find(&process_id));
+        .and_then(|process_id| window_manager.application.get(&process_id));
     let application_is_hidden = application.is_some_and(|application| application.is_hidden);
 
     let mut did_output = false;
@@ -369,7 +369,7 @@ pub(crate) fn write_tracked_window_as_json_object(
 
         let mut split_type: usize = 0;
         if let (Some(view), Some(node)) = (view, node) {
-            if let Some(view) = space_manager.view.find(&view) {
+            if let Some(view) = space_manager.view.get(&view) {
                 if let Some(parent) = view.find_node(node).and_then(|node| node.parent) {
                     if let Some(parent) = view.find_node(parent) {
                         split_type = parent.split as usize;
@@ -417,7 +417,7 @@ pub(crate) fn write_tracked_window_as_json_object(
         if let (Some(view), Some(node)) = (view, node) {
             let window_count = space_manager
                 .view
-                .find(&view)
+                .get(&view)
                 .and_then(|view| view.find_node(node))
                 .map_or(0, |node| node.window_count);
             if window_count > 1 {
@@ -487,7 +487,7 @@ pub(crate) fn write_tracked_window_as_json_object(
         if let (Some(view), Some(node)) = (view, node) {
             if let Some(node) = space_manager
                 .view
-                .find(&view)
+                .get(&view)
                 .and_then(|view| view.find_node(node))
             {
                 zoom_parent = node.zoom.is_some() && node.zoom == node.parent;
@@ -510,7 +510,7 @@ pub(crate) fn write_tracked_window_as_json_object(
         if let (Some(view), Some(node)) = (view, node) {
             if let Some(node) = space_manager
                 .view
-                .find(&view)
+                .get(&view)
                 .and_then(|view| view.find_node(node))
             {
                 zoom_fullscreen = node.zoom.is_some() && node.zoom == Some(ROOT_NODE_ID);

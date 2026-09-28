@@ -84,7 +84,7 @@ pub(crate) fn track_newly_discovered_window_applying_its_rules(
     let window_subrole = window_subrole_as_string(&window);
     let application_name = window
         .application
-        .and_then(|application_process_id| window_manager.application.find(&application_process_id))
+        .and_then(|application_process_id| window_manager.application.get(&application_process_id))
         .map(|application| Arc::clone(&application.name));
     crate::debug!(
         "{}:{} {} - {} ({}:{}:{})\n",
@@ -164,7 +164,7 @@ pub(crate) fn track_newly_discovered_window_applying_its_rules(
         );
 
         if is_window_eligible_for_management(window_id, window_manager) {
-            if let Some(window) = window_manager.window.find_mut(&window_id) {
+            if let Some(window) = window_manager.window.get_mut(&window_id) {
                 window.is_eligible = true;
             }
             apply_effects_other_than_manage_of_matching_rules_to_window(
@@ -189,13 +189,13 @@ pub(crate) fn track_newly_discovered_window_applying_its_rules(
 
             let application_is_hidden = window_manager
                 .application
-                .find(&process_id)
+                .get(&process_id)
                 .is_some_and(|application| application.is_hidden);
             if application_is_hidden {
                 return Some(window_id);
             }
 
-            let Some(window) = window_manager.window.find_mut(&window_id) else {
+            let Some(window) = window_manager.window.get_mut(&window_id) else {
                 return Some(window_id);
             };
             if is_window_flag_set(window, WindowFlag::MINIMIZED) {
@@ -229,7 +229,7 @@ pub(crate) fn track_newly_discovered_window_applying_its_rules(
                 text_or_printf_null_placeholder(application_name.as_deref()),
                 window_id.0 as i32
             );
-            if let Some(window) = window_manager.window.find_mut(&window_id) {
+            if let Some(window) = window_manager.window.get_mut(&window_id) {
                 set_window_flag(window, WindowFlag::FLOATING);
             }
 
@@ -260,7 +260,7 @@ pub(crate) fn track_newly_discovered_window_applying_its_rules(
             text_or_printf_null_placeholder(application_name.as_deref()),
             window_id.0 as i32
         );
-        if let Some(window) = window_manager.window.find_mut(&window_id) {
+        if let Some(window) = window_manager.window.get_mut(&window_id) {
             set_window_flag(window, WindowFlag::FLOATING);
         }
 
@@ -296,7 +296,7 @@ pub(crate) fn track_untracked_windows_of_application_applying_one_shot_rules(
     mouse_drag_state: &mut MouseDragState,
     mission_control_mode: &mut MissionControlMode,
 ) -> Vec<WindowId> {
-    let Some(application) = window_manager.application.find(&process_id) else {
+    let Some(application) = window_manager.application.get(&process_id) else {
         return Vec::new();
     };
     let Some(window_list) = copy_accessibility_windows_of_application(application) else {
@@ -383,7 +383,7 @@ pub(crate) fn query_application_windows_on_every_space(
     };
 
     let connection_id = match process_id {
-        Some(process_id) => match window_manager.application.find(&process_id) {
+        Some(process_id) => match window_manager.application.get(&process_id) {
             Some(application) => application.connection,
             None => return None,
         },
@@ -411,7 +411,7 @@ pub(crate) fn track_existing_windows_of_application_including_those_on_inactive_
     };
     let global_window_count = global_window_list.len() as i32;
 
-    let Some(application) = window_manager.application.find(&process_id) else {
+    let Some(application) = window_manager.application.get(&process_id) else {
         return result;
     };
     let application_name = Arc::clone(&application.name);
@@ -657,7 +657,7 @@ pub(crate) fn retry_tracking_windows_of_applications_with_unresolved_windows(
         let process_id = window_manager.applications_to_refresh[index as usize];
         let application_name = window_manager
             .application
-            .find(&process_id)
+            .get(&process_id)
             .map(|application| Arc::clone(&application.name));
         crate::debug!(
             "{}: {} has windows that are not yet resolved\n",
@@ -693,8 +693,6 @@ pub(crate) fn start_tracking_running_applications_and_their_windows(
 ) {
     objc2::rc::autoreleasepool(|_pool| {
         let process_list: Vec<Arc<Process>> = PROCESS_TABLE
-            .get()
-            .unwrap()
             .lock()
             .unwrap()
             .values()
@@ -745,10 +743,10 @@ pub(crate) fn start_tracking_running_applications_and_their_windows(
         window_manager.focused_window_id = window_id;
         if let Some(application) = window_manager
             .window
-            .find(&window_id)
+            .get(&window_id)
             .and_then(|window| window.application)
             .and_then(|application_process_id| {
-                window_manager.application.find(&application_process_id)
+                window_manager.application.get(&application_process_id)
             })
         {
             window_manager.focused_window_process_serial_number = application.process_serial_number;

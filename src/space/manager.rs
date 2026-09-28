@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use crate::display::identity::query_displays_active_for_drawing;
 use crate::display::manager::DisplayManager;
 use crate::display::spaces::{query_current_space_of_display, query_spaces_of_display};
@@ -18,11 +20,10 @@ use crate::space::focus::query_current_space_of_the_focused_display;
 use crate::space::labels::{SpaceLabel, label_of_space};
 use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
 use crate::support::handles::{DisplayId, SpaceId};
-use crate::support::table::Table;
 use crate::window::manager::WindowManager;
 
 pub(crate) struct SpaceManager {
-    pub(crate) view: Table<SpaceId, View>,
+    pub(crate) view: BTreeMap<SpaceId, View>,
     pub(crate) current_space_id: SpaceId,
     pub(crate) last_space_id: SpaceId,
     pub(crate) did_begin: bool,
@@ -43,17 +44,13 @@ pub(crate) struct SpaceManager {
     pub(crate) insert_feedback_fade_in_step_is_scheduled: bool,
 }
 
-pub(crate) fn hash_view_key(key: &SpaceId) -> u64 {
-    key.0
-}
-
 pub(crate) fn find_or_create_view_for_space(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
 ) -> SpaceId {
-    if space_manager.view.find(&space_id).is_none() {
+    if !space_manager.view.contains_key(&space_id) {
         create_view_for_space_from_global_settings(
             space_id,
             display_manager,
@@ -72,7 +69,7 @@ pub(crate) fn recompute_view_areas_and_move_its_windows_into_them(
 ) {
     let space_id =
         find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return;
     };
     if view.layout == ViewLayout::Float {
@@ -100,7 +97,7 @@ pub(crate) fn mark_view_areas_out_of_date(
 ) {
     let space_id =
         find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
-    let Some(view) = space_manager.view.find_mut(&space_id) else {
+    let Some(view) = space_manager.view.get_mut(&space_id) else {
         return;
     };
     if view.layout == ViewLayout::Float {
@@ -190,7 +187,9 @@ pub(crate) fn reattach_views_to_spaces_of_added_display_by_uuid(
 
     let mut view_list: Vec<Option<SpaceId>> = space_manager
         .view
-        .keys_in_bucket_order()
+        .keys()
+        .copied()
+        .collect::<Vec<_>>()
         .into_iter()
         .map(Some)
         .collect();
@@ -213,7 +212,7 @@ pub(crate) fn reattach_views_to_spaces_of_added_display_by_uuid(
             };
             let Some(view_uuid) = space_manager
                 .view
-                .find(&view_space_id)
+                .get(&view_space_id)
                 .and_then(|view| view.uuid.as_ref())
             else {
                 continue;
@@ -234,10 +233,8 @@ pub(crate) fn reattach_views_to_spaces_of_added_display_by_uuid(
                 view.space_id = space_id;
                 view.uuid = Some(CFRetainedAssumedSendAndSync(uuid.clone()));
 
-                let view_is_kept_by_the_table = space_manager.view.find(&space_id).is_none();
-                space_manager
-                    .view
-                    .add_unless_key_already_present(space_id, view);
+                let view_is_kept_by_the_table = !space_manager.view.contains_key(&space_id);
+                space_manager.view.entry(space_id).or_insert(view);
                 if view_is_kept_by_the_table {
                     point_view_handles_at_rekeyed_views(
                         window_manager,
@@ -276,7 +273,7 @@ pub(crate) fn start_space_manager_creating_a_view_for_every_space(
     space_manager.window_zoom_persist = true;
     space_manager.labels = Vec::new();
     space_manager.skip_window_focus_animation = false;
-    space_manager.view = Table::new(23, hash_view_key);
+    space_manager.view = BTreeMap::new();
 
     let display_list = query_displays_active_for_drawing();
     let display_count = display_list.len() as i32;
@@ -305,7 +302,7 @@ pub(crate) fn start_space_manager_creating_a_view_for_every_space(
 #[cfg(test)]
 pub(crate) fn create_space_manager_without_any_view_with_its_initial_settings() -> SpaceManager {
     SpaceManager {
-        view: Table::new(23, hash_view_key),
+        view: BTreeMap::new(),
         current_space_id: SpaceId(0),
         last_space_id: SpaceId(0),
         did_begin: false,

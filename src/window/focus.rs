@@ -56,7 +56,7 @@ pub(crate) fn warp_cursor_to_window_center_if_mouse_follows_focus(
     window_manager: &mut WindowManager,
     window_id: WindowId,
 ) {
-    let Some(window) = window_manager.window.find(&window_id) else {
+    let Some(window) = window_manager.window.get(&window_id) else {
         return;
     };
 
@@ -199,12 +199,13 @@ pub(crate) fn focus_and_raise_window_of_process(
 }
 
 pub(crate) fn focus_and_raise_tracked_window(window_manager: &WindowManager, window_id: WindowId) {
-    let Some(window) = window_manager.window.find(&window_id) else {
+    let Some(window) = window_manager.window.get(&window_id) else {
         return;
     };
-    let Some(application) = window.application.and_then(|application_process_id| {
-        window_manager.application.find(&application_process_id)
-    }) else {
+    let Some(application) = window
+        .application
+        .and_then(|application_process_id| window_manager.application.get(&application_process_id))
+    else {
         return;
     };
 
@@ -234,7 +235,7 @@ pub(crate) fn query_focused_tracked_window(window_manager: &mut WindowManager) -
     let Some(application_process_id) = query_focused_tracked_application(window_manager) else {
         return None;
     };
-    let Some(application) = window_manager.application.find(&application_process_id) else {
+    let Some(application) = window_manager.application.get(&application_process_id) else {
         return None;
     };
 
@@ -295,9 +296,9 @@ pub(crate) fn respond_to_window_receiving_focus(
     window_manager.focused_window_id = window_id;
     let application_process_serial_number = window_manager
         .window
-        .find(&window_id)
+        .get(&window_id)
         .and_then(|window| window.application)
-        .and_then(|application_process_id| window_manager.application.find(&application_process_id))
+        .and_then(|application_process_id| window_manager.application.get(&application_process_id))
         .map(|application| application.process_serial_number);
     if let Some(application_process_serial_number) = application_process_serial_number {
         window_manager.focused_window_process_serial_number = application_process_serial_number;
@@ -320,7 +321,7 @@ fn bring_window_to_the_front_of_its_stack(
     let Some(node_id) = leaf_holding_window(space_manager, space_id, window_id) else {
         return;
     };
-    let Some(view) = space_manager.view.find_mut(&space_id) else {
+    let Some(view) = space_manager.view.get_mut(&space_id) else {
         return;
     };
     let node = view.node_mut(node_id);

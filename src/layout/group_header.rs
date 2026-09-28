@@ -30,7 +30,7 @@ pub(crate) fn refresh_the_group_headers_of_view(
     if !is_space_visible_on_its_display(space_id) {
         return;
     }
-    let Some(view) = space_manager.view.find_mut(&space_id) else {
+    let Some(view) = space_manager.view.get_mut(&space_id) else {
         return;
     };
 
@@ -73,11 +73,11 @@ fn publish_the_frames_of_the_visible_group_headers_to_the_mouse_tap(
 ) {
     let mut visible_header_frames = Vec::new();
     if !window_manager.group_headers_are_hidden_during_mission_control {
-        for space_id in space_manager.view.keys_in_bucket_order() {
+        for space_id in space_manager.view.keys().copied().collect::<Vec<_>>() {
             if !is_space_visible_on_its_display(space_id) {
                 continue;
             }
-            let Some(view) = space_manager.view.find(&space_id) else {
+            let Some(view) = space_manager.view.get(&space_id) else {
                 continue;
             };
             for node in view.nodes.iter().flatten() {
@@ -106,7 +106,7 @@ pub(crate) fn refresh_the_group_headers_of_every_view(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
 ) {
-    for space_id in space_manager.view.keys_in_bucket_order() {
+    for space_id in space_manager.view.keys().copied().collect::<Vec<_>>() {
         refresh_the_group_headers_of_view(space_id, space_manager, window_manager);
     }
 }
@@ -122,7 +122,7 @@ pub(crate) fn keep_the_group_header_right_above_the_front_window_of_the_group_ho
     let Some(space_id) = space_managing_window(window_manager, window_id) else {
         return;
     };
-    let Some(view) = space_manager.view.find(&space_id) else {
+    let Some(view) = space_manager.view.get(&space_id) else {
         return;
     };
     for node in view.nodes.iter().flatten() {
@@ -138,8 +138,8 @@ pub(crate) fn hide_the_group_headers_of_every_view(
     space_manager: &mut SpaceManager,
     window_manager: &WindowManager,
 ) {
-    for space_id in space_manager.view.keys_in_bucket_order() {
-        let Some(view) = space_manager.view.find(&space_id) else {
+    for space_id in space_manager.view.keys().copied().collect::<Vec<_>>() {
+        let Some(view) = space_manager.view.get(&space_id) else {
             continue;
         };
         for node in view.nodes.iter().flatten() {
@@ -155,11 +155,11 @@ pub(crate) fn front_window_of_the_group_whose_header_holds_point(
     point: CGPoint,
     space_manager: &SpaceManager,
 ) -> Option<WindowId> {
-    for space_id in space_manager.view.keys_in_bucket_order() {
+    for space_id in space_manager.view.keys().copied().collect::<Vec<_>>() {
         if !is_space_visible_on_its_display(space_id) {
             continue;
         }
-        let Some(view) = space_manager.view.find(&space_id) else {
+        let Some(view) = space_manager.view.get(&space_id) else {
             continue;
         };
         for node in view.nodes.iter().flatten() {
@@ -177,11 +177,11 @@ pub(crate) fn window_whose_group_header_tab_holds_point(
     point: CGPoint,
     space_manager: &SpaceManager,
 ) -> Option<WindowId> {
-    for space_id in space_manager.view.keys_in_bucket_order() {
+    for space_id in space_manager.view.keys().copied().collect::<Vec<_>>() {
         if !is_space_visible_on_its_display(space_id) {
             continue;
         }
-        let Some(view) = space_manager.view.find(&space_id) else {
+        let Some(view) = space_manager.view.get(&space_id) else {
             continue;
         };
         for node in view.nodes.iter().flatten() {
@@ -248,7 +248,7 @@ fn plan_the_group_headers_of_view(
 }
 
 fn title_shown_on_the_tab_of_window(window_manager: &WindowManager, window_id: WindowId) -> String {
-    let Some(window) = window_manager.window.find(&window_id) else {
+    let Some(window) = window_manager.window.get(&window_id) else {
         return String::new();
     };
     let window_title = window
@@ -260,7 +260,7 @@ fn title_shown_on_the_tab_of_window(window_manager: &WindowManager, window_id: W
         .or_else(|| {
             window
                 .application
-                .and_then(|process_id| window_manager.application.find(&process_id))
+                .and_then(|process_id| window_manager.application.get(&process_id))
                 .map(|application| application.name.to_string())
         })
         .unwrap_or_default()

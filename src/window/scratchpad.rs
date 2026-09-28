@@ -147,7 +147,7 @@ pub(crate) fn assign_window_to_scratchpad_making_it_float(
     window_manager
         .scratchpad_window
         .push(Scratchpad { label, window_id });
-    if let Some(window) = window_manager.window.find_mut(&window_id) {
+    if let Some(window) = window_manager.window.get_mut(&window_id) {
         window.scratchpad = Some(window_scratchpad);
     }
     set_whether_window_floats(
@@ -174,7 +174,7 @@ pub(crate) fn remove_window_from_its_scratchpad(
 ) -> bool {
     for index in 0..window_manager.scratchpad_window.len() {
         if window_manager.scratchpad_window[index].window_id == window_id {
-            if let Some(window) = window_manager.window.find_mut(&window_id) {
+            if let Some(window) = window_manager.window.get_mut(&window_id) {
                 window.scratchpad = None;
             }
 

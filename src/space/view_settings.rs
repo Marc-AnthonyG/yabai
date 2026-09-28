@@ -45,7 +45,7 @@ fn retile_view_in_a_different_layout_remembering_its_groups(
     window_manager: &mut WindowManager,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    let Some(previous_layout) = space_manager.view.find(&space_id).map(|view| view.layout) else {
+    let Some(previous_layout) = space_manager.view.get(&space_id).map(|view| view.layout) else {
         return;
     };
     if previous_layout == view_layout {
@@ -55,7 +55,7 @@ fn retile_view_in_a_different_layout_remembering_its_groups(
         remember_the_groups_of_view_as_it_leaves_bsp(space_manager, space_id);
     }
 
-    let Some(view) = space_manager.view.find_mut(&space_id) else {
+    let Some(view) = space_manager.view.get_mut(&space_id) else {
         return;
     };
     view.layout = view_layout;
@@ -89,7 +89,7 @@ pub(crate) fn set_window_gap_of_space(
 ) -> bool {
     let space_id =
         find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
-    let Some(view) = space_manager.view.find_mut(&space_id) else {
+    let Some(view) = space_manager.view.get_mut(&space_id) else {
         return false;
     };
     if view.layout == ViewLayout::Float {
@@ -125,7 +125,7 @@ pub(crate) fn toggle_window_gap_of_space(
 ) -> bool {
     let space_id =
         find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
-    let Some(view) = space_manager.view.find_mut(&space_id) else {
+    let Some(view) = space_manager.view.get_mut(&space_id) else {
         return false;
     };
     if view.layout == ViewLayout::Float {
@@ -161,8 +161,8 @@ pub(crate) fn set_global_layout_applying_it_to_views_without_their_own(
     mouse_drag_state: &mut MouseDragState,
 ) {
     space_manager.layout = layout;
-    for space_id in space_manager.view.keys_in_bucket_order() {
-        let Some(view) = space_manager.view.find(&space_id) else {
+    for space_id in space_manager.view.keys().copied().collect::<Vec<_>>() {
+        let Some(view) = space_manager.view.get(&space_id) else {
             continue;
         };
         if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_LAYOUT) && is_user_space(space_id) {
@@ -185,8 +185,8 @@ pub(crate) fn set_global_window_gap_applying_it_to_views_without_their_own(
     window_manager: &mut WindowManager,
 ) {
     space_manager.window_gap = window_gap;
-    for space_id in space_manager.view.keys_in_bucket_order() {
-        let Some(view) = space_manager.view.find_mut(&space_id) else {
+    for space_id in space_manager.view.keys().copied().collect::<Vec<_>>() {
+        let Some(view) = space_manager.view.get_mut(&space_id) else {
             continue;
         };
         if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_WINDOW_GAP) {
@@ -213,8 +213,8 @@ pub(crate) fn set_global_top_padding_applying_it_to_views_without_their_own(
     window_manager: &mut WindowManager,
 ) {
     space_manager.top_padding = top_padding;
-    for space_id in space_manager.view.keys_in_bucket_order() {
-        let Some(view) = space_manager.view.find_mut(&space_id) else {
+    for space_id in space_manager.view.keys().copied().collect::<Vec<_>>() {
+        let Some(view) = space_manager.view.get_mut(&space_id) else {
             continue;
         };
         if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_TOP_PADDING) {
@@ -241,8 +241,8 @@ pub(crate) fn set_global_bottom_padding_applying_it_to_views_without_their_own(
     window_manager: &mut WindowManager,
 ) {
     space_manager.bottom_padding = bottom_padding;
-    for space_id in space_manager.view.keys_in_bucket_order() {
-        let Some(view) = space_manager.view.find_mut(&space_id) else {
+    for space_id in space_manager.view.keys().copied().collect::<Vec<_>>() {
+        let Some(view) = space_manager.view.get_mut(&space_id) else {
             continue;
         };
         if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_BOTTOM_PADDING) {
@@ -269,8 +269,8 @@ pub(crate) fn set_global_left_padding_applying_it_to_views_without_their_own(
     window_manager: &mut WindowManager,
 ) {
     space_manager.left_padding = left_padding;
-    for space_id in space_manager.view.keys_in_bucket_order() {
-        let Some(view) = space_manager.view.find_mut(&space_id) else {
+    for space_id in space_manager.view.keys().copied().collect::<Vec<_>>() {
+        let Some(view) = space_manager.view.get_mut(&space_id) else {
             continue;
         };
         if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_LEFT_PADDING) {
@@ -297,8 +297,8 @@ pub(crate) fn set_global_right_padding_applying_it_to_views_without_their_own(
     window_manager: &mut WindowManager,
 ) {
     space_manager.right_padding = right_padding;
-    for space_id in space_manager.view.keys_in_bucket_order() {
-        let Some(view) = space_manager.view.find_mut(&space_id) else {
+    for space_id in space_manager.view.keys().copied().collect::<Vec<_>>() {
+        let Some(view) = space_manager.view.get_mut(&space_id) else {
             continue;
         };
         if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_RIGHT_PADDING) {
@@ -355,7 +355,7 @@ pub(crate) fn set_padding_of_space(
 ) -> bool {
     let space_id =
         find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
-    let Some(view) = space_manager.view.find_mut(&space_id) else {
+    let Some(view) = space_manager.view.get_mut(&space_id) else {
         return false;
     };
     if view.layout == ViewLayout::Float {
@@ -397,7 +397,7 @@ pub(crate) fn toggle_padding_of_space(
 ) -> bool {
     let space_id =
         find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
-    let Some(view) = space_manager.view.find_mut(&space_id) else {
+    let Some(view) = space_manager.view.get_mut(&space_id) else {
         return false;
     };
     if view.layout == ViewLayout::Float {

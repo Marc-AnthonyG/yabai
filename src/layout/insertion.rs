@@ -34,7 +34,7 @@ pub(crate) fn area_the_insert_feedback_previews(
     let ratio = effective_ratio_of_node(space_id, node_id, space_manager);
     let gap = effective_window_gap_of_view(space_manager, space_id);
 
-    let view = space_manager.view.find(&space_id)?;
+    let view = space_manager.view.get(&space_id)?;
     let node = view.find_node(node_id)?;
     let insert_direction_the_view_layout_honours =
         if view.layout == ViewLayout::Stack && node.insert_direction != 0 {
@@ -65,7 +65,7 @@ pub(crate) fn show_insert_feedback_of_node(
 
     let Some(node) = space_manager
         .view
-        .find(&space_id)
+        .get(&space_id)
         .and_then(|view| view.find_node(node_id))
     else {
         return;
@@ -79,7 +79,7 @@ pub(crate) fn show_insert_feedback_of_node(
         );
         let Some(node) = space_manager
             .view
-            .find_mut(&space_id)
+            .get_mut(&space_id)
             .and_then(|view| view.find_node_mut(node_id))
         else {
             return;
@@ -88,7 +88,8 @@ pub(crate) fn show_insert_feedback_of_node(
         schedule_a_fade_in_step_unless_one_is_already_scheduled(space_manager);
         window_manager
             .insert_feedback
-            .add_unless_key_already_present(node_first_window_id, (space_id, node_id));
+            .entry(node_first_window_id)
+            .or_insert((space_id, node_id));
         if !is_running_on_macos_sequoia() && !is_running_on_macos_tahoe() {
             request_skylight_notifications_for_windows_that_need_them(
                 window_manager,
@@ -99,7 +100,7 @@ pub(crate) fn show_insert_feedback_of_node(
 
     let Some(feedback_window) = space_manager
         .view
-        .find(&space_id)
+        .get(&space_id)
         .and_then(|view| view.find_node(node_id))
         .and_then(|node| node.feedback_window.as_ref())
     else {
@@ -118,7 +119,7 @@ pub(crate) fn destroy_insert_feedback_of_node(
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
 ) {
-    let Some(view) = space_manager.view.find_mut(&space_id) else {
+    let Some(view) = space_manager.view.get_mut(&space_id) else {
         return;
     };
     let Some(node) = view.find_node_mut(node_id) else {
@@ -137,7 +138,7 @@ pub(crate) fn destroy_insert_feedback_of_node(
 
         let Some(node) = space_manager
             .view
-            .find_mut(&space_id)
+            .get_mut(&space_id)
             .and_then(|view| view.find_node_mut(node_id))
         else {
             return;
@@ -207,7 +208,7 @@ fn clear_the_pending_insertion_point_of_view(
 ) {
     let Some(insertion_point) = space_manager
         .view
-        .find(&space_id)
+        .get(&space_id)
         .map(|view| view.insertion_point)
     else {
         return;
@@ -227,7 +228,7 @@ fn clear_the_pending_insertion_point_of_view(
 
         if let Some(insert_node) = space_manager
             .view
-            .find_mut(&space_id)
+            .get_mut(&space_id)
             .and_then(|view| view.find_node_mut(insert_node_id))
         {
             insert_node.split = WindowNodeSplit::None;
@@ -238,7 +239,7 @@ fn clear_the_pending_insertion_point_of_view(
         }
     }
 
-    if let Some(view) = space_manager.view.find_mut(&space_id) {
+    if let Some(view) = space_manager.view.get_mut(&space_id) {
         view.insertion_point = WindowId(0);
     }
 }
@@ -329,9 +330,7 @@ mod tests {
         let mut space_manager = create_space_manager_without_any_view_with_its_initial_settings();
         space_manager.split_ratio = GLOBAL_SPLIT_RATIO;
         for view in views {
-            space_manager
-                .view
-                .add_unless_key_already_present(view.space_id, view);
+            space_manager.view.insert(view.space_id, view);
         }
         space_manager
     }
@@ -341,7 +340,7 @@ mod tests {
         space_id: SpaceId,
         insert_direction: i32,
     ) {
-        let view = space_manager.view.find_mut(&space_id).unwrap();
+        let view = space_manager.view.get_mut(&space_id).unwrap();
         let root = view.node_mut(ROOT_NODE_ID);
         if let Some((split, child)) =
             window_node_split_and_child_placing_a_window_inserted_in_direction(insert_direction)
@@ -378,7 +377,7 @@ mod tests {
     ) -> Area {
         space_manager
             .view
-            .find(&space_id)
+            .get(&space_id)
             .unwrap()
             .nodes
             .iter()
@@ -468,7 +467,7 @@ mod tests {
                 )]);
             space_manager
                 .view
-                .find_mut(&space_id)
+                .get_mut(&space_id)
                 .unwrap()
                 .node_mut(ROOT_NODE_ID)
                 .insert_direction = insert_direction;
@@ -569,7 +568,7 @@ mod tests {
         space_manager: &SpaceManager,
         space_id: SpaceId,
     ) -> (WindowId, WindowNodeSplit, WindowNodeChild, i32) {
-        let view = space_manager.view.find(&space_id).unwrap();
+        let view = space_manager.view.get(&space_id).unwrap();
         let root = view.node(ROOT_NODE_ID);
         (
             view.insertion_point,
@@ -694,7 +693,7 @@ mod tests {
         {
             let root = space_manager
                 .view
-                .find_mut(&space_id)
+                .get_mut(&space_id)
                 .unwrap()
                 .node_mut(ROOT_NODE_ID);
             root.split = WindowNodeSplit::Horizontal;
@@ -725,7 +724,7 @@ mod tests {
         views
             .space_manager
             .view
-            .find_mut(&views.first_space_id)
+            .get_mut(&views.first_space_id)
             .unwrap()
             .insertion_point = WindowId(404);
 
@@ -739,7 +738,7 @@ mod tests {
             views
                 .space_manager
                 .view
-                .find(&views.first_space_id)
+                .get(&views.first_space_id)
                 .unwrap()
                 .insertion_point
                 .0,

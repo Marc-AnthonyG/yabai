@@ -31,7 +31,7 @@ pub(crate) fn set_whether_window_floats(
     }
 
     if !force {
-        let Some(window) = window_manager.window.find(&window_id) else {
+        let Some(window) = window_manager.window.get(&window_id) else {
             return;
         };
         if !is_window_a_standard_window(window)
@@ -58,11 +58,11 @@ pub(crate) fn set_whether_window_floats(
             forget_managed_window(window_manager, window_id);
             apply_shadow_removal_mode_to_window(window_manager, window_id);
         }
-        if let Some(window) = window_manager.window.find_mut(&window_id) {
+        if let Some(window) = window_manager.window.get_mut(&window_id) {
             set_window_flag(window, WindowFlag::FLOATING);
         }
     } else {
-        let Some(window) = window_manager.window.find_mut(&window_id) else {
+        let Some(window) = window_manager.window.get_mut(&window_id) else {
             return;
         };
         clear_window_flag(window, WindowFlag::FLOATING);
@@ -116,13 +116,13 @@ pub(crate) fn set_whether_window_is_sticky(
                 forget_managed_window(window_manager, window_id);
                 apply_shadow_removal_mode_to_window(window_manager, window_id);
             }
-            if let Some(window) = window_manager.window.find_mut(&window_id) {
+            if let Some(window) = window_manager.window.get_mut(&window_id) {
                 set_window_flag(window, WindowFlag::STICKY);
             }
         }
     } else {
         if set_window_sticky_through_scripting_addition(window_id, false) {
-            let Some(window) = window_manager.window.find_mut(&window_id) else {
+            let Some(window) = window_manager.window.get_mut(&window_id) else {
                 return;
             };
             clear_window_flag(window, WindowFlag::STICKY);

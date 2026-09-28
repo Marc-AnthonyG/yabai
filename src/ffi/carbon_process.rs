@@ -6,7 +6,7 @@ use objc2_core_foundation::CFString;
 use objc2_core_graphics::CGError;
 
 #[repr(C)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ProcessSerialNumber {
     pub high_long_of_psn: u32,
     pub low_long_of_psn: u32,

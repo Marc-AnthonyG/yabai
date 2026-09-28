@@ -44,9 +44,10 @@ elaborates these decisions; none may reopen them.
    `rerun-if-changed` list, and generates `OUT_DIR/osax_common.rs` from `src/osax/common.h`,
    failing the build if the header cannot be parsed. Verified by spike: all of this works and
    the lipo'd binary carries the plist in both slices.
-10. The justfile keeps every user-facing make target as a recipe and drives two
-    `cargo build --target` invocations plus `lipo`. `asan`/`tsan` become host-only nightly
-    recipes. No CI is added.
+10. The justfile keeps every user-facing make target as a recipe and drives two `cargo build --target`
+    invocations plus `lipo`; the release build is `release`, and `install` builds, signs and
+    installs it in `/opt/homebrew/bin`, refreshes the scripting-addition sudoers hash and restarts
+    the launchd service. `asan`/`tsan` become host-only nightly recipes. No CI is added.
 11. Dependencies: `objc2`, `objc2-foundation`, `objc2-app-kit`, `objc2-core-foundation`,
     `objc2-core-graphics`, `objc2-application-services`, `objc2-core-video`, `block2`,
     `dispatch2`, `libc`. Nothing else: no `regex`, `serde`, `bitflags`, `crossbeam`,

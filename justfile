@@ -17,6 +17,9 @@ install_script := scripts_directory / "install.sh"
 install_script_version_line := "60"
 install_script_expected_hash_line := "61"
 codesigning_identity := "yabai-cert"
+installation_directory := "/opt/homebrew/bin"
+installed_yabai_binary := installation_directory / "yabai"
+scripting_addition_sudoers_file := "/private/etc/sudoers.d/yabai"
 
 apple_silicon_target := "aarch64-apple-darwin"
 intel_target := "x86_64-apple-darwin"
@@ -30,7 +33,34 @@ alias all := build
 [default]
 build: (build-universal-binary debug_profile_directory)
 
-install: (build-universal-binary release_profile_directory "--release")
+release: (build-universal-binary release_profile_directory "--release")
+
+install: release sign stop-installed-service-if-there-is-one replace-installed-binary-with-signed-build allow-installed-binary-to-load-scripting-addition-without-password start-installed-service
+
+[private]
+stop-installed-service-if-there-is-one:
+    if [ -x {{ installed_yabai_binary }} ]; then {{ installed_yabai_binary }} --stop-service || true; fi
+
+[private]
+replace-installed-binary-with-signed-build:
+    mkdir -p {{ installation_directory }}
+    cp {{ yabai_binary }} {{ installed_yabai_binary }}.new
+    mv -f {{ installed_yabai_binary }}.new {{ installed_yabai_binary }}
+
+[private]
+allow-installed-binary-to-load-scripting-addition-without-password:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    installed_binary_hash="$(shasum -a 256 {{ installed_yabai_binary }} | cut -d " " -f 1)"
+    sudoers_draft="$(mktemp)"
+    trap 'rm -f "$sudoers_draft"' EXIT
+    echo "$(whoami) ALL=(root) NOPASSWD: sha256:${installed_binary_hash} {{ installed_yabai_binary }} --load-sa" > "$sudoers_draft"
+    sudo visudo -cf "$sudoers_draft"
+    sudo install -m 0440 -o root -g wheel "$sudoers_draft" {{ scripting_addition_sudoers_file }}
+
+[private]
+start-installed-service:
+    {{ installed_yabai_binary }} --start-service
 
 asan: (build-sanitized-host-binary "address")
 
@@ -73,7 +103,7 @@ publish:
     sed -i '' "{{ install_script_version_line }}s/^VERSION=.*/VERSION=\"$({{ yabai_binary }} --version | cut -d "v" -f 2)\"/" {{ install_script }}
     sed -i '' "{{ install_script_expected_hash_line }}s/^EXPECTED_HASH=.*/EXPECTED_HASH=\"$(shasum -a 256 {{ build_directory }}/$({{ yabai_binary }} --version).tar.gz | cut -d " " -f 1)\"/" {{ install_script }}
 
-archive: man install sign icon
+archive: man release sign icon
     rm -rf {{ archive_directory }}
     mkdir -p {{ archive_directory }}
     cp -r {{ build_directory }} {{ archive_directory }}/

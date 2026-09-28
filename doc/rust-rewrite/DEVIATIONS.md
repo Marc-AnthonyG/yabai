@@ -593,7 +593,7 @@ Every place where the Rust daemon does not do exactly what the C did, merged fro
 `makefile:3` | `CLI_FLAGS`, an empty escape hatch appended to every compile | dropped; the escape hatch is `RUSTFLAGS=... just`, and no `-D`-style mechanism is invented
 `makefile:21-25` | `asan` and `tsan` rebuilt both arches with `-fsanitize=address,undefined` and `-fsanitize=thread,undefined` for a locally executed sanitizer run | the `asan` and `tsan` justfile recipes build a host-only `bin/yabai` on `cargo +nightly` with `RUSTFLAGS="-Zsanitizer=address"` / `"-Zsanitizer=thread"` and `-Zbuild-std`, which are nightly-only, on the dev profile because `lto = "fat"` conflicts with sanitizer instrumentation
 `makefile:21`, `:24` | the `undefined` half of `-fsanitize=address,undefined` and `-fsanitize=thread,undefined` | not translated; it has no Rust target and needs none
-`makefile:27` | `install` compiled with `-DNDEBUG -O3` | the `install` recipe builds with `--release` from the release profile directory; `-DNDEBUG` being release-only is the release profile's `debug-assertions = false` (§1.1)
+`makefile:27` | `install` compiled with `-DNDEBUG -O3` | the `release` recipe builds with `--release` from the release profile directory; `-DNDEBUG` being release-only is the release profile's `debug-assertions = false` (§1.1)
 `makefile:63-64` | `clean` removed `$(OSAX_SRC)`, the two generated `*_bin.c` files | the `clean` recipe runs `cargo clean`; the two generated files are no longer produced, because `build.rs` compiles and embeds the scripting addition
 
 ## `src/application.rs`

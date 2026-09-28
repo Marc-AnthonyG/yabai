@@ -7,8 +7,6 @@ libsystem calls and the wrapper that dispatches work onto the main queue.
 
 ## Notes
 
-- The dependency list is closed. A binding the crates lack is declared here, never
-  pulled in through another crate or generated.
 - A hand-written `extern` signature or struct layout that disagrees with what macOS exports is
   undefined behaviour the compiler cannot see. Packed Mach structs carry a `const` size
   assertion each; hard-coded sizes and offsets are the platform's, not guesses.

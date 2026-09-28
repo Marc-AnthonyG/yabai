@@ -19,34 +19,6 @@ pub(crate) fn daemon_fail_with_unknown_value_given_to_command_for_domain(
     ]);
 }
 
-pub(crate) fn daemon_fail_with_invalid_value_for_key(
-    response: &mut Response,
-    value: &[u8],
-    key: &[u8],
-) {
-    response.write_failure_pieces_unless_silent(&[
-        FailurePiece::Text("invalid value '"),
-        FailurePiece::Bytes(value),
-        FailurePiece::Text("' for key '"),
-        FailurePiece::Bytes(key),
-        FailurePiece::Text("'\n"),
-    ]);
-}
-
-pub(crate) fn daemon_fail_with_invalid_regex_pattern_for_key(
-    response: &mut Response,
-    value: &[u8],
-    key: &[u8],
-) {
-    response.write_failure_pieces_unless_silent(&[
-        FailurePiece::Text("invalid regex pattern '"),
-        FailurePiece::Bytes(value),
-        FailurePiece::Text("' for key '"),
-        FailurePiece::Bytes(key),
-        FailurePiece::Text("'\n"),
-    ]);
-}
-
 pub(crate) fn daemon_fail_with_unknown_command_for_domain(
     response: &mut Response,
     message_bytes: &[u8],

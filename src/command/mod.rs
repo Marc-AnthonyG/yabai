@@ -1,7 +1,9 @@
 pub mod config;
 pub mod not_yet_typed;
 pub mod query;
+pub mod rule;
 pub mod selectors;
+pub mod signal;
 pub mod values;
 
 use std::path::PathBuf;
@@ -11,6 +13,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::command::config::ConfigCommand;
 use crate::command::query::QueryCommand;
+use crate::command::rule::RuleCommand;
+use crate::command::signal::SignalCommand;
 
 #[derive(Parser)]
 #[command(
@@ -90,6 +94,12 @@ pub(crate) enum DaemonCommand {
     /// Print displays, spaces and windows as JSON
     #[command(subcommand)]
     Query(QueryCommand),
+    /// Add, apply, remove or list the rules new windows get
+    #[command(subcommand)]
+    Rule(RuleCommand),
+    /// Add, remove or list the shell commands run after events
+    #[command(subcommand)]
+    Signal(SignalCommand),
     #[command(skip)]
     NotYetTyped { arguments: Vec<String> },
 }

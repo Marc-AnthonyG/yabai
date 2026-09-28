@@ -1,6 +1,4 @@
 /* --------------------------------COMMON ARGUMENTS----------------------------- */
-pub(crate) const ARGUMENT_COMMON_VALUE_ON: &str = "on";
-pub(crate) const ARGUMENT_COMMON_VALUE_OFF: &str = "off";
 pub(crate) const ARGUMENT_COMMON_SELECTOR_PREVIOUS: &str = "prev";
 pub(crate) const ARGUMENT_COMMON_SELECTOR_NEXT: &str = "next";
 pub(crate) const ARGUMENT_COMMON_SELECTOR_FIRST: &str = "first";

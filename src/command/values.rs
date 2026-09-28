@@ -142,6 +142,72 @@ impl From<ExternalBarPadding> for String {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub(crate) struct GridPlacement {
+    pub(crate) rows: u32,
+    pub(crate) columns: u32,
+    pub(crate) column: u32,
+    pub(crate) row: u32,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+}
+
+impl FromStr for GridPlacement {
+    type Err = String;
+
+    fn from_str(text: &str) -> Result<GridPlacement, String> {
+        let refusal = || format!("'{text}' is not ROWS:COLUMNS:X:Y:WIDTH:HEIGHT");
+        let numbers: Vec<u32> = text
+            .split(':')
+            .map(|number| number.parse().map_err(|_| refusal()))
+            .collect::<Result<_, _>>()?;
+        let [rows, columns, column, row, width, height] =
+            numbers.try_into().map_err(|_| refusal())?;
+        if rows == 0 || columns == 0 {
+            return Err(String::from("a grid needs at least one row and one column"));
+        }
+        Ok(GridPlacement {
+            rows,
+            columns,
+            column,
+            row,
+            width,
+            height,
+        })
+    }
+}
+
+impl fmt::Display for GridPlacement {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            formatter,
+            "{}:{}:{}:{}:{}:{}",
+            self.rows, self.columns, self.column, self.row, self.width, self.height
+        )
+    }
+}
+
+impl TryFrom<String> for GridPlacement {
+    type Error = String;
+
+    fn try_from(text: String) -> Result<GridPlacement, String> {
+        text.parse()
+    }
+}
+
+impl From<GridPlacement> for String {
+    fn from(grid_placement: GridPlacement) -> String {
+        grid_placement.to_string()
+    }
+}
+
+pub(crate) fn parse_regular_expression_that_compiles(text: &str) -> Result<String, String> {
+    regex::Regex::new(text)
+        .map(|_| text.to_owned())
+        .map_err(|error| format!("'{text}' is not a regular expression: {error}"))
+}
+
 // serde reads a null as None, so without this a filter given without a selector, serialised as
 // null, would come back as no filter at all.
 pub(crate) fn deserialize_a_present_field_as_some<'de, Deserializer, Value>(
@@ -218,10 +284,11 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        ExternalBarPadding, OnOrOff, PackedArgbColor,
+        ExternalBarPadding, GridPlacement, OnOrOff, PackedArgbColor,
         parse_finite_non_negative_duration_in_seconds, parse_opacity_above_zero_up_to_one,
         parse_opacity_from_zero_to_one, parse_packed_argb_color_other_than_zero,
-        parse_positive_font_size_in_points, parse_split_ratio_from_one_tenth_to_nine_tenths,
+        parse_positive_font_size_in_points, parse_regular_expression_that_compiles,
+        parse_split_ratio_from_one_tenth_to_nine_tenths,
     };
     use crate::display::manager::ExternalBarMode;
 
@@ -323,6 +390,42 @@ mod tests {
                 "{refused:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_grid_placement_is_six_numbers_with_at_least_one_row_and_one_column() {
+        let grid_placement: GridPlacement = "4:4:1:2:2:1".parse().unwrap();
+
+        assert_eq!(
+            grid_placement,
+            GridPlacement {
+                rows: 4,
+                columns: 4,
+                column: 1,
+                row: 2,
+                width: 2,
+                height: 1,
+            }
+        );
+        assert_eq!(grid_placement.to_string(), "4:4:1:2:2:1");
+        for refused in [
+            "4:4:1:2:2",
+            "4:4:1:2:2:1:0",
+            "0:4:0:0:1:1",
+            "4:0:0:0:1:1",
+            "4:4:-1:0:1:1",
+        ] {
+            assert!(refused.parse::<GridPlacement>().is_err(), "{refused:?}");
+        }
+    }
+
+    #[test]
+    fn a_pattern_is_taken_only_when_it_compiles() {
+        assert_eq!(
+            parse_regular_expression_that_compiles("^(Finder|Calculator)$"),
+            Ok(String::from("^(Finder|Calculator)$"))
+        );
+        assert!(parse_regular_expression_that_compiles("(unclosed").is_err());
     }
 
     #[test]

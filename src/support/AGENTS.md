@@ -11,8 +11,8 @@ colours) that several modules share.
 
 - Nothing here depends on a manager or on `EventLoopOwnedState`; the only crate modules it
   reaches are `ffi` and the process-wide statics. Any thread may call into it.
-- Layer values index their name table. The easing curves carry their command-line and JSON
-  spellings as clap and serde derives.
+- The window sub-layer and the easing curves carry their command-line and JSON spellings as clap
+  and serde derives; a sub-layer turns into the layer number the window server takes.
 - The response collects standard output until the first failure is written, then everything as
   failure text split into one failure per line; a silent response keeps no failure.
 - `error!` exits with a failure status and `require!` with success, so launchd does not restart the

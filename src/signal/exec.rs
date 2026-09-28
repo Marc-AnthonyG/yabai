@@ -1,8 +1,7 @@
 use std::process::Command;
 
-use crate::signal::definition::{
-    SIGNAL_TYPE_COUNT, SIGNAL_TYPE_NAMES, Signal, SignalPropertyRequirement, SignalType,
-};
+use crate::command::values::command_line_spelling_of;
+use crate::signal::definition::{SIGNAL_TYPE_COUNT, Signal, SignalPropertyRequirement, SignalType};
 use crate::signal::queue::PendingSignal;
 use crate::support::regex::is_subject_rejected_by_optional_pattern;
 
@@ -97,7 +96,7 @@ pub(crate) fn run_subscriber_commands_of_pending_signals_without_waiting_for_the
         crate::debug!(
             "{}: transmitting {} to {} subscriber(s)\n",
             "run_subscriber_commands_of_pending_signals_without_waiting_for_them",
-            SIGNAL_TYPE_NAMES[event_signal.signal_type as usize],
+            command_line_spelling_of(&event_signal.signal_type),
             subscribers.len()
         );
 
@@ -114,7 +113,7 @@ pub(crate) fn run_subscriber_commands_of_pending_signals_without_waiting_for_the
                 crate::debug!(
                     "{}: could not run the command of a {} subscriber: {}\n",
                     "run_subscriber_commands_of_pending_signals_without_waiting_for_them",
-                    SIGNAL_TYPE_NAMES[event_signal.signal_type as usize],
+                    command_line_spelling_of(&event_signal.signal_type),
                     error
                 );
             }

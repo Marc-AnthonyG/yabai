@@ -12,6 +12,7 @@ matching subscriber's command in a child process.
 - Delivery spawns one `/usr/bin/env sh -c` child per matching subscriber, with the `YABAI_*`
   variables added to the daemon's environment, and never waits for it: the daemon ignores
   SIGCHLD, so the system reaps it.
-- The signal type names are CLI and JSON spellings, and each discriminant indexes the per-type
-  subscription table; the first and last names are sentinels.
+- The signal type carries its command-line and JSON spelling (`window-focused`) as clap and serde
+  derives; `Unknown` is never accepted. Each discriminant indexes the per-type subscription
+  table.
 - Removal is `swap_remove`, so the indices a listing shows can change order after a removal.

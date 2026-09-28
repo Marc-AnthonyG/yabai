@@ -180,6 +180,26 @@ impl FromStr for StackPositionSelector {
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub(crate) enum IndexOrLabelSelector {
+    Index(u32),
+    Label(String),
+}
+
+impl FromStr for IndexOrLabelSelector {
+    type Err = String;
+
+    fn from_str(text: &str) -> Result<IndexOrLabelSelector, String> {
+        if text.is_empty() {
+            return Err(String::from("a selector cannot be empty"));
+        }
+        Ok(match text.parse() {
+            Ok(index) => IndexOrLabelSelector::Index(index),
+            Err(_) => IndexOrLabelSelector::Label(text.to_owned()),
+        })
+    }
+}
+
 enum IndexCountingFromOneOrLabel {
     Index(NonZeroU32),
     Label(String),
@@ -204,7 +224,8 @@ mod tests {
     use std::num::NonZeroU32;
 
     use super::{
-        CardinalDirection, DisplaySelector, SpaceSelector, StackPositionSelector, WindowSelector,
+        CardinalDirection, DisplaySelector, IndexOrLabelSelector, SpaceSelector,
+        StackPositionSelector, WindowSelector,
     };
 
     fn index(index: u32) -> NonZeroU32 {
@@ -300,5 +321,15 @@ mod tests {
         ] {
             assert!(refused.parse::<WindowSelector>().is_err(), "{refused:?}");
         }
+    }
+
+    #[test]
+    fn a_rule_or_signal_selector_is_an_index_from_zero_or_a_label() {
+        assert_eq!("0".parse(), Ok(IndexOrLabelSelector::Index(0)));
+        assert_eq!(
+            "screen_padding".parse(),
+            Ok(IndexOrLabelSelector::Label(String::from("screen_padding")))
+        );
+        assert!("".parse::<IndexOrLabelSelector>().is_err());
     }
 }

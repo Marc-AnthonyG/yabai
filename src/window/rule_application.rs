@@ -439,7 +439,7 @@ pub(crate) fn reapply_every_rule_except_one_shot_rules_to_every_root_window(
 }
 
 pub(crate) fn reapply_rule_at_index_to_every_root_window(
-    index: i32,
+    index: usize,
     process_manager: &mut ProcessManager,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
@@ -448,7 +448,7 @@ pub(crate) fn reapply_rule_at_index_to_every_root_window(
     mission_control_mode: &mut MissionControlMode,
 ) -> bool {
     for rule_index in 0..window_manager.rules.len() {
-        if rule_index as i32 == index {
+        if rule_index == index {
             if !window_manager.rules[rule_index]
                 .flags
                 .contains(RuleFlag::ONE_SHOT)
@@ -473,7 +473,7 @@ pub(crate) fn reapply_rule_at_index_to_every_root_window(
 }
 
 pub(crate) fn reapply_rule_with_label_to_every_root_window(
-    label: &[u8],
+    label: &str,
     process_manager: &mut ProcessManager,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
@@ -481,10 +481,8 @@ pub(crate) fn reapply_rule_with_label_to_every_root_window(
     mouse_drag_state: &mut MouseDragState,
     mission_control_mode: &mut MissionControlMode,
 ) -> bool {
-    let label = String::from_utf8_lossy(label);
-
     for rule_index in 0..window_manager.rules.len() {
-        if window_manager.rules[rule_index].label.as_deref() == Some(&*label) {
+        if window_manager.rules[rule_index].label.as_deref() == Some(label) {
             if !window_manager.rules[rule_index]
                 .flags
                 .contains(RuleFlag::ONE_SHOT)

@@ -10,10 +10,6 @@ pub(crate) const RULE_PROPERTY_OFF: i32 = 2;
 bitflags::bitflags! {
     #[derive(Clone, Copy, PartialEq, Eq, Default)]
     pub(crate) struct RuleFlag: u16 {
-        const APPLICATION_PATTERN_IS_VALID = 0x001;
-        const TITLE_PATTERN_IS_VALID = 0x002;
-        const ROLE_PATTERN_IS_VALID = 0x004;
-        const SUBROLE_PATTERN_IS_VALID = 0x008;
         const APPLICATION_PATTERN_IS_NEGATED = 0x010;
         const TITLE_PATTERN_IS_NEGATED = 0x020;
         const ROLE_PATTERN_IS_NEGATED = 0x040;
@@ -130,33 +126,29 @@ pub(crate) fn add_rule_replacing_any_with_the_same_label(
     window_manager: &mut WindowManager,
 ) {
     if let Some(label) = rule.label.as_deref() {
-        remove_rule_with_label(label.as_bytes(), window_manager);
+        remove_rule_with_label(label, window_manager);
     }
     window_manager.rules.push(rule);
 }
 
-pub(crate) fn remove_rule_at_index(index: i32, window_manager: &mut WindowManager) -> bool {
-    for rule_index in 0..window_manager.rules.len() {
-        if rule_index as i32 == index {
-            window_manager.rules.swap_remove(rule_index);
-            return true;
-        }
+pub(crate) fn remove_rule_at_index(index: usize, window_manager: &mut WindowManager) -> bool {
+    if index >= window_manager.rules.len() {
+        return false;
     }
-
-    false
+    window_manager.rules.swap_remove(index);
+    true
 }
 
-pub(crate) fn remove_rule_with_label(label: &[u8], window_manager: &mut WindowManager) -> bool {
-    let label = String::from_utf8_lossy(label);
-
-    for rule_index in 0..window_manager.rules.len() {
-        if window_manager.rules[rule_index].label.as_deref() == Some(&*label) {
-            window_manager.rules.swap_remove(rule_index);
-            return true;
-        }
-    }
-
-    false
+pub(crate) fn remove_rule_with_label(label: &str, window_manager: &mut WindowManager) -> bool {
+    let Some(rule_index) = window_manager
+        .rules
+        .iter()
+        .position(|rule| rule.label.as_deref() == Some(label))
+    else {
+        return false;
+    };
+    window_manager.rules.swap_remove(rule_index);
+    true
 }
 
 #[cfg(test)]

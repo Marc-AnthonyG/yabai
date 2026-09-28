@@ -18,7 +18,6 @@ use crate::state::process_wide::{
     SKYLIGHT_CONNECTION_ID,
 };
 use crate::support::handles::{NodeId, ROOT_NODE_ID, SpaceId, WindowId};
-use crate::support::layer::{LAYER_ABOVE, LAYER_BELOW, LAYER_NAMES, LAYER_NORMAL};
 use crate::window::manager::{WindowManager, space_managing_window};
 use crate::window::model::{
     WindowFlag, is_window_movable, is_window_on_more_than_one_space, is_window_resizable,
@@ -67,16 +66,15 @@ pub(crate) struct WindowSnapshot {
 }
 
 pub(crate) fn layer_name_of_window_level(level: i32) -> &'static str {
-    let layer = if Some(&level) == LAYER_BELOW_WINDOW_LEVEL.get() {
-        LAYER_BELOW
+    if Some(&level) == LAYER_BELOW_WINDOW_LEVEL.get() {
+        "below"
     } else if Some(&level) == LAYER_NORMAL_WINDOW_LEVEL.get() {
-        LAYER_NORMAL
+        "normal"
     } else if Some(&level) == LAYER_ABOVE_WINDOW_LEVEL.get() {
-        LAYER_ABOVE
+        "above"
     } else {
-        return "unknown";
-    };
-    LAYER_NAMES[layer as usize].unwrap_or("unknown")
+        "unknown"
+    }
 }
 
 pub(crate) fn snapshot_of_tracked_window(

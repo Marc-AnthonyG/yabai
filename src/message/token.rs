@@ -27,17 +27,6 @@ impl<'message> MessageCursor<'message> {
     pub(crate) fn bytes(&self) -> &[u8] {
         &*self.bytes
     }
-
-    pub(crate) fn bytes_mut(&mut self) -> &mut [u8] {
-        &mut *self.bytes
-    }
-
-    pub(crate) fn cursor_at(&mut self, at: usize) -> MessageCursor<'_> {
-        MessageCursor {
-            bytes: &mut *self.bytes,
-            at,
-        }
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -53,12 +42,6 @@ pub(crate) enum TokenValueType {
 pub(crate) struct TokenValue {
     pub(crate) token: Token,
     pub(crate) type_of_value: TokenValueType,
-}
-
-pub(crate) struct KeyValuePair {
-    pub(crate) key: usize,
-    pub(crate) value: usize,
-    pub(crate) exclusion: bool,
 }
 
 impl MessageCursor<'_> {
@@ -175,70 +158,11 @@ pub(crate) fn null_terminated_bytes_starting_at(message_bytes: &[u8], start: usi
     &message_bytes[start..end]
 }
 
-pub(crate) fn split_token_into_key_value_pair_in_place(
-    message_bytes: &mut [u8],
-    token_start: usize,
-) -> Option<KeyValuePair> {
-    let mut at = token_start;
-
-    while at < message_bytes.len() && message_bytes[at] != 0 {
-        let first_character = message_bytes[at];
-        let second_character = if at + 1 < message_bytes.len() {
-            message_bytes[at + 1]
-        } else {
-            0
-        };
-
-        if first_character == b'!' && second_character == b'=' {
-            break;
-        } else if first_character == b'=' {
-            break;
-        }
-
-        at += 1;
-    }
-
-    let first_character = if at < message_bytes.len() {
-        message_bytes[at]
-    } else {
-        0
-    };
-    let second_character = if at + 1 < message_bytes.len() {
-        message_bytes[at + 1]
-    } else {
-        0
-    };
-
-    let index = if first_character == b'!' && second_character == b'=' {
-        2
-    } else {
-        1
-    };
-    let check = if index == 2 { b'!' } else { b'=' };
-
-    if first_character != check {
-        return None;
-    }
-
-    let value = at + index;
-    if value < message_bytes.len() && message_bytes[value] != 0 {
-        message_bytes[at] = 0;
-        Some(KeyValuePair {
-            key: token_start,
-            value,
-            exclusion: index == 2,
-        })
-    } else {
-        None
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
         MessageCursor, Token, TokenValueType, is_token_equal_to, is_token_prefixed_by,
         null_terminated_bytes_starting_at, parse_token_into_typed_value,
-        split_token_into_key_value_pair_in_place,
     };
 
     #[derive(Debug, PartialEq)]
@@ -539,156 +463,5 @@ mod tests {
         assert_eq!(null_terminated_bytes_starting_at(&message, 3), b"dow");
         assert_eq!(null_terminated_bytes_starting_at(&message, 7), b"--focus");
         assert_eq!(null_terminated_bytes_starting_at(&message, 15), b"");
-    }
-
-    struct ExpectedKeyValuePair {
-        argument: &'static str,
-        value_offset: usize,
-        key: &'static str,
-        value: &'static str,
-        message_after_parsing: &'static [u8],
-    }
-
-    fn assert_parses_as_key_value_pair(
-        expected_pair: &ExpectedKeyValuePair,
-        expected_exclusion: bool,
-    ) {
-        let argument = expected_pair.argument;
-        let mut message = message_from_arguments(&[argument]);
-
-        let pair = split_token_into_key_value_pair_in_place(&mut message, 0)
-            .unwrap_or_else(|| panic!("{argument:?} should parse as a key-value pair"));
-
-        assert_eq!(
-            (pair.key, pair.value, pair.exclusion),
-            (0, expected_pair.value_offset, expected_exclusion),
-            "offsets and exclusion of {argument:?}"
-        );
-        assert_eq!(
-            null_terminated_bytes_starting_at(&message, pair.key),
-            expected_pair.key.as_bytes(),
-            "key of {argument:?}"
-        );
-        assert_eq!(
-            null_terminated_bytes_starting_at(&message, pair.value),
-            expected_pair.value.as_bytes(),
-            "value of {argument:?}"
-        );
-        assert_eq!(
-            message, expected_pair.message_after_parsing,
-            "message after parsing {argument:?}"
-        );
-    }
-
-    #[test]
-    fn split_token_into_key_value_pair_in_place_splits_at_the_first_equals_sign_in_place() {
-        let expected_pairs = [
-            ExpectedKeyValuePair {
-                argument: "app=Safari",
-                value_offset: 4,
-                key: "app",
-                value: "Safari",
-                message_after_parsing: b"app\0Safari\0\0",
-            },
-            ExpectedKeyValuePair {
-                argument: "title=a=b",
-                value_offset: 6,
-                key: "title",
-                value: "a=b",
-                message_after_parsing: b"title\0a=b\0\0",
-            },
-            ExpectedKeyValuePair {
-                argument: "a!b=c",
-                value_offset: 4,
-                key: "a!b",
-                value: "c",
-                message_after_parsing: b"a!b\0c\0\0",
-            },
-            ExpectedKeyValuePair {
-                argument: "=value",
-                value_offset: 1,
-                key: "",
-                value: "value",
-                message_after_parsing: b"\0value\0\0",
-            },
-            ExpectedKeyValuePair {
-                argument: "app=!=x",
-                value_offset: 4,
-                key: "app",
-                value: "!=x",
-                message_after_parsing: b"app\0!=x\0\0",
-            },
-        ];
-
-        for expected_pair in &expected_pairs {
-            assert_parses_as_key_value_pair(expected_pair, false);
-        }
-    }
-
-    #[test]
-    fn split_token_into_key_value_pair_in_place_treats_not_equals_as_an_exclusion() {
-        let expected_pairs = [
-            ExpectedKeyValuePair {
-                argument: "app!=Safari",
-                value_offset: 5,
-                key: "app",
-                value: "Safari",
-                message_after_parsing: b"app\0=Safari\0\0",
-            },
-            ExpectedKeyValuePair {
-                argument: "title!=a=b",
-                value_offset: 7,
-                key: "title",
-                value: "a=b",
-                message_after_parsing: b"title\0=a=b\0\0",
-            },
-            ExpectedKeyValuePair {
-                argument: "!=value",
-                value_offset: 2,
-                key: "",
-                value: "value",
-                message_after_parsing: b"\0=value\0\0",
-            },
-        ];
-
-        for expected_pair in &expected_pairs {
-            assert_parses_as_key_value_pair(expected_pair, true);
-        }
-    }
-
-    #[test]
-    fn split_token_into_key_value_pair_in_place_reports_offsets_from_the_start_of_the_message() {
-        let mut message = message_from_arguments(&["--add", "app!=Safari"]);
-
-        let pair = split_token_into_key_value_pair_in_place(&mut message, 6)
-            .expect("app!=Safari is a key-value pair");
-
-        assert_eq!((pair.key, pair.value, pair.exclusion), (6, 11, true));
-        assert_eq!(
-            null_terminated_bytes_starting_at(&message, pair.key),
-            b"app"
-        );
-        assert_eq!(
-            null_terminated_bytes_starting_at(&message, pair.value),
-            b"Safari"
-        );
-    }
-
-    #[test]
-    fn split_token_into_key_value_pair_in_place_rejects_a_missing_value_or_operator_and_leaves_the_message_intact()
-     {
-        for argument in ["app=", "app!=", "app", "app!", ""] {
-            let mut message = message_from_arguments(&[argument]);
-            let message_before = message.clone();
-
-            assert!(
-                split_token_into_key_value_pair_in_place(&mut message, 0).is_none(),
-                "{argument:?} should not parse as a key-value pair"
-            );
-            assert_eq!(
-                message, message_before,
-                "message after rejecting {argument:?}"
-            );
-        }
     }
 }

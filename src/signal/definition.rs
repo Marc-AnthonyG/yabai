@@ -1,8 +1,12 @@
+use clap::ValueEnum;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 
 #[repr(u32)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub(crate) enum SignalType {
+    #[value(skip)]
     Unknown = 0,
 
     ApplicationLaunched = 1,
@@ -66,40 +70,6 @@ pub(crate) struct Signal {
 
 pub(crate) const SIGNAL_TYPE_COUNT: usize = 30;
 
-pub(crate) static SIGNAL_TYPE_NAMES: [&str; 31] = [
-    "signal_type_unknown",
-    "application_launched",
-    "application_terminated",
-    "application_front_switched",
-    "application_activated",
-    "application_deactivated",
-    "application_visible",
-    "application_hidden",
-    "window_created",
-    "window_destroyed",
-    "window_focused",
-    "window_moved",
-    "window_resized",
-    "window_minimized",
-    "window_deminimized",
-    "window_title_changed",
-    "space_created",
-    "space_destroyed",
-    "space_changed",
-    "display_added",
-    "display_removed",
-    "display_moved",
-    "display_resized",
-    "display_changed",
-    "mission_control_enter",
-    "mission_control_exit",
-    "dock_did_change_pref",
-    "dock_did_restart",
-    "menu_bar_hidden_changed",
-    "system_woke",
-    "signal_type_count",
-];
-
 pub(crate) static SIGNAL_TYPE_BY_DISCRIMINANT: [SignalType; SIGNAL_TYPE_COUNT] = [
     SignalType::Unknown,
     SignalType::ApplicationLaunched,
@@ -133,59 +103,50 @@ pub(crate) static SIGNAL_TYPE_BY_DISCRIMINANT: [SignalType; SIGNAL_TYPE_COUNT] =
     SignalType::SystemWoke,
 ];
 
-pub(crate) fn signal_type_for_event_name(string: &[u8]) -> SignalType {
-    let string = std::str::from_utf8(string).ok();
-
-    for index in SignalType::ApplicationLaunched as usize..SIGNAL_TYPE_COUNT {
-        if string == Some(SIGNAL_TYPE_NAMES[index]) {
-            return SIGNAL_TYPE_BY_DISCRIMINANT[index];
-        }
-    }
-
-    SignalType::Unknown
-}
-
 pub(crate) fn add_signal_replacing_any_with_the_same_label(
     signal_type: SignalType,
     signal: Signal,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
 ) {
     if let Some(label) = signal.label.as_deref() {
-        remove_signal_with_label(label.as_bytes(), signal_event);
+        remove_signal_with_label(label, signal_event);
     }
     signal_event[signal_type as usize].push(signal);
 }
 
 pub(crate) fn remove_signal_at_listing_index(
-    index: i32,
+    index: usize,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
 ) -> bool {
-    let mut signal_index: i32 = 0;
-    for signal_type_index in SignalType::ApplicationLaunched as usize..SIGNAL_TYPE_COUNT {
-        for inner_index in 0..signal_event[signal_type_index].len() {
-            if signal_index == index {
-                signal_event[signal_type_index].swap_remove(inner_index);
-                return true;
-            }
-            signal_index += 1;
+    let mut signals_listed_before_this_event = 0;
+    for signals in signal_event
+        .iter_mut()
+        .skip(SignalType::ApplicationLaunched as usize)
+    {
+        if index < signals_listed_before_this_event + signals.len() {
+            signals.swap_remove(index - signals_listed_before_this_event);
+            return true;
         }
+        signals_listed_before_this_event += signals.len();
     }
 
     false
 }
 
 pub(crate) fn remove_signal_with_label(
-    label: &[u8],
+    label: &str,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
 ) -> bool {
-    let label = String::from_utf8_lossy(label);
-
-    for index in SignalType::ApplicationLaunched as usize..SIGNAL_TYPE_COUNT {
-        for inner_index in 0..signal_event[index].len() {
-            if signal_event[index][inner_index].label.as_deref() == Some(&*label) {
-                signal_event[index].swap_remove(inner_index);
-                return true;
-            }
+    for signals in signal_event
+        .iter_mut()
+        .skip(SignalType::ApplicationLaunched as usize)
+    {
+        if let Some(position) = signals
+            .iter()
+            .position(|signal| signal.label.as_deref() == Some(label))
+        {
+            signals.swap_remove(position);
+            return true;
         }
     }
 

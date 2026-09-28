@@ -15,6 +15,7 @@ rule and signal listings.
   scratchpad is null. The effective configuration's keys are the setting names.
 - An untracked window, one yabai holds no AX reference for, prints the same keys as a tracked
   one, with defaults wherever only AX or the window table could answer.
-- The rule and signal listings are still hand-rolled JSON written through a `Response`.
+- A rule or a signal prints the flags `rule add` or `signal add` would take to make it again,
+  with a negated pattern under its `_not` key, plus its listing index.
 - Everything here runs on the event-loop thread and takes the managers it reads as explicit
   parameters.

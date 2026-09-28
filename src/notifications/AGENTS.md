@@ -11,24 +11,23 @@ in sRGB, at start-up and whenever the colour preferences change, and posts it to
 
 - Every callback here runs on the main thread, from the main run loop or AppKit's notification
   delivery. The one exception is the key-value observer: registering it with the initial option
-  calls it back synchronously on whichever thread registers, the event-loop thread included
-  (decision 22).
-- No callback dereferences event-loop-owned memory (decision 20). The only shared state a callback
+  calls it back synchronously on whichever thread registers, the event-loop thread included.
+- No callback dereferences event-loop-owned memory. The only shared state a callback
   writes is atomics, the tap's own state and the process table, whose lock is never held across
-  an ObjC or AX call (decision 22). Everything else is handed to the event loop as an event.
+  an ObjC or AX call. Everything else is handed to the event loop as an event.
 - A refcon is either an integer id (an application's process id) or a raw `Arc` pointer: a
-  window's liveness cell (decision 21) or a process for key-value observing. That `Arc` is
+  window's liveness cell or a process for key-value observing. That `Arc` is
   released on the main queue once the notification is removed, never directly from the
-  event-loop thread (decision 20). Removing AX notifications and invalidating their run-loop
+  event-loop thread. Removing AX notifications and invalidating their run-loop
   sources is likewise dispatched to the main queue.
 - Observing an application succeeds only when all five window notifications register; the two
   menu notifications are optional, and an AX "cannot complete" error marks the application for a
-  retry. A notification's bit is its index in its name table (decision 31); the application
-  table lives here (decision 50).
+  retry. A notification's bit is its index in its name table; the application
+  table lives here.
 - A process launch reported twice for the same process serial number is dropped, and processes
-  running under a debugger are ignored (decision 3).
+  running under a debugger are ignored.
 - The exception AppKit throws when removing a key-value observation that it claims is not
-  registered is caught and swallowed on purpose (decision 7).
+  registered is caught and swallowed on purpose.
 - The accent colour is read on the main thread. The distributed colour-preferences notification
   reads it one main-queue turn later, so AppKit's own observers have refreshed the colour first;
   AppKit's system-colours notification reads it at once.

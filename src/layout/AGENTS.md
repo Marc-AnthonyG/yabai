@@ -8,20 +8,19 @@ preview, a SkyLight overlay window drawn as a ghost of that frame.
 ## Notes
 
 - Everything here runs on the event-loop thread and takes the managers it touches as explicit
-  parameters (decision 13). Nodes are named by `(space id, NodeId)` and looked up at each use
-  (decision 14); a missing view is an early return.
-- The tree is an index arena owned by its view (decision 15). The root is always `NodeId` 0
+  parameters. Nodes are named by `(space id, NodeId)` and looked up at each use; a missing view is an early return.
+- The tree is an index arena owned by its view. The root is always `NodeId` 0
   because the C reset the root in place instead of reallocating it; do not free or move it.
 - Freed node ids are recycled. Before a node is freed, every reference to it outside the arena
   (the window manager's insert-feedback table, the mouse drag state) is scrubbed, so a stale
   `NodeId` can never name a reused node.
 - A node's feedback window is a SkyLight window owned by the node and released when the node's
   feedback slot is dropped.
-- Areas are `f32` (decision 30). The truncations and the `+ 0.5` rounding in the split arithmetic
-  place windows to the pixel and are observable (decision 3).
+- Areas are `f32`. The truncations and the `+ 0.5` rounding in the split arithmetic
+  place windows to the pixel and are observable.
 - The name tables for view layout, split, child, auto-balance and insertion point are the CLI and
-  query spellings; each index is the enum discriminant (decision 31).
-- The preview (decision 53) is computed by one pure function from the node's area, the insert
+  query spellings; each index is the enum discriminant.
+- The preview is computed by one pure function from the node's area, the insert
   direction, the node's ratio or the global split ratio, and the view's gap, with the same split
   arithmetic the tree runs when it inserts: `window --insert` and a mouse drop both use it, and a
   swap, a stack or any insertion into a view with the stack layout covers the whole node. It shows
@@ -35,6 +34,6 @@ preview, a SkyLight overlay window drawn as a ghost of that frame.
 - The preview colour is the window manager's insert feedback colour. It follows the accent colour
   the workspace observer reads and posts, until `insert_feedback_color` is set by a client.
 - A pending insertion point is cleared when a window yabai tracks gains focus and is not that
-  insertion point (decision 54), the way repeating the same `--insert` clears it. A window that is
+  insertion point, the way repeating the same `--insert` clears it. A window that is
   not tracked yet cannot clear it, so the new window still consumes it. A node that is showing the
   mouse drag preview keeps its overlay and insert direction; the drag owns them.

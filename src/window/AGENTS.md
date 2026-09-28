@@ -10,13 +10,13 @@ new frames through proxy windows.
 ## Notes
 
 - Apart from the callbacks and threads named below, everything here runs on the event-loop
-  thread and takes the managers it touches as explicit parameters (decision 13). Windows and
-  applications are named by id and looked up at each use (decision 14); a lookup miss is an early
+  thread and takes the managers it touches as explicit parameters. Windows and
+  applications are named by id and looked up at each use; a lookup miss is an early
   return.
-- The liveness cell is shared between a window and its AX refcon (decision 21). Claiming a
+- The liveness cell is shared between a window and its AX refcon. Claiming a
   window for destruction is a compare-exchange from alive to dead; every other probe is a load of
   the same cell. An event for a window that is dead or no longer tracked is dropped.
-- One animator drives every window animation (decision 55), shared through an `Arc` by four
+- One animator drives every window animation, shared through an `Arc` by four
   kinds of thread. The event-loop thread takes each request: it retargets windows already moving,
   captures and builds proxies for the others on scoped builder threads it joins, swaps them in,
   sets the real frames through AX and sets the request in motion. The CVDisplayLink thread moves
@@ -54,9 +54,9 @@ new frames through proxy windows.
   them back afterwards; code reached in between sees an empty rule list, or a default rule in the
   slot of the rule being reapplied.
 - Bytes other programs read are fixed: the synthesized focus event records and their offsets,
-  the sub-level Mach message (decision 35, its message id differs on Tahoe) and the JankyBorders
+  the packed sub-level Mach message (its size is asserted and its message id differs on Tahoe) and the JankyBorders
   notification, whose size is asserted at compile time and whose service name and event numbers
-  JankyBorders listens for (decision 3).
-- The sleeps are timing behaviour and stay (decision 3): 40 ms between the two focus events,
+  JankyBorders listens for.
+- The sleeps are timing behaviour and stay: 40 ms between the two focus events,
   100 ms per spin while a native-fullscreen transition finishes, 20 ms after a JankyBorders
   notification that waits.

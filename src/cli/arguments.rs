@@ -1,4 +1,5 @@
 use crate::cli::client::send_message_to_daemon_and_print_its_response;
+use crate::cli::screen_recording_permission_report::exit_status_reporting_whether_screen_recording_is_granted;
 use crate::error;
 use crate::scripting_addition::installer::{
     install_and_load_scripting_addition, uninstall_scripting_addition,
@@ -28,10 +29,34 @@ pub(crate) const PRINT_VERSION_LONG_OPTION: &str = "--version";
 pub(crate) const PRINT_VERSION_SHORT_OPTION: &str = "-v";
 pub(crate) const PRINT_HELP_LONG_OPTION: &str = "--help";
 pub(crate) const PRINT_HELP_SHORT_OPTION: &str = "-h";
+pub(crate) const REPORT_SCREEN_RECORDING_PERMISSION_THROUGH_THE_EXIT_STATUS_OPTION: &str =
+    "--report-screen-recording-permission";
 
 pub(crate) const MAJOR_VERSION: i32 = 7;
 pub(crate) const MINOR_VERSION: i32 = 1;
 pub(crate) const PATCH_VERSION: i32 = 25;
+
+fn help_text_listing_every_public_option() -> String {
+    format!(
+        "Usage: yabai [option]\n\
+         Options:\n    \
+         --load-sa              Install and load the scripting-addition.\n    \
+         --uninstall-sa         Uninstall the scripting-addition.\n    \
+         --install-service      Write launchd service file to disk.\n    \
+         --uninstall-service    Remove launchd service file from disk.\n    \
+         --start-service        Enable, load, and start the launchd service.\n    \
+         --restart-service      Attempts to restart the service instance.\n    \
+         --stop-service         Stops a running instance of the service.\n    \
+         --message, -m <msg>    Send message to a running instance of yabai.\n    \
+         --config, -c <config>  Use the specified configuration file.\n    \
+         --verbose, -V          Output debug information to stdout.\n    \
+         --version, -v          Print version to stdout and exit.\n    \
+         --help, -h             Print options to stdout and exit.\n\
+         Type `man yabai` for more information, or visit: \
+         https://github.com/asmvik/yabai/blob/v{}.{}.{}/doc/yabai.asciidoc\n",
+        MAJOR_VERSION, MINOR_VERSION, PATCH_VERSION
+    )
+}
 
 pub(crate) fn parse_command_line_exiting_after_a_one_shot_option(
     arguments: &[String],
@@ -43,25 +68,7 @@ pub(crate) fn parse_command_line_exiting_after_a_one_shot_option(
     if (are_both_strings_present_and_equal(Some(&arguments[1]), Some(PRINT_HELP_LONG_OPTION)))
         || (are_both_strings_present_and_equal(Some(&arguments[1]), Some(PRINT_HELP_SHORT_OPTION)))
     {
-        print!(
-            "Usage: yabai [option]\n\
-             Options:\n    \
-             --load-sa              Install and load the scripting-addition.\n    \
-             --uninstall-sa         Uninstall the scripting-addition.\n    \
-             --install-service      Write launchd service file to disk.\n    \
-             --uninstall-service    Remove launchd service file from disk.\n    \
-             --start-service        Enable, load, and start the launchd service.\n    \
-             --restart-service      Attempts to restart the service instance.\n    \
-             --stop-service         Stops a running instance of the service.\n    \
-             --message, -m <msg>    Send message to a running instance of yabai.\n    \
-             --config, -c <config>  Use the specified configuration file.\n    \
-             --verbose, -V          Output debug information to stdout.\n    \
-             --version, -v          Print version to stdout and exit.\n    \
-             --help, -h             Print options to stdout and exit.\n\
-             Type `man yabai` for more information, or visit: \
-             https://github.com/asmvik/yabai/blob/v{}.{}.{}/doc/yabai.asciidoc\n",
-            MAJOR_VERSION, MINOR_VERSION, PATCH_VERSION
-        );
+        print!("{}", help_text_listing_every_public_option());
         std::process::exit(libc::EXIT_SUCCESS);
     }
 
@@ -121,6 +128,13 @@ pub(crate) fn parse_command_line_exiting_after_a_one_shot_option(
         std::process::exit(stop_launchd_service());
     }
 
+    if are_both_strings_present_and_equal(
+        Some(&arguments[1]),
+        Some(REPORT_SCREEN_RECORDING_PERMISSION_THROUGH_THE_EXIT_STATUS_OPTION),
+    ) {
+        std::process::exit(exit_status_reporting_whether_screen_recording_is_granted());
+    }
+
     let mut index = 1;
     while index < argument_count {
         let option = &arguments[index];
@@ -173,4 +187,55 @@ pub(crate) fn store_config_file_path_from_command_line() {
             parse_command_line_exiting_after_a_one_shot_option(&arguments, &arguments_as_given);
     }
     let _ = CONFIG_FILE_PATH.set(config_file.unwrap_or_default());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        CONFIG_FILE_LONG_OPTION, CONFIG_FILE_SHORT_OPTION, INSTALL_SERVICE_OPTION,
+        LOAD_SCRIPTING_ADDITION_OPTION, PRINT_HELP_LONG_OPTION, PRINT_HELP_SHORT_OPTION,
+        PRINT_VERSION_LONG_OPTION, PRINT_VERSION_SHORT_OPTION,
+        REPORT_SCREEN_RECORDING_PERMISSION_THROUGH_THE_EXIT_STATUS_OPTION, RESTART_SERVICE_OPTION,
+        SEND_MESSAGE_LONG_OPTION, SEND_MESSAGE_SHORT_OPTION, START_SERVICE_OPTION,
+        STOP_SERVICE_OPTION, UNINSTALL_SCRIPTING_ADDITION_OPTION, UNINSTALL_SERVICE_OPTION,
+        VERBOSE_DEBUG_OUTPUT_LONG_OPTION, VERBOSE_DEBUG_OUTPUT_SHORT_OPTION,
+        help_text_listing_every_public_option,
+    };
+
+    #[test]
+    fn the_help_text_lists_every_public_option() {
+        let help_text = help_text_listing_every_public_option();
+        let public_options = [
+            LOAD_SCRIPTING_ADDITION_OPTION,
+            UNINSTALL_SCRIPTING_ADDITION_OPTION,
+            INSTALL_SERVICE_OPTION,
+            UNINSTALL_SERVICE_OPTION,
+            START_SERVICE_OPTION,
+            RESTART_SERVICE_OPTION,
+            STOP_SERVICE_OPTION,
+            SEND_MESSAGE_LONG_OPTION,
+            SEND_MESSAGE_SHORT_OPTION,
+            CONFIG_FILE_LONG_OPTION,
+            CONFIG_FILE_SHORT_OPTION,
+            VERBOSE_DEBUG_OUTPUT_LONG_OPTION,
+            VERBOSE_DEBUG_OUTPUT_SHORT_OPTION,
+            PRINT_VERSION_LONG_OPTION,
+            PRINT_VERSION_SHORT_OPTION,
+            PRINT_HELP_LONG_OPTION,
+            PRINT_HELP_SHORT_OPTION,
+        ];
+
+        for public_option in public_options {
+            assert!(help_text.contains(public_option), "{public_option}");
+        }
+    }
+
+    #[test]
+    fn the_help_text_never_mentions_the_screen_recording_permission_report() {
+        let help_text = help_text_listing_every_public_option();
+
+        assert!(
+            !help_text.contains(REPORT_SCREEN_RECORDING_PERMISSION_THROUGH_THE_EXIT_STATUS_OPTION)
+        );
+    }
 }

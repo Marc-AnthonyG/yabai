@@ -5,9 +5,12 @@ invocations that install, start, restart and stop it.
 
 ## Notes
 
-- This code runs only on the command-line path, on the main thread, before any daemon state
-  exists. Every entry point returns the process exit code; a fatal error ends the process with
-  `EXIT_FAILURE`.
+- This code runs on the command-line path, on the main thread, before any daemon state exists.
+  Every entry point there returns the process exit code; a fatal error ends the process with
+  `EXIT_FAILURE`. The one exception is the daemon relaunching itself from the Screen Recording
+  grant watcher thread: telling whether `XPC_SERVICE_NAME` names the yabai service, and
+  `launchctl kickstart -k` on it. That kickstart never exits the process and reads launchctl's
+  exit status through the support spawner, since the daemon ignores SIGCHLD by then.
 - The plist text is externally observable: the label, the program path, the `PATH`
   it captures, the `/tmp/yabai_<user>.out.log` and `.err.log` paths, `KeepAlive`, `ProcessType`
   and `Nice`. Its whitespace, including the tab-indented lines, is reproduced from the C and is

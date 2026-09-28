@@ -48,8 +48,8 @@ Make sure you fulfil all of them before filing an issue.
 |-:|:-|
 |Operating&nbsp;System&nbsp;Intel x86-64|Big Sur 11.0.0+, Monterey 12.0.0+, Ventura 13.0.0+, Sonoma 14.0.0+, Sequoia 15.0+, and Tahoe 26.0+ is supported.|
 |Operating&nbsp;System&nbsp;Apple Silicon|Monterey 12.0.0+, Ventura 13.0.0+, Sonoma 14.0.0+, Sequoia 15.0+, and Tahoe 26.0+ is supported.|
-|Accessibility&nbsp;API|yabai must be given permission to utilize the Accessibility API and will request access upon launch. The application must be restarted after access has been granted.|
-|Screen Recording|yabai must be given Screen Recording permission if and only if you want to enable window animations, and will request access when necessary. The application must be restarted after access has been granted.|
+|Accessibility&nbsp;API|yabai must be given permission to utilize the Accessibility API and will request access upon launch. It then waits until access has been granted and carries on starting up; no restart is needed.|
+|Screen Recording|yabai must be given Screen Recording permission if and only if you want to enable window animations, which also require System Integrity Protection to be partially disabled. When it is, yabai requests access upon launch, together with the Accessibility API, and restarts itself once access has been granted. If access is granted more than ten minutes after launch, or yabai is not running as a service, the application must be restarted after access has been granted.|
 |System&nbsp;Preferences&nbsp;(macOS 11.x, 12.x)|In the Mission Control pane, the setting "Displays have separate Spaces" must be enabled.|
 |System&nbsp;Settings&nbsp;(macOS 13.x, 14.x, 15.x, 26.x)|In the Desktop & Dock tab, inside the Mission Control pane, the setting "Displays have separate Spaces" must be enabled.|
 

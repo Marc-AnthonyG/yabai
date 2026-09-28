@@ -1,5 +1,11 @@
+pub mod accessibility_trust_wait;
 pub mod config_file;
+pub mod daemon_relaunch_after_screen_recording_grant;
 pub mod order;
+pub mod permission_requests;
 pub mod requirements;
 pub mod runtime;
+pub mod screen_recording_grant_check_schedule;
+pub mod screen_recording_grant_in_a_fresh_process;
+pub mod screen_recording_grant_watcher;
 pub mod settings_and_lock_file;

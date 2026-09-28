@@ -9,12 +9,13 @@ use std::sync::OnceLock;
 use objc2_core_foundation::{CFBoolean, CFData, CFDictionary, CFString, CFType};
 
 pub use objc2_application_services::{
-    AXError, AXIsProcessTrustedWithOptions, AXObserver, AXObserverAddNotification, AXObserverCreate,
-    AXObserverGetRunLoopSource, AXObserverRemoveNotification, AXUIElement,
-    AXUIElementCopyAttributeValue, AXUIElementCopyElementAtPosition, AXUIElementCreateApplication,
-    AXUIElementCreateSystemWide, AXUIElementIsAttributeSettable, AXUIElementPerformAction,
-    AXUIElementSetAttributeValue, AXUIElementSetMessagingTimeout, AXValue, AXValueCreate,
-    AXValueGetValue, AXValueType, kAXTrustedCheckOptionPrompt,
+    AXError, AXIsProcessTrusted, AXIsProcessTrustedWithOptions, AXObserver,
+    AXObserverAddNotification, AXObserverCreate, AXObserverGetRunLoopSource,
+    AXObserverRemoveNotification, AXUIElement, AXUIElementCopyAttributeValue,
+    AXUIElementCopyElementAtPosition, AXUIElementCreateApplication, AXUIElementCreateSystemWide,
+    AXUIElementIsAttributeSettable, AXUIElementPerformAction, AXUIElementSetAttributeValue,
+    AXUIElementSetMessagingTimeout, AXValue, AXValueCreate, AXValueGetValue, AXValueType,
+    kAXTrustedCheckOptionPrompt,
 };
 
 use crate::ffi::core_foundation::{
@@ -128,6 +129,10 @@ pub fn query_accessibility_trust_prompting_the_user_if_untrusted() -> bool {
     }
     .unwrap();
     unsafe { AXIsProcessTrustedWithOptions(Some(&options)) }
+}
+
+pub fn query_accessibility_trust_without_prompting_the_user() -> bool {
+    unsafe { AXIsProcessTrusted() }
 }
 
 pub fn read_window_id_of_accessibility_element(reference: &AXUIElement) -> u32 {

@@ -1,9 +1,14 @@
+use std::path::Path;
+
 use crate::service::plist::{build_launchd_service_plist_path, write_launchd_service_plist};
 use crate::support::filesystem::is_existing_file_that_is_not_a_directory;
+use crate::support::spawned_program_exit_status::{
+    SpawnedProgramOutput, run_program_and_read_its_exit_status_even_while_child_exits_are_ignored,
+};
 use crate::{error, warn};
 
 const LAUNCHCTL_EXECUTABLE_PATH: &str = "/bin/launchctl";
-const LAUNCHD_SERVICE_LABEL: &str = "com.asmvik.yabai";
+pub(crate) const LAUNCHD_SERVICE_LABEL: &str = "com.asmvik.yabai";
 
 //
 // NOTE(asmvik): A launchd service has the following states:
@@ -229,4 +234,18 @@ pub fn stop_launchd_service() -> i32 {
         let disable_arguments = [LAUNCHCTL_EXECUTABLE_PATH, "disable", &service_target];
         run_program_and_wait_for_its_exit_status(&disable_arguments, false)
     }
+}
+
+pub fn kickstart_the_launchd_service_killing_its_running_instance() -> bool {
+    let service_target = format!(
+        "gui/{}/{}",
+        unsafe { libc::getuid() } as i32,
+        LAUNCHD_SERVICE_LABEL
+    );
+
+    run_program_and_read_its_exit_status_even_while_child_exits_are_ignored(
+        Path::new(LAUNCHCTL_EXECUTABLE_PATH),
+        &["kickstart", "-k", &service_target],
+        SpawnedProgramOutput::SharedWithThisProcess,
+    ) == Some(libc::EXIT_SUCCESS)
 }

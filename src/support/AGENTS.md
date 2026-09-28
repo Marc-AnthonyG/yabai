@@ -27,3 +27,8 @@ curves, colours) that several modules share.
   instruction, so both targets produce the same pixels as the C.
 - The macOS version flags are written once at start-up, when the workspace observer is created,
   and only read afterwards. Which version-specific path runs is behaviour.
+- The spawner reads a child's exit status even while the process ignores SIGCHLD, when the
+  system reaps children itself and `waitpid` only fails with `ECHILD`. It spawns the program
+  suspended, watches its exit on a kqueue with `NOTE_EXITSTATUS`, then resumes it, so the exit
+  cannot slip past the watch; a `WNOHANG` reap afterwards covers SIGCHLD at its default. A
+  program ended by a signal, or one that cannot be spawned, has no exit status.

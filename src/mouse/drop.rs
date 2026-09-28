@@ -3,6 +3,7 @@ use std::sync::atomic::Ordering;
 use crate::display::manager::DisplayManager;
 use crate::ffi::core_foundation::{CGPoint, CGRect, CGSize};
 use crate::ffi::core_graphics::CGRectContainsPoint;
+use crate::layout::group::is_node_a_group;
 use crate::layout::settings::ViewLayout;
 use crate::layout::tree::{
     MOST_WINDOWS_A_NODE_CAN_HOLD, WindowNodeChild, WindowNodeSplit,
@@ -21,8 +22,7 @@ use crate::support::handles::{NodeId, SpaceId, WindowId};
 use crate::support::layer::LAYER_BELOW;
 use crate::support::resize_handle::ResizeHandle;
 use crate::window::animation::{
-    WindowWithTargetFrame, move_window_to_its_target_frame_animating_if_enabled,
-    move_windows_to_their_target_frames_animating_if_enabled,
+    WindowWithTargetFrame, move_windows_to_their_target_frames_animating_if_enabled,
 };
 use crate::window::frame::resize_window_by_dragging_edges_or_to_absolute_size;
 use crate::window::layer::set_window_layer_unless_explicitly_set;
@@ -47,6 +47,8 @@ pub(crate) enum MouseDropAction {
 pub(crate) fn determine_drop_action_for_dragged_window(
     source_space_id: SpaceId,
     source_node_id: NodeId,
+    destination_space_id: SpaceId,
+    destination_node_id: NodeId,
     destination_window_id: WindowId,
     point: CGPoint,
     window_manager: &mut WindowManager,
@@ -64,6 +66,14 @@ pub(crate) fn determine_drop_action_for_dragged_window(
         .find(&source_space_id)
         .and_then(|view| view.find_node(source_node_id))
         .map(|node| node.window_count);
+    let destination_node_is_a_group = space_manager
+        .view
+        .find(&destination_space_id)
+        .and_then(|view| {
+            view.find_node(destination_node_id)
+                .map(|node| is_node_a_group(view, node, window_manager))
+        })
+        .unwrap_or(false);
     let drop_action_setting =
         MouseMode::from_discriminant(MOUSE_TAP_STATE.drop_action.load(Ordering::Relaxed));
 
@@ -71,6 +81,7 @@ pub(crate) fn determine_drop_action_for_dragged_window(
         destination_window_frame,
         point,
         source_node_window_count,
+        destination_node_is_a_group,
         drop_action_setting,
     )
 }
@@ -79,6 +90,7 @@ fn drop_action_for_point_over_window_frame(
     destination_window_frame: CGRect,
     point: CGPoint,
     source_node_window_count: Option<i32>,
+    destination_node_is_a_group: bool,
     drop_action_setting: MouseMode,
 ) -> MouseDropAction {
     let point_relative_to_frame_origin = CGPoint {
@@ -152,7 +164,11 @@ fn drop_action_for_point_over_window_frame(
         },
     ];
 
-    if (CGRectContainsPoint(center_rect, point_relative_to_frame_origin))
+    if CGRectContainsPoint(center_rect, point_relative_to_frame_origin)
+        && destination_node_is_a_group
+    {
+        return MouseDropAction::Stack;
+    } else if (CGRectContainsPoint(center_rect, point_relative_to_frame_origin))
         && (source_node_window_count == Some(1))
     {
         return if drop_action_setting == MouseMode::Stack {
@@ -233,19 +249,11 @@ pub(crate) fn stack_dropped_window_onto_destination_window(
             node.window_order[1],
         );
 
-        let area = match node.zoom.and_then(|zoom| view.find_node(zoom)) {
-            Some(zoom) => zoom.area,
-            None => node.area,
-        };
-        move_window_to_its_target_frame_animating_if_enabled(
-            WindowWithTargetFrame {
-                window_id: source_window_id,
-                x: area.x,
-                y: area.y,
-                width: area.width,
-                height: area.height,
-            },
+        move_windows_below_node_into_their_areas(
+            destination_space_id,
+            destination_node,
             window_manager,
+            space_manager,
         );
     }
 }
@@ -640,6 +648,29 @@ mod tests {
             destination_window_frame,
             CGPoint { x, y },
             source_node_window_count,
+            false,
+            drop_action_setting,
+        ))
+    }
+
+    fn drop_action_over_an_800_by_600_group_at_100_200(
+        x: f64,
+        y: f64,
+        source_node_window_count: Option<i32>,
+        drop_action_setting: MouseMode,
+    ) -> &'static str {
+        let destination_group_frame = CGRect {
+            origin: CGPoint { x: 100.0, y: 200.0 },
+            size: CGSize {
+                width: 800.0,
+                height: 600.0,
+            },
+        };
+        name_of_drop_action(drop_action_for_point_over_window_frame(
+            destination_group_frame,
+            CGPoint { x, y },
+            source_node_window_count,
+            true,
             drop_action_setting,
         ))
     }
@@ -777,5 +808,38 @@ mod tests {
             Some(1),
             MouseMode::Swap,
         );
+    }
+
+    #[test]
+    fn a_point_in_the_centre_of_a_group_stacks_into_it_whatever_the_setting_and_the_dragged_node() {
+        for source_node_window_count in [Some(1), Some(2), None] {
+            for drop_action_setting in [MouseMode::Swap, MouseMode::Stack, MouseMode::None] {
+                assert_eq!(
+                    drop_action_over_an_800_by_600_group_at_100_200(
+                        500.0,
+                        500.0,
+                        source_node_window_count,
+                        drop_action_setting
+                    ),
+                    "stack",
+                    "dragged node of {source_node_window_count:?} windows"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_point_near_an_edge_of_a_group_still_warps_toward_that_edge() {
+        for (x, y, expected_action) in [
+            (500.0, 250.0, "warp top"),
+            (850.0, 500.0, "warp right"),
+            (500.0, 750.0, "warp bottom"),
+            (150.0, 500.0, "warp left"),
+        ] {
+            assert_eq!(
+                drop_action_over_an_800_by_600_group_at_100_200(x, y, Some(1), MouseMode::Swap),
+                expected_action
+            );
+        }
     }
 }

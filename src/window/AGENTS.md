@@ -60,3 +60,9 @@ new frames through proxy windows.
 - The sleeps are timing behaviour and stay: 40 ms between the two focus events,
   100 ms per spin while a native-fullscreen transition finishes, 20 ms after a JankyBorders
   notification that waits.
+- Focus follows mouse also runs once under a still cursor, the animation duration plus 50 ms after
+  a change that moves windows without being a keyboard focus command: grouping or ungrouping, a
+  layout change, a window closing or minimising, a space change. It then hit-tests the real
+  windows, not the animation proxies, with the same rules as a mouse move. Swaps and warps never
+  schedule it, or a window moved from the keyboard would lose focus to whatever landed under the
+  cursor and the next keyboard move would act on the wrong window.

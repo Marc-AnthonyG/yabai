@@ -62,6 +62,7 @@ pub(crate) enum Event {
     SystemWoke,
     SystemAccentColorChanged(RgbaColor),
     InsertFeedbackFadeInStep,
+    FocusFollowsMouseUnderTheStillCursor,
     DaemonMessage(UnixStream),
 }
 

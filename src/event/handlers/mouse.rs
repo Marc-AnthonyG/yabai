@@ -6,21 +6,18 @@ use objc2_core_graphics::CGMouseButton;
 
 use crate::debug;
 use crate::display::bounds::query_bounds_of_display_left_for_windows;
-use crate::display::focus::{focus_window_under_point, move_active_menu_bar_to_display};
 use crate::display::identity::query_display_at_point;
 use crate::display::manager::DisplayManager;
 use crate::display::spaces::query_current_space_of_display;
-use crate::ffi::accessibility::{kAXDrawerRole, kAXSheetRole};
 use crate::ffi::carbon_core::{read_system_clock_in_nanoseconds, system_clock_ticks_per_second};
-use crate::ffi::core_foundation::{
-    CFArrayGetCount, CFEqual, CFIndex, CFNumber, CFRetainedAssumedSendAndSync, CGPoint, as_cftype,
-    cfarray_borrow_value_at_index, cfnumber_read_i32, take_create_rule_result,
-};
+use crate::ffi::core_foundation::{CFRetainedAssumedSendAndSync, CGPoint};
 use crate::ffi::core_graphics::{
-    CGEvent, CGEventField, CGEventGetIntegerValueField, CGEventGetLocation, CGRectContainsRect,
+    CGEvent, CGEventCreate, CGEventField, CGEventGetIntegerValueField, CGEventGetLocation,
     CGRectGetMidX, CGRectGetMidY,
 };
-use crate::ffi::skylight::SLSCopyAssociatedWindows;
+use crate::layout::group_header::{
+    front_window_of_the_group_whose_header_holds_point, window_whose_group_header_tab_holds_point,
+};
 use crate::layout::insertion::{destroy_insert_feedback_of_node, show_insert_feedback_of_node};
 use crate::layout::tree::{WindowNodeChild, WindowNodeSplit, leaf_holding_window};
 use crate::mouse::drag::{
@@ -34,33 +31,23 @@ use crate::mouse::drop::{
 };
 use crate::mouse::tap::{MOUSE_TAP_STATE, MouseMode, MouseModifier};
 use crate::scripting_addition::client::move_window_through_scripting_addition;
-use crate::space::managed_space::query_windows_on_space;
 use crate::space::manager::{SpaceManager, find_or_create_view_for_space};
 use crate::state::mission_control_mode::{MissionControlMode, is_mission_control_active};
 use crate::state::process_wide::{
-    DOCK_SWIPE_GESTURE_IS_IN_PROGRESS, LAST_DOCK_SWIPE_GESTURE_END_TIME, SKYLIGHT_CONNECTION_ID,
+    DOCK_SWIPE_GESTURE_IS_IN_PROGRESS, LAST_DOCK_SWIPE_GESTURE_END_TIME,
 };
 use crate::support::direction::{
     DIRECTION_EAST, DIRECTION_NORTH, DIRECTION_SOUTH, DIRECTION_STACK_INSTEAD_OF_SPLIT,
     DIRECTION_WEST,
 };
-use crate::support::geometry::is_point_inside_rectangle_including_its_edges;
-use crate::support::handles::WindowId;
 use crate::support::resize_handle::ResizeHandle;
-use crate::window::focus::{
-    focus_and_raise_window_of_process, focus_window_of_process_without_raising_it,
-};
+use crate::window::focus::focus_and_raise_tracked_window;
+use crate::window::focus_follows_mouse::focus_the_window_at_point_the_way_focus_follows_mouse_does;
 use crate::window::frame::{
     move_window_through_accessibility, resize_floating_window_by_dragging_edges,
 };
-use crate::window::manager::{
-    FocusFollowsMouseMode, WindowManager, is_window_eligible_for_management, space_managing_window,
-    tracked_window_with_id,
-};
-use crate::window::model::{
-    WindowFlag, is_window_flag_set, query_window_level_from_window_server,
-    query_window_sub_level_from_window_server, window_role,
-};
+use crate::window::manager::{FocusFollowsMouseMode, WindowManager, space_managing_window};
+use crate::window::model::{WindowFlag, is_window_flag_set};
 use crate::window::screen_lookup::{
     query_tracked_window_at_point, query_tracked_window_at_point_skipping_window,
 };
@@ -69,6 +56,7 @@ pub(crate) fn handle_mouse_down_event(
     event: CFRetainedAssumedSendAndSync<CGEvent>,
     event_modifier: MouseModifier,
     window_manager: &mut WindowManager,
+    space_manager: &mut SpaceManager,
     mouse_drag_state: &mut MouseDragState,
     mission_control_mode: &mut MissionControlMode,
 ) {
@@ -85,6 +73,18 @@ pub(crate) fn handle_mouse_down_event(
         "handle_mouse_down_event", point.x as f64, point.y as f64
     );
 
+    let button =
+        CGEventGetIntegerValueField(Some(event.as_ref()), CGEventField::MouseEventButtonNumber);
+    let is_a_plain_left_click = button == CGMouseButton::Left.0 as i64
+        && MOUSE_TAP_STATE.modifier.load(Ordering::Relaxed) != event_modifier.0;
+    if is_a_plain_left_click
+        && let Some(window_of_the_clicked_tab) =
+            window_whose_group_header_tab_holds_point(point, space_manager)
+    {
+        focus_and_raise_tracked_window(window_manager, window_of_the_clicked_tab);
+        return;
+    }
+
     let window = query_tracked_window_at_point(window_manager, point);
     let Some(window) = window else {
         return;
@@ -100,9 +100,6 @@ pub(crate) fn handle_mouse_down_event(
     mouse_drag_state.window_frame = window_record.frame;
     mouse_drag_state.down_location = point;
     mouse_drag_state.direction = 0;
-
-    let button =
-        CGEventGetIntegerValueField(Some(event.as_ref()), CGEventField::MouseEventButtonNumber);
 
     if button == CGMouseButton::Left.0 as i64
         && MOUSE_TAP_STATE.modifier.load(Ordering::Relaxed) == event_modifier.0
@@ -209,6 +206,11 @@ pub(crate) fn handle_mouse_up_event(
                 if window.is_none() {
                     window = query_tracked_window_at_point(window_manager, point);
                 }
+                let front_window_of_the_group_whose_header_is_under_the_cursor =
+                    front_window_of_the_group_whose_header_holds_point(point, space_manager);
+                if front_window_of_the_group_whose_header_is_under_the_cursor.is_some() {
+                    window = front_window_of_the_group_whose_header_is_under_the_cursor;
+                }
                 if window == Some(mouse_window) {
                     window = None;
                 }
@@ -243,14 +245,21 @@ pub(crate) fn handle_mouse_up_event(
                         mouse_drag_state.feedback_node = None;
                     }
 
-                    let drop_action = determine_drop_action_for_dragged_window(
-                        source_view,
-                        a_node,
-                        window,
-                        point,
-                        window_manager,
-                        space_manager,
-                    );
+                    let drop_action =
+                        if front_window_of_the_group_whose_header_is_under_the_cursor.is_some() {
+                            MouseDropAction::Stack
+                        } else {
+                            determine_drop_action_for_dragged_window(
+                                source_view,
+                                a_node,
+                                destination_view,
+                                b_node,
+                                window,
+                                point,
+                                window_manager,
+                                space_manager,
+                            )
+                        };
                     match drop_action {
                         MouseDropAction::Stack => {
                             stack_dropped_window_onto_destination_window(
@@ -491,6 +500,11 @@ pub(crate) fn handle_mouse_dragged_event(
         if window.is_none() {
             window = query_tracked_window_at_point(window_manager, point);
         }
+        let front_window_of_the_group_whose_header_is_under_the_cursor =
+            front_window_of_the_group_whose_header_holds_point(point, space_manager);
+        if front_window_of_the_group_whose_header_is_under_the_cursor.is_some() {
+            window = front_window_of_the_group_whose_header_is_under_the_cursor;
+        }
         if window == Some(mouse_window) {
             window = None;
         }
@@ -525,14 +539,21 @@ pub(crate) fn handle_mouse_dragged_event(
             }
 
             let mut insert_direction = 0;
-            let drop_action = determine_drop_action_for_dragged_window(
-                source_view,
-                a_node,
-                window,
-                point,
-                window_manager,
-                space_manager,
-            );
+            let drop_action =
+                if front_window_of_the_group_whose_header_is_under_the_cursor.is_some() {
+                    MouseDropAction::Stack
+                } else {
+                    determine_drop_action_for_dragged_window(
+                        source_view,
+                        a_node,
+                        destination_view,
+                        b_node,
+                        window,
+                        point,
+                        window_manager,
+                        space_manager,
+                    )
+                };
             match drop_action {
                 MouseDropAction::Stack => {
                     insert_direction = DIRECTION_STACK_INSTEAD_OF_SPLIT;
@@ -640,171 +661,43 @@ pub(crate) fn handle_mouse_moved_event(
         return;
     }
 
-    let point = CGEventGetLocation(Some(event.as_ref()));
-    let window = query_tracked_window_at_point(window_manager, point);
+    focus_the_window_at_point_the_way_focus_follows_mouse_does(
+        CGEventGetLocation(Some(event.as_ref())),
+        display_manager,
+        window_manager,
+        space_manager,
+        mouse_drag_state,
+    );
+}
 
-    if let Some(mut window) = window {
-        if window == window_manager.focused_window_id {
-            return;
-        }
-        if !is_window_eligible_for_management(window, window_manager) {
-            return;
-        }
-
-        if window_manager.focus_follows_mouse_mode == FocusFollowsMouseMode::Autofocus {
-            //
-            // NOTE(asmvik): Look for a window with role AXSheet or AXDrawer
-            // and forward focus to it because we are not allowed to focus the main
-            // window in these cases.
-            //
-
-            let window_list = unsafe {
-                take_create_rule_result(SLSCopyAssociatedWindows(
-                    *SKYLIGHT_CONNECTION_ID.get().unwrap(),
-                    window.0,
-                ))
-            };
-            if let Some(window_list) = window_list {
-                let window_count = CFArrayGetCount(&window_list) as i32;
-
-                for index in 0..window_count {
-                    let child_number = unsafe {
-                        cfarray_borrow_value_at_index::<CFNumber>(&window_list, index as CFIndex)
-                    };
-                    let child_window_id =
-                        WindowId(child_number.map_or(0, cfnumber_read_i32) as u32);
-                    let child = tracked_window_with_id(window_manager, child_window_id);
-                    let Some(child) = child else {
-                        continue;
-                    };
-
-                    let Some(child_record) = window_manager.window.find(&child) else {
-                        continue;
-                    };
-                    let role = window_role(child_record);
-                    let Some(role) = role else {
-                        continue;
-                    };
-
-                    let valid = CFEqual(Some(as_cftype(role)), Some(as_cftype(kAXSheetRole())))
-                        || CFEqual(Some(as_cftype(role)), Some(as_cftype(kAXDrawerRole())));
-
-                    if valid {
-                        window = child;
-                        break;
-                    }
-                }
-
-                drop(window_list);
-            }
-
-            let window_process_serial_number = window_manager
-                .window
-                .find(&window)
-                .and_then(|window| window.application)
-                .and_then(|application| window_manager.application.find(&application))
-                .map(|application| application.process_serial_number);
-            let Some(window_process_serial_number) = window_process_serial_number else {
-                return;
-            };
-            focus_window_of_process_without_raising_it(
-                &window_process_serial_number,
-                window,
-                window_manager,
-            );
-            mouse_drag_state.ffm_window_id = window;
-        } else if window_manager.focus_follows_mouse_mode == FocusFollowsMouseMode::Autoraise {
-            //
-            // NOTE(asmvik): If any **floating** window would be fully occluded by
-            // autoraising the window below the cursor we do not actually perform the
-            // focus change, as it is likely that the user is trying to reach for the
-            // smaller window that sits on top of the window we would otherwise raise.
-            //
-
-            let mut occludes_window = false;
-
-            let window_list =
-                query_windows_on_space(space_manager.current_space_id, false, window_manager);
-
-            if let Some(window_list) = window_list {
-                let window_count = window_list.len() as i32;
-                for index in 0..window_count {
-                    let window_id = window_list[index as usize];
-                    if window_id == window {
-                        break;
-                    }
-
-                    let sub_window = tracked_window_with_id(window_manager, window_id);
-                    let Some(sub_window) = sub_window else {
-                        continue;
-                    };
-                    let Some(sub_window_record) = window_manager.window.find(&sub_window) else {
-                        continue;
-                    };
-
-                    if !is_window_flag_set(sub_window_record, WindowFlag::FLOATING) {
-                        continue;
-                    }
-                    if query_window_level_from_window_server(window)
-                        != query_window_level_from_window_server(sub_window)
-                    {
-                        continue;
-                    }
-                    if query_window_sub_level_from_window_server(window)
-                        != query_window_sub_level_from_window_server(sub_window)
-                    {
-                        continue;
-                    }
-
-                    let window_frame = window_manager
-                        .window
-                        .find(&window)
-                        .map(|window| window.frame);
-                    if let Some(window_frame) = window_frame
-                        && CGRectContainsRect(window_frame, sub_window_record.frame)
-                    {
-                        occludes_window = true;
-                        break;
-                    }
-                }
-            }
-
-            if !occludes_window {
-                let Some(window_record) = window_manager.window.find(&window) else {
-                    return;
-                };
-                let window_element_ref = window_record.element_ref;
-                let window_process_serial_number = window_record
-                    .application
-                    .and_then(|application| window_manager.application.find(&application))
-                    .map(|application| application.process_serial_number);
-                let Some(window_process_serial_number) = window_process_serial_number else {
-                    return;
-                };
-                focus_and_raise_window_of_process(
-                    &window_process_serial_number,
-                    window,
-                    window_element_ref,
-                );
-                mouse_drag_state.ffm_window_id = window;
-            }
-        }
-    } else {
-        let cursor_display_id = query_display_at_point(point);
-        if display_manager.current_display_id == cursor_display_id {
-            return;
-        }
-
-        let bounds =
-            query_bounds_of_display_left_for_windows(cursor_display_id, false, display_manager);
-        if !is_point_inside_rectangle_including_its_edges(bounds, point) {
-            return;
-        }
-
-        let window_id = focus_window_under_point(point, window_manager);
-        if window_id.0 == 0 {
-            move_active_menu_bar_to_display(cursor_display_id);
-        }
-        mouse_drag_state.ffm_window_id = window_id;
+pub(crate) fn handle_focus_follows_mouse_under_the_still_cursor_event(
+    display_manager: &mut DisplayManager,
+    window_manager: &mut WindowManager,
+    space_manager: &mut SpaceManager,
+    mouse_drag_state: &mut MouseDragState,
+    mission_control_mode: &mut MissionControlMode,
+) {
+    if window_manager.focus_follows_mouse_mode == FocusFollowsMouseMode::Disabled {
+        return;
     }
+    if is_mission_control_active(mission_control_mode) {
+        return;
+    }
+    if mouse_drag_state.ffm_window_id.0 != 0 || mouse_drag_state.window_id.is_some() {
+        return;
+    }
+    if DOCK_SWIPE_GESTURE_IS_IN_PROGRESS.load(Ordering::Relaxed) {
+        return;
+    }
+    let Some(event_carrying_the_cursor_location) = CGEventCreate(None) else {
+        return;
+    };
+
+    focus_the_window_at_point_the_way_focus_follows_mouse_does(
+        CGEventGetLocation(Some(&event_carrying_the_cursor_location)),
+        display_manager,
+        window_manager,
+        space_manager,
+        mouse_drag_state,
+    );
 }

@@ -1,13 +1,18 @@
 use crate::display::identity::query_displays_active_for_drawing;
 use crate::display::manager::DisplayManager;
 use crate::display::spaces::{query_current_space_of_display, query_spaces_of_display};
+use crate::layout::group::{
+    RejoinedGroup, add_window_to_view_tree_rejoining_its_remembered_group,
+    put_the_rejoined_groups_back_in_order_and_forget_them,
+};
 use crate::layout::settings::{ViewFlag, ViewLayout};
 use crate::layout::tree::{
-    add_window_to_view_tree, collect_windows_of_view_in_tree_order,
-    move_windows_below_node_into_their_areas, remove_window_from_view_tree,
+    collect_windows_of_view_in_tree_order, move_windows_below_node_into_their_areas,
+    remove_window_from_view_tree,
 };
 use crate::layout::view::has_view_windows_awaiting_their_areas;
 use crate::mouse::drag::MouseDragState;
+use crate::scripting_addition::client::order_window_relative_to_other_window_through_scripting_addition;
 use crate::space::managed_space::{
     is_space_visible_on_its_display, is_user_space, query_windows_on_space,
 };
@@ -143,7 +148,7 @@ pub(crate) fn tile_manageable_windows_found_on_space(
             // This is necessary to make sure that we do not call the AX API for each modification to the tree.
             //
 
-            add_window_to_view_tree(
+            add_window_to_view_tree_rejoining_its_remembered_group(
                 space_manager,
                 space_id,
                 window,
@@ -160,6 +165,28 @@ pub(crate) fn tile_manageable_windows_found_on_space(
             if let Some(view) = space_manager.view.find_mut(&space_id) {
                 view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
+        }
+    }
+
+    bring_the_front_window_of_each_rejoined_group_above_the_others(
+        put_the_rejoined_groups_back_in_order_and_forget_them(
+            space_manager,
+            space_id,
+            window_manager,
+        ),
+    );
+}
+
+fn bring_the_front_window_of_each_rejoined_group_above_the_others(
+    rejoined_groups: Vec<RejoinedGroup>,
+) {
+    for rejoined_group in rejoined_groups {
+        for other_member in rejoined_group.other_members {
+            order_window_relative_to_other_window_through_scripting_addition(
+                rejoined_group.front_window,
+                1,
+                other_member,
+            );
         }
     }
 }

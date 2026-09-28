@@ -1,5 +1,10 @@
 pub mod area;
 pub mod feedback_window;
+pub mod group;
+pub mod group_area;
+pub mod group_header;
+pub mod group_header_style;
+pub mod group_header_window;
 pub mod insertion;
 pub mod settings;
 pub mod tree;

@@ -5,11 +5,12 @@
 use objc2_core_foundation::{CFType, CGPoint, CGRect};
 
 pub use objc2_core_graphics::{
-    CGAffineTransformConcat, CGAffineTransformMakeScale, CGAffineTransformMakeTranslation,
-    CGBitmapContextCreate, CGBitmapContextCreateImage, CGBitmapInfo, CGButtonCount,
-    CGColorSpaceCreateDeviceRGB, CGContext, CGContextAddPath, CGContextClearRect,
-    CGContextDrawImage, CGContextDrawPath, CGContextFlush, CGContextSetLineWidth,
-    CGContextSetRGBFillColor, CGContextSetRGBStrokeColor, CGDirectDisplayID, CGDisplayBounds,
+    CGAffineTransformConcat, CGAffineTransformIdentity, CGAffineTransformMakeScale,
+    CGAffineTransformMakeTranslation, CGBitmapContextCreate, CGBitmapContextCreateImage,
+    CGBitmapInfo, CGButtonCount, CGColorSpaceCreateDeviceRGB, CGContext, CGContextAddPath,
+    CGContextClearRect, CGContextDrawImage, CGContextDrawPath, CGContextFlush,
+    CGContextSetLineWidth, CGContextSetRGBFillColor, CGContextSetRGBStrokeColor,
+    CGContextSetTextMatrix, CGContextSetTextPosition, CGDirectDisplayID, CGDisplayBounds,
     CGDisplayChangeSummaryFlags, CGDisplayIsBuiltin, CGDisplayRegisterReconfigurationCallback,
     CGEnableEventStateCombining, CGError, CGEvent, CGEventCreate, CGEventField, CGEventFlags,
     CGEventGetFlags, CGEventGetIntegerValueField, CGEventGetLocation, CGEventMask, CGEventPost,

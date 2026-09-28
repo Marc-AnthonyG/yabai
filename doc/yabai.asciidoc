@@ -157,7 +157,8 @@ Global Settings
     When focusing a window, put the mouse at its center.
 
 *focus_follows_mouse* ['autofocus|autoraise|off']::
-    Automatically focus the window under the mouse.
+    Automatically focus the window under the mouse. +
+    Also applied under a still mouse once the windows have settled after grouping or ungrouping, a layout change, a window closing or minimizing, and a space change; swaps and warps keep the moved window focused.
 
 *display_arrangement_order* ['default|vertical|horizontal']::
     Specify how displays are ordered (determined by center point). +
@@ -221,6 +222,35 @@ Global Settings
     Follows the macOS accent color until it is set; the color given here is used from then on. +
     Without a value, prints the color in effect.
 
+*group_header_height* ['<integer number>']::
+    Height of the header drawn at the top of every window group, in points; the windows of a group get the rest of its tile. +
+    A group is a bsp tile holding stacked windows (see *window --toggle group*); the stack layout counts as one group. +
+    '0' draws no header.
+
+*group_header_background_color* ['0xAARRGGBB']::
+    Color of the rounded bar drawn behind the tabs of a group; '0x00000000' draws none.
+
+*group_header_active_color* ['0xAARRGGBB']::
+    Color of the tab of the window in front of its group.
+
+*group_header_inactive_color* ['0xAARRGGBB']::
+    Color of the tabs of the other windows of a group.
+
+*group_header_active_text_color* ['0xAARRGGBB']::
+    Color of the title in the tab of the window in front of its group.
+
+*group_header_inactive_text_color* ['0xAARRGGBB']::
+    Color of the titles in the tabs of the other windows of a group.
+
+*group_header_font_family* ['<font family name>']::
+    Font family of the titles in the tabs, as Font Book lists it.
+
+*group_header_font_style* ['<font style name>']::
+    Style of the titles in the tabs, such as 'Bold', as Font Book lists it; empty uses the regular style.
+
+*group_header_font_size* ['<FLOAT_SEL>']::
+    Size of the titles in the tabs, in points.
+
 *split_ratio* ['<FLOAT_SEL>']::
     Specify the size distribution when a window is split.
 
@@ -234,7 +264,8 @@ Global Settings
     Action performed when pressing 'mouse_modifier' + 'button2'.
 
 *mouse_drop_action* ['swap|stack']::
-    Action performed when a bsp-managed window is dropped in the center of some other bsp-managed window.
+    Action performed when a bsp-managed window is dropped in the center of some other bsp-managed window. +
+    A window dropped in the center of a group, or on its header, always joins that group.
 
 Space Settings
 ^^^^^^^^^^^^^^
@@ -359,7 +390,9 @@ COMMAND
     Toggle space setting on or off for the selected space.
 
 *--layout* 'bsp|stack|float'::
-    Set the layout of the selected space.
+    Set the layout of the selected space. +
+    Nothing changes when the space already has that layout. +
+    Leaving bsp remembers the groups of the space; returning to bsp puts the windows still there back into their groups.
 
 *--label* ['<LABEL>']::
     Label the selected space, allowing that label to be used as an alias in commands that take a `SPACE_SEL` parameter. +
@@ -433,8 +466,10 @@ COMMAND
     If type is 'rel' the split ratio of the selected window is changed by 'dr', otherwise 'dr' will become the new split ratio. +
     A positive/negative delta will increase/decrease the size of the left-child.
 
-*--toggle* 'float|sticky|pip|shadow|split|zoom-parent|zoom-fullscreen|windowed-fullscreen|native-fullscreen|expose|<LABEL>'::
+*--toggle* 'float|sticky|pip|shadow|split|zoom-parent|zoom-fullscreen|windowed-fullscreen|native-fullscreen|expose|group|<LABEL>'::
     Toggle the given property of the selected window. +
+    'group' turns the tile of the selected window into a group, which keeps a header with one tab per window, or ungroups the group holding it, giving each of its windows its own tile. +
+    Clicking a tab brings its window to the front of the group. +
     The following properties require System Integrity Protection to be partially disabled: sticky, pip, shadow, LABEL (scratchpad identifier) .
 
 *--sub-layer* '<LAYER>'::
@@ -588,7 +623,8 @@ WINDOW
     "is-hidden": bool,
     "is-floating": bool,
     "is-sticky": bool,
-    "is-grabbed": bool
+    "is-grabbed": bool,
+    "is-grouped": bool
 }
 ----
 

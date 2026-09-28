@@ -1,6 +1,7 @@
 use crate::debug;
 use crate::display::manager::DisplayManager;
 use crate::ffi::skylight::{SLSSetMenuBarInsetAndAlpha, SLSSpaceGetType};
+use crate::layout::group_header::refresh_the_group_headers_of_view;
 use crate::layout::settings::ViewFlag;
 use crate::layout::tree::move_windows_below_node_into_their_areas;
 use crate::layout::view::{
@@ -22,6 +23,7 @@ use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
 use crate::support::handles::{ROOT_NODE_ID, SpaceId};
 use crate::window::discovery::retry_tracking_windows_of_applications_with_unresolved_windows;
 use crate::window::focus::{query_focused_tracked_window, respond_to_window_receiving_focus};
+use crate::window::focus_follows_mouse::schedule_focus_follows_mouse_under_the_still_cursor_once_the_layout_settles;
 use crate::window::manager::{
     WindowManager, forget_focused_event_that_arrived_before_window_was_tracked,
     has_focused_event_arrived_before_window_was_tracked,
@@ -190,6 +192,9 @@ pub(crate) fn handle_space_changed_event(
                 view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
         }
+
+        refresh_the_group_headers_of_view(view, space_manager, window_manager);
+        schedule_focus_follows_mouse_under_the_still_cursor_once_the_layout_settles(window_manager);
     }
 
     queue_pending_signal_for_its_subscribers(

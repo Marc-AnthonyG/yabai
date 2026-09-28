@@ -8,6 +8,9 @@ use crate::ffi::accessibility::{
 };
 use crate::ffi::carbon_process::ProcessSerialNumber;
 use crate::ffi::core_foundation::CFRetained;
+use crate::layout::group_header_style::{
+    GroupHeaderStyle, group_header_style_with_its_initial_settings,
+};
 use crate::layout::settings::ViewLayout;
 use crate::space::manager::SpaceManager;
 use crate::support::color::{RgbaColor, rgba_color_from_packed_argb};
@@ -97,6 +100,8 @@ pub(crate) struct WindowManager {
     pub(crate) insert_feedback_color: RgbaColor,
     pub(crate) insert_feedback_color_follows_the_system_accent_color: bool,
     pub(crate) scratchpad_window: Vec<Scratchpad>,
+    pub(crate) group_header_style: GroupHeaderStyle,
+    pub(crate) group_headers_are_hidden_during_mission_control: bool,
 }
 
 pub(crate) static SHADOW_REMOVAL_MODE_NAMES: [&str; 3] = ["on", "float", "off"];
@@ -334,6 +339,8 @@ pub(crate) fn initialize_window_manager(window_manager: &mut WindowManager) {
     window_manager.window_animation_easing = AnimationEasingType::EaseOutCirc;
     window_manager.insert_feedback_color = rgba_color_from_packed_argb(0xffd75f5f);
     window_manager.insert_feedback_color_follows_the_system_accent_color = true;
+    window_manager.group_header_style = group_header_style_with_its_initial_settings();
+    window_manager.group_headers_are_hidden_during_mission_control = false;
 
     window_manager.application = Table::new(150, hash_process_id_for_table);
     window_manager.window = Table::new(150, hash_window_id_for_table);
@@ -378,5 +385,7 @@ pub(crate) fn create_window_manager_tracking_nothing_with_its_initial_settings()
         insert_feedback_color: rgba_color_from_packed_argb(0xffd75f5f),
         insert_feedback_color_follows_the_system_accent_color: true,
         scratchpad_window: Vec::new(),
+        group_header_style: group_header_style_with_its_initial_settings(),
+        group_headers_are_hidden_during_mission_control: false,
     }
 }

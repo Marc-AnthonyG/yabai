@@ -37,3 +37,24 @@ preview, a SkyLight overlay window drawn as a ghost of that frame.
   insertion point, the way repeating the same `--insert` clears it. A window that is
   not tracked yet cannot clear it, so the new window still consumes it. A node that is showing the
   mouse drag preview keeps its overlay and insert direction; the drag owns them.
+- A group is a leaf holding stacked windows. In bsp a leaf with more than one window is always a
+  group; a leaf with one window is a group while that window's `stays_a_group_on_its_own` mark is
+  set. The mark is set when a lone window is grouped and when a group is left with one window, and
+  cleared when a window leaves a multi-window leaf or its group is ungrouped. It travels with the
+  window, so a lone group warped, minimised or sent to another space is still a group where it lands.
+  In the stack layout the root is always a group.
+- A group's windows get its tile (or zoom) area minus the header, whose height is clamped to half
+  the tile; `node.area` stays the full tile because sibling split arithmetic reads it. Every place
+  that turns a tile into window frames, and the moved/resized handlers' drift checks, go through
+  `group_area`, or a group's windows would be pulled back to the full tile after every move.
+- `--layout` to the layout a view already has does nothing. Leaving bsp snapshots the view's
+  multi-window groups on the view; the next bsp tiling stacks a returning member onto the tile of
+  a member already placed, then restores stack order and the front window, and forgets the snapshot.
+- A group header is a SkyLight window owned by its node, like the insert overlay. Headers are
+  rebuilt from the tree by one refresh of the whole view, run whenever windows are moved into
+  their areas, a window leaves a group, focus or a title changes, a space becomes visible and after
+  Mission Control; only a visible space is refreshed, and a new header is moved onto its view's
+  space. They hide during Mission Control, snap to their final frame instead of animating, and
+  publish their frames to the mouse tap after every refresh.
+- Tab titles are CoreText lines drawn into the header's SkyLight context, whose y axis points up;
+  tab frames are flipped to screen coordinates for hit tests.

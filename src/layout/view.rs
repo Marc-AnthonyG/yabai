@@ -4,6 +4,7 @@ use crate::ffi::CFStringOwned;
 use crate::ffi::core_foundation::{CFRetainedAssumedSendAndSync, take_create_rule_result};
 use crate::ffi::skylight::SLSSpaceCopyName;
 use crate::layout::area::area_from_cgrect;
+use crate::layout::group::RememberedGroup;
 use crate::layout::insertion::destroy_insert_feedback_of_node;
 use crate::layout::settings::{ViewFlag, ViewLayout};
 use crate::layout::tree::{
@@ -34,6 +35,7 @@ pub(crate) struct View {
     pub(crate) window_gap: i32,
     pub(crate) auto_balance: u32,
     pub(crate) flags: u64,
+    pub(crate) groups_remembered_outside_bsp: Vec<RememberedGroup>,
 }
 
 impl View {
@@ -197,6 +199,7 @@ pub(crate) fn create_view_for_space_from_global_settings(
         window_gap: 0,
         auto_balance: 0,
         flags: 0,
+        groups_remembered_outside_bsp: Vec::new(),
     };
 
     view.space_id = space_id;

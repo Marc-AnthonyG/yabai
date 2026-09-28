@@ -14,6 +14,9 @@ use crate::ffi::core_graphics::{
 };
 use crate::ffi::dispatch::{NSEC_PER_SEC, dispatch_after_on_main_queue};
 use crate::ffi::skylight::SLSSetMenuBarInsetAndAlpha;
+use crate::layout::group_header::{
+    hide_the_group_headers_of_every_view, refresh_the_group_headers_of_every_view,
+};
 use crate::mouse::drag::MouseDragState;
 use crate::process::manager::ProcessManager;
 use crate::signal::definition::{SIGNAL_TYPE_COUNT, Signal, SignalType};
@@ -38,6 +41,7 @@ pub(crate) fn handle_mission_control_show_all_windows_event(
 ) {
     debug!("{}:\n", "handle_mission_control_show_all_windows_event");
     *mission_control_mode = MissionControlMode::ShowAllWindows;
+    hide_every_group_header_while_mission_control_shows(window_manager, space_manager);
     queue_pending_signal_for_its_subscribers(
         SignalType::MissionControlEnter,
         SignalContext::MissionControl(*mission_control_mode),
@@ -61,6 +65,7 @@ pub(crate) fn handle_mission_control_show_front_windows_event(
 ) {
     debug!("{}:\n", "handle_mission_control_show_front_windows_event");
     *mission_control_mode = MissionControlMode::ShowFrontWindows;
+    hide_every_group_header_while_mission_control_shows(window_manager, space_manager);
     queue_pending_signal_for_its_subscribers(
         SignalType::MissionControlEnter,
         SignalContext::MissionControl(*mission_control_mode),
@@ -84,6 +89,7 @@ pub(crate) fn handle_mission_control_show_desktop_event(
 ) {
     debug!("{}:\n", "handle_mission_control_show_desktop_event");
     *mission_control_mode = MissionControlMode::ShowDesktop;
+    hide_every_group_header_while_mission_control_shows(window_manager, space_manager);
     queue_pending_signal_for_its_subscribers(
         SignalType::MissionControlEnter,
         SignalContext::MissionControl(*mission_control_mode),
@@ -107,6 +113,7 @@ pub(crate) fn handle_mission_control_enter_event(
 ) {
     debug!("{}:\n", "handle_mission_control_enter_event");
     *mission_control_mode = MissionControlMode::Show;
+    hide_every_group_header_while_mission_control_shows(window_manager, space_manager);
 
     dispatch_after_on_main_queue((0.1f32 * NSEC_PER_SEC as f32) as i64, || {
         post_event_to_event_loop(Event::MissionControlCheckForExit);
@@ -227,6 +234,8 @@ pub(crate) fn handle_mission_control_exit_event(
             mouse_drag_state,
         );
     }
+    window_manager.group_headers_are_hidden_during_mission_control = false;
+    refresh_the_group_headers_of_every_view(space_manager, window_manager);
 
     queue_pending_signal_for_its_subscribers(
         SignalType::MissionControlExit,
@@ -239,4 +248,12 @@ pub(crate) fn handle_mission_control_exit_event(
         signal_storage,
     );
     *mission_control_mode = MissionControlMode::Inactive;
+}
+
+fn hide_every_group_header_while_mission_control_shows(
+    window_manager: &mut WindowManager,
+    space_manager: &mut SpaceManager,
+) {
+    window_manager.group_headers_are_hidden_during_mission_control = true;
+    hide_the_group_headers_of_every_view(space_manager, window_manager);
 }

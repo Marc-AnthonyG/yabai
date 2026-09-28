@@ -321,6 +321,7 @@ mod tests {
             } else {
                 0
             },
+            groups_remembered_outside_bsp: Vec::new(),
         }
     }
 

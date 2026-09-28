@@ -48,6 +48,7 @@ use crate::window::fullscreen::{
     toggle_window_windowed_fullscreen,
 };
 use crate::window::grid::place_floating_window_on_display_grid;
+use crate::window::group::toggle_group_of_window;
 use crate::window::layer::set_window_layer_for_it_and_its_child_windows;
 use crate::window::manager::{WindowManager, WindowOperationOutcome};
 use crate::window::minimize_and_close::{
@@ -109,6 +110,7 @@ pub(crate) const ARGUMENT_WINDOW_TOGGLE_WINDOWED: &str = "windowed-fullscreen";
 pub(crate) const ARGUMENT_WINDOW_TOGGLE_NATIVE: &str = "native-fullscreen";
 pub(crate) const ARGUMENT_WINDOW_TOGGLE_EXPOSE: &str = "expose";
 pub(crate) const ARGUMENT_WINDOW_TOGGLE_PICTURE_IN_PICTURE: &str = "pip";
+pub(crate) const ARGUMENT_WINDOW_TOGGLE_GROUP: &str = "group";
 
 pub(crate) const ARGUMENT_WINDOW_SCRATCHPAD_RECOVER: &str = "recover";
 /* ----------------------------------------------------------------------------- */
@@ -795,6 +797,24 @@ pub(crate) fn run_window_command(
                         display_manager,
                         window_manager,
                     );
+                } else {
+                    daemon_fail!(response, "could not locate the window to act on!\n");
+                }
+            } else if is_token_equal_to(value, message_cursor.bytes(), ARGUMENT_WINDOW_TOGGLE_GROUP)
+            {
+                if let Some(acting_window) = acting_window_id {
+                    let result = toggle_group_of_window(
+                        space_manager,
+                        acting_window,
+                        display_manager,
+                        window_manager,
+                        mouse_drag_state,
+                    );
+                    if result == WindowOperationOutcome::InvalidSourceView {
+                        daemon_fail!(response, "the acting window is not within a bsp space.\n");
+                    } else if result == WindowOperationOutcome::InvalidSourceNode {
+                        daemon_fail!(response, "the acting window is not managed.\n");
+                    }
                 } else {
                     daemon_fail!(response, "could not locate the window to act on!\n");
                 }

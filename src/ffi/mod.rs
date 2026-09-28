@@ -1,6 +1,7 @@
 pub mod skylight;
 pub mod skylight_dynamic;
 pub mod core_graphics;
+pub mod core_text;
 pub mod color_sync;
 pub mod accessibility;
 pub mod carbon_process;

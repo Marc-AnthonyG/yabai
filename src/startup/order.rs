@@ -16,6 +16,7 @@ use crate::ffi::appkit::NSApplication;
 use crate::ffi::carbon_process::ProcessSerialNumber;
 use crate::ffi::core_foundation::{CGPoint, CGRect};
 use crate::ffi::skylight::SLSRegisterConnectionNotifyProc;
+use crate::layout::group_header_style::group_header_style_with_its_initial_settings;
 use crate::layout::insertion::WindowInsertionPoint;
 use crate::layout::settings::ViewLayout;
 use crate::layout::tree::{WindowNodeChild, WindowNodeSplit};
@@ -101,6 +102,8 @@ pub(crate) fn start_the_daemon_and_enter_the_main_run_loop() {
             },
             insert_feedback_color_follows_the_system_accent_color: true,
             scratchpad_window: Vec::new(),
+            group_header_style: group_header_style_with_its_initial_settings(),
+            group_headers_are_hidden_during_mission_control: false,
         },
         space_manager: SpaceManager {
             view: Table::new(0, hash_view_key),

@@ -13,6 +13,11 @@ use crate::ffi::core_foundation::{CFRetained, CFRetainedAssumedSendAndSync};
 use crate::ffi::core_graphics::{CGPointEqualToPoint, CGRectEqualToRect};
 use crate::ffi::skylight::{SLSOrderWindow, SLSSpaceSetFrontPSN};
 use crate::layout::area::is_difference_beyond_accessibility_rounding;
+use crate::layout::group_area::area_given_to_the_windows_of_tile;
+use crate::layout::group_header::{
+    keep_the_group_header_right_above_the_front_window_of_the_group_holding,
+    refresh_the_group_headers_of_the_view_managing_window,
+};
 use crate::layout::settings::ViewFlag;
 use crate::layout::tree::{leaf_holding_window, move_windows_below_node_into_their_areas};
 use crate::mouse::drag::MouseDragState;
@@ -44,6 +49,7 @@ use crate::support::log::text_or_printf_null_placeholder;
 use crate::support::macos_version::{is_running_on_macos_sequoia, is_running_on_macos_tahoe};
 use crate::window::discovery::track_newly_discovered_window_applying_its_rules;
 use crate::window::focus::respond_to_window_receiving_focus;
+use crate::window::focus_follows_mouse::schedule_focus_follows_mouse_under_the_still_cursor_once_the_layout_settles;
 use crate::window::fullscreen::wait_until_native_fullscreen_transition_finishes;
 use crate::window::manager::{
     WindowManager, WindowOriginDisplayMode,
@@ -273,6 +279,7 @@ pub(crate) fn handle_window_destroyed_event(
     if is_running_on_macos_sequoia() || is_running_on_macos_tahoe() {
         request_skylight_notifications_for_windows_that_need_them(window_manager, space_manager);
     }
+    schedule_focus_follows_mouse_under_the_still_cursor_once_the_layout_settles(window_manager);
 }
 
 pub(crate) fn handle_window_focused_event(
@@ -452,19 +459,31 @@ pub(crate) fn handle_window_moved_event(
                 if let Some(node) = node
                     && space_manager.view.find(&view).is_some_and(|view| {
                         view.find_node(node).is_some_and(|window_node| {
+                            let node_window_area = area_given_to_the_windows_of_tile(
+                                window_node.area,
+                                view,
+                                window_node,
+                                window_manager,
+                            );
                             (is_difference_beyond_accessibility_rounding(
-                                window_node.area.x as f64,
+                                node_window_area.x as f64,
                                 new_origin.x,
                             ) || is_difference_beyond_accessibility_rounding(
-                                window_node.area.y as f64,
+                                node_window_area.y as f64,
                                 new_origin.y,
                             )) && window_node.zoom.is_none_or(|zoom| {
                                 view.find_node(zoom).is_some_and(|zoom| {
+                                    let zoom_window_area = area_given_to_the_windows_of_tile(
+                                        zoom.area,
+                                        view,
+                                        window_node,
+                                        window_manager,
+                                    );
                                     is_difference_beyond_accessibility_rounding(
-                                        zoom.area.x as f64,
+                                        zoom_window_area.x as f64,
                                         new_origin.x,
                                     ) || is_difference_beyond_accessibility_rounding(
-                                        zoom.area.y as f64,
+                                        zoom_window_area.y as f64,
                                         new_origin.y,
                                     )
                                 })
@@ -653,31 +672,43 @@ pub(crate) fn handle_window_resized_event(
                     if let Some(node) = node
                         && space_manager.view.find(&view).is_some_and(|view| {
                             view.find_node(node).is_some_and(|window_node| {
+                                let node_window_area = area_given_to_the_windows_of_tile(
+                                    window_node.area,
+                                    view,
+                                    window_node,
+                                    window_manager,
+                                );
                                 (is_difference_beyond_accessibility_rounding(
-                                    window_node.area.x as f64,
+                                    node_window_area.x as f64,
                                     new_frame.origin.x,
                                 ) || is_difference_beyond_accessibility_rounding(
-                                    window_node.area.y as f64,
+                                    node_window_area.y as f64,
                                     new_frame.origin.y,
                                 ) || is_difference_beyond_accessibility_rounding(
-                                    window_node.area.width as f64,
+                                    node_window_area.width as f64,
                                     new_frame.size.width,
                                 ) || is_difference_beyond_accessibility_rounding(
-                                    window_node.area.height as f64,
+                                    node_window_area.height as f64,
                                     new_frame.size.height,
                                 )) && window_node.zoom.is_none_or(|zoom| {
                                     view.find_node(zoom).is_some_and(|zoom| {
+                                        let zoom_window_area = area_given_to_the_windows_of_tile(
+                                            zoom.area,
+                                            view,
+                                            window_node,
+                                            window_manager,
+                                        );
                                         is_difference_beyond_accessibility_rounding(
-                                            zoom.area.x as f64,
+                                            zoom_window_area.x as f64,
                                             new_frame.origin.x,
                                         ) || is_difference_beyond_accessibility_rounding(
-                                            zoom.area.y as f64,
+                                            zoom_window_area.y as f64,
                                             new_frame.origin.y,
                                         ) || is_difference_beyond_accessibility_rounding(
-                                            zoom.area.width as f64,
+                                            zoom_window_area.width as f64,
                                             new_frame.size.width,
                                         ) || is_difference_beyond_accessibility_rounding(
-                                            zoom.area.height as f64,
+                                            zoom_window_area.height as f64,
                                             new_frame.size.height,
                                         )
                                     })
@@ -794,6 +825,7 @@ pub(crate) fn handle_window_minimized_event(
         space_manager,
         signal_storage,
     );
+    schedule_focus_follows_mouse_under_the_still_cursor_once_the_layout_settles(window_manager);
 }
 
 pub(crate) fn handle_window_deminimized_event(
@@ -960,6 +992,7 @@ pub(crate) fn handle_window_title_changed_event(
 
     let title = copy_window_title_through_accessibility(window_record);
     window_record.title = title;
+    refresh_the_group_headers_of_the_view_managing_window(window, space_manager, window_manager);
 
     queue_pending_signal_for_its_subscribers(
         SignalType::WindowTitleChanged,
@@ -1007,6 +1040,11 @@ pub(crate) fn handle_skylight_window_ordered_event(
             )
         };
     }
+    keep_the_group_header_right_above_the_front_window_of_the_group_holding(
+        window_id,
+        space_manager,
+        window_manager,
+    );
 }
 
 pub(crate) fn handle_skylight_window_destroyed_event(

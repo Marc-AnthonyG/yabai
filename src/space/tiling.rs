@@ -1,4 +1,5 @@
 use crate::display::manager::DisplayManager;
+use crate::layout::group_header::refresh_the_group_headers_of_view;
 use crate::layout::settings::{ViewFlag, ViewLayout};
 use crate::layout::tree::{
     WindowNodeSplit, add_window_to_view_tree_preferring_insertion_point,
@@ -44,6 +45,7 @@ pub(crate) fn untile_window_from_view_of_space(
         window_manager,
         mouse_drag_state,
     ) else {
+        refresh_the_group_headers_of_view(space_id, space_manager, window_manager);
         return;
     };
 

@@ -20,8 +20,8 @@ use crate::event::handlers::mission_control::{
     handle_mission_control_show_desktop_event, handle_mission_control_show_front_windows_event,
 };
 use crate::event::handlers::mouse::{
-    handle_mouse_down_event, handle_mouse_dragged_event, handle_mouse_moved_event,
-    handle_mouse_up_event,
+    handle_focus_follows_mouse_under_the_still_cursor_event, handle_mouse_down_event,
+    handle_mouse_dragged_event, handle_mouse_moved_event, handle_mouse_up_event,
 };
 use crate::event::handlers::space::{
     handle_skylight_space_created_event, handle_skylight_space_destroyed_event,
@@ -302,6 +302,7 @@ pub(crate) fn run_event_loop_flushing_signals_after_each_event(
                         event,
                         event_modifier,
                         window_manager,
+                        space_manager,
                         mouse_drag_state,
                         mission_control_mode,
                     ),
@@ -434,6 +435,15 @@ pub(crate) fn run_event_loop_flushing_signals_after_each_event(
                     }
                     Event::InsertFeedbackFadeInStep => {
                         handle_insert_feedback_fade_in_step_event(space_manager)
+                    }
+                    Event::FocusFollowsMouseUnderTheStillCursor => {
+                        handle_focus_follows_mouse_under_the_still_cursor_event(
+                            display_manager,
+                            window_manager,
+                            space_manager,
+                            mouse_drag_state,
+                            mission_control_mode,
+                        )
                     }
                     Event::DaemonMessage(stream) => handle_daemon_message_event(
                         stream,

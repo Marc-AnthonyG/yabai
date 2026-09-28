@@ -11,6 +11,7 @@ use crate::ffi::skylight::{
     _SLPSGetFrontProcess, _SLPSSetFrontProcessWithOptions, SLPSPostEventRecordTo,
     SLSGetCurrentCursorLocation,
 };
+use crate::layout::group_header::refresh_the_group_headers_of_view;
 use crate::layout::insertion::clear_every_pending_insertion_point_other_than_the_window;
 use crate::layout::tree::leaf_holding_window;
 use crate::mouse::drag::MouseDragState;
@@ -20,7 +21,7 @@ use crate::notifications::mouse::{
 };
 use crate::space::manager::SpaceManager;
 use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
-use crate::support::handles::{ProcessId, WindowId};
+use crate::support::handles::{ProcessId, SpaceId, WindowId};
 use crate::window::manager::{
     FocusFollowsMouseMode, WindowManager, space_managing_window,
     tracked_application_with_process_id, tracked_window_with_id,
@@ -303,14 +304,23 @@ pub(crate) fn respond_to_window_receiving_focus(
     }
     mouse_drag_state.ffm_window_id = WindowId(0);
 
-    let Some(view) = space_managing_window(window_manager, window_id) else {
+    let Some(space_id) = space_managing_window(window_manager, window_id) else {
         return;
     };
 
-    let Some(node_id) = leaf_holding_window(space_manager, view, window_id) else {
+    bring_window_to_the_front_of_its_stack(space_id, window_id, space_manager);
+    refresh_the_group_headers_of_view(space_id, space_manager, window_manager);
+}
+
+fn bring_window_to_the_front_of_its_stack(
+    space_id: SpaceId,
+    window_id: WindowId,
+    space_manager: &mut SpaceManager,
+) {
+    let Some(node_id) = leaf_holding_window(space_manager, space_id, window_id) else {
         return;
     };
-    let Some(view) = space_manager.view.find_mut(&view) else {
+    let Some(view) = space_manager.view.find_mut(&space_id) else {
         return;
     };
     let node = view.node_mut(node_id);

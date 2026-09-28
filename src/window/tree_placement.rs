@@ -11,8 +11,9 @@ use crate::layout::tree::{
     MOST_WINDOWS_A_NODE_CAN_HOLD, WindowNodeChild, WindowNodeSplit,
     add_window_to_view_tree_preferring_insertion_point,
     collect_windows_below_node_with_their_target_areas, is_node_the_left_child_of_its_parent,
-    is_window_in_node, leaf_holding_window, remove_window_from_view_tree,
-    stack_window_in_node_as_its_front_window, swap_windows_between_nodes_clearing_their_zoom,
+    is_window_in_node, leaf_holding_window, move_windows_below_node_into_their_areas,
+    remove_window_from_view_tree, stack_window_in_node_as_its_front_window,
+    swap_windows_between_nodes_clearing_their_zoom,
     window_node_split_and_child_placing_a_window_inserted_in_direction,
 };
 use crate::mouse::drag::MouseDragState;
@@ -27,8 +28,7 @@ use crate::space::tiling::{
 use crate::support::handles::WindowId;
 use crate::support::layer::LAYER_BELOW;
 use crate::window::animation::{
-    WindowWithTargetFrame, move_window_to_its_target_frame_animating_if_enabled,
-    move_windows_to_their_target_frames_animating_if_enabled,
+    WindowWithTargetFrame, move_windows_to_their_target_frames_animating_if_enabled,
 };
 use crate::window::floating_and_sticky::set_whether_window_is_sticky;
 use crate::window::focus::{focus_and_raise_tracked_window, kCPSNoWindows};
@@ -226,24 +226,11 @@ pub(crate) fn stack_second_window_onto_the_node_of_first_window(
         receiving_node_second_window_in_order,
     );
 
-    let Some(area) = space_manager.view.find(&receiving_view).and_then(|view| {
-        let node = view.find_node(receiving_node)?;
-        match node.zoom {
-            Some(zoom) => view.find_node(zoom).map(|zoom_node| zoom_node.area),
-            None => Some(node.area),
-        }
-    }) else {
-        return WindowOperationOutcome::InvalidSourceNode;
-    };
-    move_window_to_its_target_frame_animating_if_enabled(
-        WindowWithTargetFrame {
-            window_id: stacked_window,
-            x: area.x,
-            y: area.y,
-            width: area.width,
-            height: area.height,
-        },
+    move_windows_below_node_into_their_areas(
+        receiving_view,
+        receiving_node,
         window_manager,
+        space_manager,
     );
     WindowOperationOutcome::Success
 }

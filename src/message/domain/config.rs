@@ -7,6 +7,7 @@ use crate::display::manager::{
     EXTERNAL_BAR_MODE_NAMES, ExternalBarMode,
 };
 use crate::ffi::core_graphics::{CGPreflightScreenCaptureAccess, CGRequestScreenCaptureAccess};
+use crate::layout::group_header::refresh_the_group_headers_of_every_view;
 use crate::layout::insertion::{WINDOW_INSERTION_POINT_NAMES, WindowInsertionPoint};
 use crate::layout::settings::{AUTO_BALANCE_NAMES, VIEW_LAYOUT_NAMES, ViewFlag, ViewLayout};
 use crate::layout::tree::{
@@ -56,7 +57,7 @@ use crate::state::process_wide::{
 use crate::support::arithmetic::{
     is_within_range_excluding_low_including_high, is_within_range_including_both_bounds,
 };
-use crate::support::color::rgba_color_from_packed_argb;
+use crate::support::color::{RgbaColor, rgba_color_from_packed_argb};
 use crate::support::easing::{
     ANIMATION_EASING_TYPE_COUNT, ANIMATION_EASING_TYPE_NAMES, AnimationEasingType,
 };
@@ -96,6 +97,18 @@ pub(crate) const COMMAND_CONFIG_MENUBAR_OPACITY: &str = "menubar_opacity";
 pub(crate) const COMMAND_CONFIG_ACTIVE_WINDOW_OPACITY: &str = "active_window_opacity";
 pub(crate) const COMMAND_CONFIG_NORMAL_WINDOW_OPACITY: &str = "normal_window_opacity";
 pub(crate) const COMMAND_CONFIG_INSERT_FEEDBACK_COLOR: &str = "insert_feedback_color";
+pub(crate) const COMMAND_CONFIG_GROUP_HEADER_HEIGHT: &str = "group_header_height";
+pub(crate) const COMMAND_CONFIG_GROUP_HEADER_BACKGROUND_COLOR: &str =
+    "group_header_background_color";
+pub(crate) const COMMAND_CONFIG_GROUP_HEADER_ACTIVE_COLOR: &str = "group_header_active_color";
+pub(crate) const COMMAND_CONFIG_GROUP_HEADER_INACTIVE_COLOR: &str = "group_header_inactive_color";
+pub(crate) const COMMAND_CONFIG_GROUP_HEADER_ACTIVE_TEXT_COLOR: &str =
+    "group_header_active_text_color";
+pub(crate) const COMMAND_CONFIG_GROUP_HEADER_INACTIVE_TEXT_COLOR: &str =
+    "group_header_inactive_text_color";
+pub(crate) const COMMAND_CONFIG_GROUP_HEADER_FONT_FAMILY: &str = "group_header_font_family";
+pub(crate) const COMMAND_CONFIG_GROUP_HEADER_FONT_STYLE: &str = "group_header_font_style";
+pub(crate) const COMMAND_CONFIG_GROUP_HEADER_FONT_SIZE: &str = "group_header_font_size";
 pub(crate) const COMMAND_CONFIG_TOP_PADDING: &str = "top_padding";
 pub(crate) const COMMAND_CONFIG_BOTTOM_PADDING: &str = "bottom_padding";
 pub(crate) const COMMAND_CONFIG_LEFT_PADDING: &str = "left_padding";
@@ -763,6 +776,182 @@ pub(crate) fn run_config_command(
             {
                 window_manager.insert_feedback_color = rgba_color_from_packed_argb(u32_value);
                 window_manager.insert_feedback_color_follows_the_system_accent_color = false;
+            } else {
+                daemon_fail_with_unknown_value_given_to_command_for_domain(
+                    response,
+                    message_cursor.bytes(),
+                    value.token,
+                    command,
+                    domain,
+                );
+            }
+        } else if is_token_equal_to(
+            command,
+            message_cursor.bytes(),
+            COMMAND_CONFIG_GROUP_HEADER_HEIGHT,
+        ) {
+            let value = parse_token_into_typed_value(
+                message_cursor.take_next_token(),
+                message_cursor.bytes(),
+            );
+            if let TokenValueType::Invalid = value.type_of_value {
+                response.write(format_args!(
+                    "{}\n",
+                    window_manager.group_header_style.height as i32
+                ));
+            } else if let TokenValueType::Integer(height) = value.type_of_value
+                && height >= 0
+            {
+                window_manager.group_header_style.height = height as f32;
+                move_the_windows_of_every_view_into_their_areas(space_manager, window_manager);
+            } else {
+                daemon_fail_with_unknown_value_given_to_command_for_domain(
+                    response,
+                    message_cursor.bytes(),
+                    value.token,
+                    command,
+                    domain,
+                );
+            }
+        } else if is_token_equal_to(
+            command,
+            message_cursor.bytes(),
+            COMMAND_CONFIG_GROUP_HEADER_BACKGROUND_COLOR,
+        ) {
+            let value = parse_token_into_typed_value(
+                message_cursor.take_next_token(),
+                message_cursor.bytes(),
+            );
+            if let TokenValueType::Invalid = value.type_of_value {
+                response.write(format_args!(
+                    "0x{:x}\n",
+                    window_manager.group_header_style.background_color.packed
+                ));
+            } else if let TokenValueType::Hexadecimal(packed_color) = value.type_of_value {
+                window_manager.group_header_style.background_color =
+                    rgba_color_from_packed_argb(packed_color);
+                refresh_the_group_headers_of_every_view(space_manager, window_manager);
+            } else {
+                daemon_fail_with_unknown_value_given_to_command_for_domain(
+                    response,
+                    message_cursor.bytes(),
+                    value.token,
+                    command,
+                    domain,
+                );
+            }
+        } else if is_token_equal_to(
+            command,
+            message_cursor.bytes(),
+            COMMAND_CONFIG_GROUP_HEADER_ACTIVE_COLOR,
+        ) {
+            if query_or_set_group_header_color(
+                response,
+                message_cursor,
+                command,
+                domain,
+                &mut window_manager.group_header_style.active_color,
+            ) {
+                refresh_the_group_headers_of_every_view(space_manager, window_manager);
+            }
+        } else if is_token_equal_to(
+            command,
+            message_cursor.bytes(),
+            COMMAND_CONFIG_GROUP_HEADER_INACTIVE_COLOR,
+        ) {
+            if query_or_set_group_header_color(
+                response,
+                message_cursor,
+                command,
+                domain,
+                &mut window_manager.group_header_style.inactive_color,
+            ) {
+                refresh_the_group_headers_of_every_view(space_manager, window_manager);
+            }
+        } else if is_token_equal_to(
+            command,
+            message_cursor.bytes(),
+            COMMAND_CONFIG_GROUP_HEADER_ACTIVE_TEXT_COLOR,
+        ) {
+            if query_or_set_group_header_color(
+                response,
+                message_cursor,
+                command,
+                domain,
+                &mut window_manager.group_header_style.active_text_color,
+            ) {
+                refresh_the_group_headers_of_every_view(space_manager, window_manager);
+            }
+        } else if is_token_equal_to(
+            command,
+            message_cursor.bytes(),
+            COMMAND_CONFIG_GROUP_HEADER_INACTIVE_TEXT_COLOR,
+        ) {
+            if query_or_set_group_header_color(
+                response,
+                message_cursor,
+                command,
+                domain,
+                &mut window_manager.group_header_style.inactive_text_color,
+            ) {
+                refresh_the_group_headers_of_every_view(space_manager, window_manager);
+            }
+        } else if is_token_equal_to(
+            command,
+            message_cursor.bytes(),
+            COMMAND_CONFIG_GROUP_HEADER_FONT_FAMILY,
+        ) {
+            let value = message_cursor.take_next_token();
+            if !value.is_not_empty() {
+                response.write(format_args!(
+                    "{}\n",
+                    window_manager.group_header_style.font_family
+                ));
+            } else {
+                window_manager.group_header_style.font_family =
+                    String::from_utf8_lossy(value.bytes(message_cursor.bytes())).into_owned();
+                refresh_the_group_headers_of_every_view(space_manager, window_manager);
+            }
+        } else if is_token_equal_to(
+            command,
+            message_cursor.bytes(),
+            COMMAND_CONFIG_GROUP_HEADER_FONT_STYLE,
+        ) {
+            let value = message_cursor.take_next_token();
+            if !value.is_not_empty() {
+                response.write(format_args!(
+                    "{}\n",
+                    window_manager.group_header_style.font_style
+                ));
+            } else {
+                window_manager.group_header_style.font_style =
+                    String::from_utf8_lossy(value.bytes(message_cursor.bytes())).into_owned();
+                refresh_the_group_headers_of_every_view(space_manager, window_manager);
+            }
+        } else if is_token_equal_to(
+            command,
+            message_cursor.bytes(),
+            COMMAND_CONFIG_GROUP_HEADER_FONT_SIZE,
+        ) {
+            let value = parse_token_into_typed_value(
+                message_cursor.take_next_token(),
+                message_cursor.bytes(),
+            );
+            let font_size = match value.type_of_value {
+                TokenValueType::Integer(font_size) => Some(font_size as f32),
+                TokenValueType::Float(font_size) => Some(font_size),
+                _ => None,
+            };
+            if let TokenValueType::Invalid = value.type_of_value {
+                response.write(format_args!(
+                    "{}\n",
+                    window_manager.group_header_style.font_size
+                ));
+            } else if let Some(font_size) = font_size
+                && font_size > 0.0
+            {
+                window_manager.group_header_style.font_size = font_size;
+                refresh_the_group_headers_of_every_view(space_manager, window_manager);
             } else {
                 daemon_fail_with_unknown_value_given_to_command_for_domain(
                     response,
@@ -1651,6 +1840,48 @@ pub(crate) fn run_config_command(
     }
 }
 
+fn query_or_set_group_header_color(
+    response: &mut Response,
+    message_cursor: &mut MessageCursor,
+    command: Token,
+    domain: Token,
+    color: &mut RgbaColor,
+) -> bool {
+    let value =
+        parse_token_into_typed_value(message_cursor.take_next_token(), message_cursor.bytes());
+    if let TokenValueType::Invalid = value.type_of_value {
+        response.write(format_args!("0x{:x}\n", color.packed));
+        false
+    } else if let TokenValueType::Hexadecimal(packed_color) = value.type_of_value
+        && packed_color != 0
+    {
+        *color = rgba_color_from_packed_argb(packed_color);
+        true
+    } else {
+        daemon_fail_with_unknown_value_given_to_command_for_domain(
+            response,
+            message_cursor.bytes(),
+            value.token,
+            command,
+            domain,
+        );
+        false
+    }
+}
+
+fn move_the_windows_of_every_view_into_their_areas(
+    space_manager: &mut SpaceManager,
+    window_manager: &mut WindowManager,
+) {
+    for space_id in space_manager.view.keys_in_bucket_order() {
+        move_view_windows_into_their_areas_or_defer_until_space_is_visible(
+            space_manager,
+            space_id,
+            window_manager,
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::Read;
@@ -1808,5 +2039,110 @@ mod tests {
             response_text,
             "\x07unknown value 'yes' given to command 'reload_config_file_on_change' for domain 'config'\n"
         );
+    }
+
+    #[test]
+    fn group_header_settings_print_their_initial_values() {
+        let mut window_manager = create_window_manager_tracking_nothing_with_its_initial_settings();
+
+        for (setting, expected_response) in [
+            ("group_header_height", "24\n"),
+            ("group_header_active_color", "0xff3d59a1\n"),
+            ("group_header_inactive_text_color", "0xff737aa2\n"),
+            ("group_header_font_family", "Helvetica Neue\n"),
+            ("group_header_font_size", "12\n"),
+        ] {
+            assert_eq!(
+                handle_config_message_and_read_the_response(&[setting], &mut window_manager),
+                expected_response,
+                "{setting}"
+            );
+        }
+    }
+
+    #[test]
+    fn setting_group_header_colours_and_font_stores_them() {
+        let mut window_manager = create_window_manager_tracking_nothing_with_its_initial_settings();
+
+        let responses = [
+            handle_config_message_and_read_the_response(
+                &["group_header_inactive_color", "0xff292e42"],
+                &mut window_manager,
+            ),
+            handle_config_message_and_read_the_response(
+                &["group_header_font_family", "JetBrainsMono Nerd Font"],
+                &mut window_manager,
+            ),
+            handle_config_message_and_read_the_response(
+                &["group_header_font_size", "13.5"],
+                &mut window_manager,
+            ),
+            handle_config_message_and_read_the_response(
+                &["group_header_height", "30"],
+                &mut window_manager,
+            ),
+        ];
+
+        assert!(responses.iter().all(String::is_empty));
+        let style = &window_manager.group_header_style;
+        assert_eq!(style.inactive_color.packed, 0xff292e42);
+        assert_eq!(style.font_family, "JetBrainsMono Nerd Font");
+        assert_eq!(style.font_size, 13.5);
+        assert_eq!(style.height, 30.0);
+    }
+
+    #[test]
+    fn group_header_settings_refuse_a_zero_colour_a_negative_height_and_a_zero_font_size() {
+        let mut window_manager = create_window_manager_tracking_nothing_with_its_initial_settings();
+
+        for (setting, refused_value) in [
+            ("group_header_active_color", "0x0"),
+            ("group_header_active_color", "4278190335"),
+            ("group_header_height", "-1"),
+            ("group_header_font_size", "0"),
+        ] {
+            let response_text = handle_config_message_and_read_the_response(
+                &[setting, refused_value],
+                &mut window_manager,
+            );
+
+            assert_eq!(
+                response_text,
+                format!(
+                    "\x07unknown value '{refused_value}' given to command '{setting}' for domain 'config'\n"
+                )
+            );
+        }
+        let style = &window_manager.group_header_style;
+        assert_eq!(style.active_color.packed, 0xff3d59a1);
+        assert_eq!(style.height, 24.0);
+        assert_eq!(style.font_size, 12.0);
+    }
+
+    #[test]
+    fn group_header_background_accepts_a_fully_transparent_colour_and_a_font_style_is_stored() {
+        let mut window_manager = create_window_manager_tracking_nothing_with_its_initial_settings();
+
+        let responses = [
+            handle_config_message_and_read_the_response(
+                &["group_header_background_color", "0xcc292e42"],
+                &mut window_manager,
+            ),
+            handle_config_message_and_read_the_response(
+                &["group_header_font_style", "Bold"],
+                &mut window_manager,
+            ),
+        ];
+        let background_after_it_was_set = window_manager.group_header_style.background_color.packed;
+        let response_to_clearing_the_background = handle_config_message_and_read_the_response(
+            &["group_header_background_color", "0x0"],
+            &mut window_manager,
+        );
+
+        assert!(responses.iter().all(String::is_empty));
+        assert_eq!(response_to_clearing_the_background, "");
+        assert_eq!(background_after_it_was_set, 0xcc292e42);
+        assert_eq!(window_manager.group_header_style.background_color.packed, 0);
+        assert_eq!(window_manager.group_header_style.font_style, "Bold");
     }
 }

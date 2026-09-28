@@ -1,7 +1,8 @@
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU8, Ordering};
 
-use crate::ffi::core_foundation::{CFMachPort, CFRunLoopSource};
-use crate::ffi::core_graphics::CGEvent;
+use crate::ffi::core_foundation::{CFMachPort, CFRunLoopSource, CGPoint, CGRect};
+use crate::ffi::core_graphics::{CGEvent, CGRectContainsPoint};
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) struct MouseModifier(pub u8);
@@ -47,6 +48,20 @@ pub struct MouseTapState {
     pub action1: AtomicU8,
     pub action2: AtomicU8,
     pub drop_action: AtomicU8,
+    pub swallowed_a_click_on_a_group_header: AtomicBool,
+}
+
+pub static GROUP_HEADER_FRAMES_WHOSE_CLICKS_THE_TAP_SWALLOWS: Mutex<Vec<CGRect>> =
+    Mutex::new(Vec::new());
+
+pub(crate) fn is_point_on_a_visible_group_header(point: CGPoint) -> bool {
+    GROUP_HEADER_FRAMES_WHOSE_CLICKS_THE_TAP_SWALLOWS
+        .lock()
+        .is_ok_and(|header_frames| {
+            header_frames
+                .iter()
+                .any(|header_frame| CGRectContainsPoint(*header_frame, point))
+        })
 }
 
 impl MouseTapState {
@@ -61,6 +76,7 @@ impl MouseTapState {
             action1: AtomicU8::new(0),
             action2: AtomicU8::new(0),
             drop_action: AtomicU8::new(0),
+            swallowed_a_click_on_a_group_header: AtomicBool::new(false),
         }
     }
 }

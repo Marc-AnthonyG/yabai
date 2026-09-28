@@ -11,11 +11,14 @@ use crate::ffi::core_foundation::{
     CFRunLoopAddSource, CFRunLoopGetMain, CFRunLoopRemoveSource, kCFRunLoopCommonModes,
 };
 use crate::ffi::core_graphics::{
-    CGEvent, CGEventField, CGEventFlags, CGEventGetFlags, CGEventGetIntegerValueField, CGEventMask,
-    CGEventTapCreate, CGEventTapEnable, CGEventTapIsEnabled, CGEventTapPostEvent, CGEventTapProxy,
-    CGEventType, kCGEventTapOptionDefault, kCGHIDEventTap, kCGHeadInsertEventTap,
+    CGEvent, CGEventField, CGEventFlags, CGEventGetFlags, CGEventGetIntegerValueField,
+    CGEventGetLocation, CGEventMask, CGEventTapCreate, CGEventTapEnable, CGEventTapIsEnabled,
+    CGEventTapPostEvent, CGEventTapProxy, CGEventType, kCGEventTapOptionDefault, kCGHIDEventTap,
+    kCGHeadInsertEventTap,
 };
-use crate::mouse::tap::{MOUSE_TAP_STATE, MouseModifier, MouseTapState};
+use crate::mouse::tap::{
+    MOUSE_TAP_STATE, MouseModifier, MouseTapState, is_point_on_a_visible_group_header,
+};
 use crate::state::process_wide::{
     DOCK_SWIPE_GESTURE_IS_IN_PROGRESS, LAST_DOCK_SWIPE_GESTURE_END_TIME,
 };
@@ -106,6 +109,15 @@ pub(crate) unsafe extern "C-unwind" fn handle_mouse_event_tap_callback(
                 }
                 return null_mut();
             }
+
+            if is_point_on_a_visible_group_header(CGEventGetLocation(Some(unsafe {
+                event.as_ref()
+            }))) {
+                mouse_state
+                    .swallowed_a_click_on_a_group_header
+                    .store(true, Ordering::Relaxed);
+                return null_mut();
+            }
         }
         CGEventType::LeftMouseUp | CGEventType::RightMouseUp => {
             post_event_to_event_loop(Event::MouseUp {
@@ -128,6 +140,13 @@ pub(crate) unsafe extern "C-unwind" fn handle_mouse_event_tap_callback(
                 if let Some(consumed_event) = NonNull::new(consumed_event) {
                     drop(unsafe { CFRetained::from_raw(consumed_event) });
                 }
+                return null_mut();
+            }
+
+            if mouse_state
+                .swallowed_a_click_on_a_group_header
+                .swap(false, Ordering::Relaxed)
+            {
                 return null_mut();
             }
         }

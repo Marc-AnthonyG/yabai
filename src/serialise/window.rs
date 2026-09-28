@@ -1,6 +1,7 @@
 use crate::display::arrangement::query_arrangement_index_of_display;
 use crate::display::manager::DisplayManager;
 use crate::ffi::skylight::SLSWindowIsOrderedIn;
+use crate::layout::group::is_window_in_a_group;
 use crate::layout::tree::{
     WINDOW_NODE_CHILD_NAMES, WINDOW_NODE_SPLIT_NAMES, WindowNodeChild,
     is_node_the_left_child_of_its_parent, leaf_holding_window, stack_index_of_window_in_node,
@@ -65,6 +66,7 @@ macro_rules! with_every_window_property {
             ("is-floating", WINDOW_PROPERTY_IS_FLOATING, 0x040000000),
             ("is-sticky", WINDOW_PROPERTY_IS_STICKY, 0x080000000),
             ("is-grabbed", WINDOW_PROPERTY_IS_GRABBED, 0x100000000),
+            ("is-grouped", WINDOW_PROPERTY_IS_GROUPED, 0x200000000),
         }
     };
 }
@@ -73,9 +75,9 @@ macro_rules! define_window_property_bits_and_names {
     ($(($name:literal, $identifier:ident, $value:literal)),* $(,)?) => {
         $(pub(crate) const $identifier: u64 = $value;)*
 
-        pub(crate) static WINDOW_PROPERTY_SELECTION_BITS: [u64; 33] = [$($value),*];
+        pub(crate) static WINDOW_PROPERTY_SELECTION_BITS: [u64; 34] = [$($value),*];
 
-        pub(crate) static WINDOW_PROPERTY_NAMES: [&str; 33] = [$($name),*];
+        pub(crate) static WINDOW_PROPERTY_NAMES: [&str; 34] = [$($name),*];
     };
 }
 
@@ -144,6 +146,14 @@ pub(crate) fn write_tracked_window_as_json_object(
             Some(view) => leaf_holding_window(space_manager, view, window_id),
             None => None,
         };
+    }
+
+    let mut is_grouped: Option<bool> = None;
+    if (flags & WINDOW_PROPERTY_IS_GROUPED) != 0 {
+        let space_managing_the_window = space_managing_window(window_manager, window_id);
+        is_grouped = Some(space_managing_the_window.is_some_and(|space_id| {
+            is_window_in_a_group(space_manager, space_id, window_id, window_manager)
+        }));
     }
 
     let Some(window) = window_manager.window.find(&window_id) else {
@@ -614,6 +624,18 @@ pub(crate) fn write_tracked_window_as_json_object(
         response.write(format_args!(
             "\t\"is-grabbed\":{}",
             json_literal_for_boolean(grabbed)
+        ));
+        did_output = true;
+    }
+
+    if (flags & WINDOW_PROPERTY_IS_GROUPED) != 0 {
+        if did_output {
+            response.write(format_args!(",\n"));
+        }
+
+        response.write(format_args!(
+            "\t\"is-grouped\":{}",
+            json_literal_for_boolean(is_grouped.unwrap_or(false))
         ));
     }
 

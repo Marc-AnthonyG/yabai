@@ -7,6 +7,10 @@ use crate::layout::area::{
     is_target_area_in_direction_of_source_area_and_facing_it,
 };
 use crate::layout::feedback_window::FeedbackWindow;
+use crate::layout::group::keep_the_group_a_window_left_even_with_one_window_remaining;
+use crate::layout::group_area::area_given_to_the_windows_of_node;
+use crate::layout::group_header::refresh_the_group_headers_of_view;
+use crate::layout::group_header_window::GroupHeaderWindow;
 use crate::layout::insertion::{
     WindowInsertionPoint, destroy_insert_feedback_of_node, show_insert_feedback_of_node,
 };
@@ -87,6 +91,7 @@ pub(crate) struct WindowNode {
     pub(crate) child: WindowNodeChild,
     pub(crate) insert_direction: i32,
     pub(crate) feedback_window: Option<FeedbackWindow>,
+    pub(crate) group_header: Option<GroupHeaderWindow>,
 }
 
 pub(crate) fn divide_node_area_between_its_children(
@@ -544,10 +549,7 @@ pub(crate) fn collect_windows_below_node_with_their_target_areas(
         let (window_count, node_window_list, area) = match space_manager.view.find(&space_id) {
             Some(view) => {
                 let node = view.node(node_id);
-                let area = match node.zoom {
-                    Some(zoom) => view.node(zoom).area,
-                    None => node.area,
-                };
+                let area = area_given_to_the_windows_of_node(view, node, window_manager);
                 (node.window_count, node.window_list, area)
             }
             None => return,
@@ -611,6 +613,7 @@ pub(crate) fn move_windows_below_node_into_their_areas(
     if !window_list.is_empty() {
         move_windows_to_their_target_frames_animating_if_enabled(&window_list, window_manager);
     }
+    refresh_the_group_headers_of_view(space_id, space_manager, window_manager);
 }
 
 pub(crate) fn is_window_in_node(
@@ -1092,11 +1095,20 @@ pub(crate) fn remove_window_from_view_tree(
         debug_assert!(removed_order);
         node.window_count -= 1;
         let node_first_window_id = node.window_order[0];
+        let window_left_alone_in_the_group =
+            (node.window_count == 1).then_some(node_first_window_id);
 
         if view.insertion_point == window_id {
             view.insertion_point = node_first_window_id;
         }
 
+        let layout = view.layout;
+        keep_the_group_a_window_left_even_with_one_window_remaining(
+            window_manager,
+            window_id,
+            window_left_alone_in_the_group,
+            layout,
+        );
         return None;
     }
 

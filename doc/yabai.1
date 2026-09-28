@@ -213,6 +213,8 @@ When focusing a window, put the mouse at its center.
 \fBfocus_follows_mouse\fP [\fIautofocus|autoraise|off\fP]
 .RS 4
 Automatically focus the window under the mouse.
+.br
+Also applied under a still mouse once the windows have settled after grouping or ungrouping, a layout change, a window closing or minimizing, and a space change; swaps and warps keep the moved window focused.
 .RE
 .sp
 \fBdisplay_arrangement_order\fP [\fIdefault|vertical|horizontal\fP]
@@ -323,6 +325,55 @@ Color of the \fBwindow \-\-insert\fP message and mouse_drag selection.
 The purpose is to provide a visual preview of the new window frame.
 .RE
 .sp
+\fBgroup_header_height\fP [\fI<integer number>\fP]
+.RS 4
+Height of the header drawn at the top of every window group, in points; the windows of a group get the rest of its tile.
+.br
+A group is a bsp tile holding stacked windows (see \fBwindow \-\-toggle group\fP); the stack layout counts as one group.
+.br
+\fI0\fP draws no header.
+.RE
+.sp
+\fBgroup_header_background_color\fP [\fI0xAARRGGBB\fP]
+.RS 4
+Color of the rounded bar drawn behind the tabs of a group; \fI0x00000000\fP draws none.
+.RE
+.sp
+\fBgroup_header_active_color\fP [\fI0xAARRGGBB\fP]
+.RS 4
+Color of the tab of the window in front of its group.
+.RE
+.sp
+\fBgroup_header_inactive_color\fP [\fI0xAARRGGBB\fP]
+.RS 4
+Color of the tabs of the other windows of a group.
+.RE
+.sp
+\fBgroup_header_active_text_color\fP [\fI0xAARRGGBB\fP]
+.RS 4
+Color of the title in the tab of the window in front of its group.
+.RE
+.sp
+\fBgroup_header_inactive_text_color\fP [\fI0xAARRGGBB\fP]
+.RS 4
+Color of the titles in the tabs of the other windows of a group.
+.RE
+.sp
+\fBgroup_header_font_family\fP [\fI<font family name>\fP]
+.RS 4
+Font family of the titles in the tabs, as Font Book lists it.
+.RE
+.sp
+\fBgroup_header_font_style\fP [\fI<font style name>\fP]
+.RS 4
+Style of the titles in the tabs, such as \fIBold\fP, as Font Book lists it; empty uses the regular style.
+.RE
+.sp
+\fBgroup_header_font_size\fP [\fI<FLOAT_SEL>\fP]
+.RS 4
+Size of the titles in the tabs, in points.
+.RE
+.sp
 \fBsplit_ratio\fP [\fI<FLOAT_SEL>\fP]
 .RS 4
 Specify the size distribution when a window is split.
@@ -346,6 +397,8 @@ Action performed when pressing \fImouse_modifier\fP + \fIbutton2\fP.
 \fBmouse_drop_action\fP [\fIswap|stack\fP]
 .RS 4
 Action performed when a bsp\-managed window is dropped in the center of some other bsp\-managed window.
+.br
+A window dropped in the center of a group, or on its header, always joins that group.
 .RE
 .SS "Space Settings"
 .sp
@@ -531,6 +584,10 @@ Toggle space setting on or off for the selected space.
 \fB\-\-layout\fP \fIbsp|stack|float\fP
 .RS 4
 Set the layout of the selected space.
+.br
+Nothing changes when the space already has that layout.
+.br
+Leaving bsp remembers the groups of the space; returning to bsp puts the windows still there back into their groups.
 .RE
 .sp
 \fB\-\-label\fP [\fI<LABEL>\fP]
@@ -639,9 +696,13 @@ If type is \fIrel\fP the split ratio of the selected window is changed by \fIdr\
 A positive/negative delta will increase/decrease the size of the left\-child.
 .RE
 .sp
-\fB\-\-toggle\fP \fIfloat|sticky|pip|shadow|split|zoom\-parent|zoom\-fullscreen|windowed\-fullscreen|native\-fullscreen|expose|<LABEL>\fP
+\fB\-\-toggle\fP \fIfloat|sticky|pip|shadow|split|zoom\-parent|zoom\-fullscreen|windowed\-fullscreen|native\-fullscreen|expose|group|<LABEL>\fP
 .RS 4
 Toggle the given property of the selected window.
+.br
+\fIgroup\fP turns the tile of the selected window into a group, which keeps a header with one tab per window, or ungroups the group holding it, giving each of its windows its own tile.
+.br
+Clicking a tab brings its window to the front of the group.
 .br
 The following properties require System Integrity Protection to be partially disabled: sticky, pip, shadow, LABEL (scratchpad identifier) .
 .RE
@@ -834,7 +895,8 @@ WINDOW
     "is\-hidden": bool,
     "is\-floating": bool,
     "is\-sticky": bool,
-    "is\-grabbed": bool
+    "is\-grabbed": bool,
+    "is\-grouped": bool
 }
 .fam
 .fi

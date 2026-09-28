@@ -61,6 +61,7 @@ pub(crate) struct Window {
     pub(crate) opacity: f32,
     pub(crate) layer: i32,
     pub(crate) scratchpad: Option<String>,
+    pub(crate) stays_a_group_on_its_own: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -841,6 +842,7 @@ pub(crate) fn create_window_from_accessibility_element(
         opacity: 0.0f32,
         layer: 0,
         scratchpad: None,
+        stays_a_group_on_its_own: false,
     };
 
     window.application = Some(application);

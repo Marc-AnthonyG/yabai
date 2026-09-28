@@ -1,3 +1,4 @@
+use crate::command::values::AbsoluteOrRelativeChange;
 use crate::display::manager::DisplayManager;
 use crate::layout::group::remember_the_groups_of_view_as_it_leaves_bsp;
 use crate::layout::settings::{ViewFlag, ViewLayout};
@@ -11,7 +12,6 @@ use crate::mouse::drag::MouseDragState;
 use crate::space::managed_space::is_user_space;
 use crate::space::manager::{SpaceManager, find_or_create_view_for_space};
 use crate::support::handles::SpaceId;
-use crate::support::type_of_change::{CHANGE_TYPE_ABSOLUTE, CHANGE_TYPE_RELATIVE};
 use crate::window::focus_follows_mouse::schedule_focus_follows_mouse_under_the_still_cursor_once_the_layout_settles;
 use crate::window::manager::WindowManager;
 use crate::window::space_reconciliation::reconcile_space_view_with_windows_on_space;
@@ -81,7 +81,7 @@ fn retile_view_in_a_different_layout_remembering_its_groups(
 pub(crate) fn set_window_gap_of_space(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
-    type_of_change: i32,
+    change: AbsoluteOrRelativeChange,
     gap: i32,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
@@ -95,11 +95,10 @@ pub(crate) fn set_window_gap_of_space(
         return false;
     }
 
-    if type_of_change == CHANGE_TYPE_ABSOLUTE {
-        view.window_gap = gap;
-    } else if type_of_change == CHANGE_TYPE_RELATIVE {
-        view.window_gap = (view.window_gap + gap).max(0);
-    }
+    view.window_gap = match change {
+        AbsoluteOrRelativeChange::To => gap,
+        AbsoluteOrRelativeChange::By => (view.window_gap + gap).max(0),
+    };
 
     recompute_view_areas_from_display_bounds_and_padding(
         space_manager,
@@ -346,7 +345,7 @@ pub(crate) fn set_global_auto_balance_applying_it_to_views_without_their_own(
 pub(crate) fn set_padding_of_space(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
-    type_of_change: i32,
+    change: AbsoluteOrRelativeChange,
     top: i32,
     bottom: i32,
     left: i32,
@@ -363,16 +362,19 @@ pub(crate) fn set_padding_of_space(
         return false;
     }
 
-    if type_of_change == CHANGE_TYPE_ABSOLUTE {
-        view.top_padding = top;
-        view.bottom_padding = bottom;
-        view.left_padding = left;
-        view.right_padding = right;
-    } else if type_of_change == CHANGE_TYPE_RELATIVE {
-        view.top_padding = (view.top_padding + top).max(0);
-        view.bottom_padding = (view.bottom_padding + bottom).max(0);
-        view.left_padding = (view.left_padding + left).max(0);
-        view.right_padding = (view.right_padding + right).max(0);
+    match change {
+        AbsoluteOrRelativeChange::To => {
+            view.top_padding = top;
+            view.bottom_padding = bottom;
+            view.left_padding = left;
+            view.right_padding = right;
+        }
+        AbsoluteOrRelativeChange::By => {
+            view.top_padding = (view.top_padding + top).max(0);
+            view.bottom_padding = (view.bottom_padding + bottom).max(0);
+            view.left_padding = (view.left_padding + left).max(0);
+            view.right_padding = (view.right_padding + right).max(0);
+        }
     }
 
     recompute_view_areas_from_display_bounds_and_padding(

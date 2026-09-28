@@ -201,10 +201,8 @@ pub(crate) enum WindowFieldName {
 mod tests {
     use clap::Parser;
 
-    use super::{
-        DisplaysQueryFilter, QueryCommand, SpaceFieldName, WindowFieldName, WindowsQueryFilter,
-    };
-    use crate::command::selectors::{SpaceSelector, WindowSelector};
+    use super::{QueryCommand, SpaceFieldName, WindowFieldName};
+    use crate::command::selectors::WindowSelector;
     use crate::command::values::assert_every_value_is_spelled_alike_on_the_command_line_and_in_json;
     use crate::command::{CommandLine, DaemonCommand, TopLevelCommand};
 
@@ -271,50 +269,6 @@ mod tests {
         );
         assert!(parse_query_command(&["windows", "--fields", "is-minimized"]).is_err());
         assert!(parse_query_command(&["spaces", "--fields", "app"]).is_err());
-    }
-
-    #[test]
-    fn a_filter_without_a_selector_crosses_the_socket_as_present() {
-        for filter in [
-            WindowsQueryFilter {
-                display: None,
-                space: Some(None),
-            },
-            WindowsQueryFilter {
-                display: None,
-                space: Some(Some(SpaceSelector::Recent)),
-            },
-            WindowsQueryFilter {
-                display: None,
-                space: None,
-            },
-        ] {
-            let filter_read_back: WindowsQueryFilter =
-                serde_json::from_str(&serde_json::to_string(&filter).unwrap()).unwrap();
-
-            assert_eq!(filter_read_back.space, filter.space);
-            assert_eq!(filter_read_back.display, filter.display);
-        }
-    }
-
-    #[test]
-    fn a_whole_query_crosses_the_socket_unchanged() {
-        let query_command =
-            parse_query_command(&["displays", "--window", "--fields", "id"]).unwrap();
-
-        let query_command_read_back: QueryCommand =
-            serde_json::from_str(&serde_json::to_string(&query_command).unwrap()).unwrap();
-
-        let QueryCommand::Displays {
-            filter: DisplaysQueryFilter { space, window },
-            field_selection,
-        } = query_command_read_back
-        else {
-            panic!("query displays should come back as query displays");
-        };
-        assert_eq!(space, None);
-        assert_eq!(window, Some(None));
-        assert_eq!(field_selection.fields.len(), 1);
     }
 
     #[test]

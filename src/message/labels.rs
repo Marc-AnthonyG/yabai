@@ -1,9 +1,3 @@
-use crate::message::common_arguments::{
-    ARGUMENT_COMMON_SELECTOR_EAST, ARGUMENT_COMMON_SELECTOR_FIRST, ARGUMENT_COMMON_SELECTOR_LAST,
-    ARGUMENT_COMMON_SELECTOR_MOUSE, ARGUMENT_COMMON_SELECTOR_NEXT, ARGUMENT_COMMON_SELECTOR_NORTH,
-    ARGUMENT_COMMON_SELECTOR_PREVIOUS, ARGUMENT_COMMON_SELECTOR_RECENT,
-    ARGUMENT_COMMON_SELECTOR_SOUTH, ARGUMENT_COMMON_SELECTOR_WEST,
-};
 use crate::message::domain::window::{
     ARGUMENT_WINDOW_SCRATCHPAD_RECOVER, ARGUMENT_WINDOW_TOGGLE_EXPOSE,
     ARGUMENT_WINDOW_TOGGLE_FLOAT, ARGUMENT_WINDOW_TOGGLE_NATIVE, ARGUMENT_WINDOW_TOGGLE_PARENT,
@@ -18,32 +12,8 @@ use crate::support::response::{FailurePiece, Response};
 
 #[derive(Clone, Copy)]
 pub(crate) enum LabelType {
-    Display,
-    Space,
     Window,
 }
-
-pub(crate) const RESERVED_DISPLAY_IDENTIFIERS: [&str; 10] = [
-    ARGUMENT_COMMON_SELECTOR_NORTH,
-    ARGUMENT_COMMON_SELECTOR_EAST,
-    ARGUMENT_COMMON_SELECTOR_SOUTH,
-    ARGUMENT_COMMON_SELECTOR_WEST,
-    ARGUMENT_COMMON_SELECTOR_PREVIOUS,
-    ARGUMENT_COMMON_SELECTOR_NEXT,
-    ARGUMENT_COMMON_SELECTOR_FIRST,
-    ARGUMENT_COMMON_SELECTOR_LAST,
-    ARGUMENT_COMMON_SELECTOR_RECENT,
-    ARGUMENT_COMMON_SELECTOR_MOUSE,
-];
-
-pub(crate) const RESERVED_SPACE_IDENTIFIERS: [&str; 6] = [
-    ARGUMENT_COMMON_SELECTOR_PREVIOUS,
-    ARGUMENT_COMMON_SELECTOR_NEXT,
-    ARGUMENT_COMMON_SELECTOR_FIRST,
-    ARGUMENT_COMMON_SELECTOR_LAST,
-    ARGUMENT_COMMON_SELECTOR_RECENT,
-    ARGUMENT_COMMON_SELECTOR_MOUSE,
-];
 
 pub(crate) const RESERVED_WINDOW_IDENTIFIERS: [&str; 11] = [
     ARGUMENT_WINDOW_TOGGLE_FLOAT,
@@ -83,34 +53,6 @@ pub(crate) fn parse_label_refusing_numbers_and_reserved_words(
     }
 
     match label_type {
-        LabelType::Display => {
-            for index in 0..RESERVED_DISPLAY_IDENTIFIERS.len() {
-                if is_token_equal_to(token, message_bytes, RESERVED_DISPLAY_IDENTIFIERS[index]) {
-                    response.write_failure_pieces_unless_silent(&[
-                        FailurePiece::Text("'"),
-                        FailurePiece::Bytes(token.bytes(message_bytes)),
-                        FailurePiece::Text(
-                            "' is a reserved keyword and cannot be used as a label.\n",
-                        ),
-                    ]);
-                    return false;
-                }
-            }
-        }
-        LabelType::Space => {
-            for index in 0..RESERVED_SPACE_IDENTIFIERS.len() {
-                if is_token_equal_to(token, message_bytes, RESERVED_SPACE_IDENTIFIERS[index]) {
-                    response.write_failure_pieces_unless_silent(&[
-                        FailurePiece::Text("'"),
-                        FailurePiece::Bytes(token.bytes(message_bytes)),
-                        FailurePiece::Text(
-                            "' is a reserved keyword and cannot be used as a label.\n",
-                        ),
-                    ]);
-                    return false;
-                }
-            }
-        }
         LabelType::Window => {
             for index in 0..RESERVED_WINDOW_IDENTIFIERS.len() {
                 if is_token_equal_to(token, message_bytes, RESERVED_WINDOW_IDENTIFIERS[index]) {
@@ -197,8 +139,7 @@ mod tests {
         );
     }
 
-    const EVERY_LABEL_TYPE: [LabelType; 3] =
-        [LabelType::Display, LabelType::Space, LabelType::Window];
+    const EVERY_LABEL_TYPE: [LabelType; 1] = [LabelType::Window];
 
     #[test]
     fn an_empty_label_clears_the_label_and_is_accepted() {
@@ -230,31 +171,6 @@ mod tests {
     }
 
     #[test]
-    fn a_display_label_cannot_be_a_display_selector_word() {
-        for argument in [
-            "north", "east", "south", "west", "prev", "next", "first", "last", "recent", "mouse",
-        ] {
-            assert_rejected_with(
-                argument,
-                LabelType::Display,
-                &format!("'{argument}' is a reserved keyword and cannot be used as a label.\n"),
-            );
-        }
-    }
-
-    #[test]
-    fn a_space_label_cannot_be_a_space_selector_word_but_may_be_a_direction() {
-        for argument in ["prev", "next", "first", "last", "recent", "mouse"] {
-            assert_rejected_with(
-                argument,
-                LabelType::Space,
-                &format!("'{argument}' is a reserved keyword and cannot be used as a label.\n"),
-            );
-        }
-        assert_accepted_as("north", LabelType::Space, Some("north"));
-    }
-
-    #[test]
     fn a_scratchpad_cannot_be_a_window_toggle_word_but_may_be_a_selector_word() {
         for argument in [
             "float",
@@ -279,15 +195,6 @@ mod tests {
         }
         for argument in ["north", "prev", "mouse"] {
             assert_accepted_as(argument, LabelType::Window, Some(argument));
-        }
-    }
-
-    #[test]
-    fn window_toggle_words_are_accepted_as_display_and_space_labels() {
-        for label_type in [LabelType::Display, LabelType::Space] {
-            for argument in ["float", "recover", "zoom-parent"] {
-                assert_accepted_as(argument, label_type, Some(argument));
-            }
         }
     }
 }

@@ -1,7 +1,7 @@
 # message/domain
 
-One executor per domain. Config, query, rule and signal take a typed command; display, space and
-window still parse the old argument vector the bridge hands them.
+One executor per domain. Every domain but window takes a typed command; window still parses the
+old argument vector the bridge hands it.
 
 ## Notes
 

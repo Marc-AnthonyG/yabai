@@ -1,9 +1,12 @@
 pub mod config;
+pub mod display;
+pub mod labels;
 pub mod not_yet_typed;
 pub mod query;
 pub mod rule;
 pub mod selectors;
 pub mod signal;
+pub mod space;
 pub mod values;
 
 use std::path::PathBuf;
@@ -12,9 +15,11 @@ use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
 use crate::command::config::ConfigCommand;
+use crate::command::display::DisplayCommand;
 use crate::command::query::QueryCommand;
 use crate::command::rule::RuleCommand;
 use crate::command::signal::SignalCommand;
+use crate::command::space::SpaceCommand;
 
 #[derive(Parser)]
 #[command(
@@ -91,6 +96,10 @@ pub(crate) enum DaemonCommand {
     /// Change or print the settings of the window manager
     #[command(subcommand)]
     Config(ConfigCommand),
+    /// Focus, label or show a space on a display
+    Display(DisplayCommand),
+    /// Focus, create, move, re-tile or label a space
+    Space(SpaceCommand),
     /// Print displays, spaces and windows as JSON
     #[command(subcommand)]
     Query(QueryCommand),
@@ -102,6 +111,16 @@ pub(crate) enum DaemonCommand {
     Signal(SignalCommand),
     #[command(skip)]
     NotYetTyped { arguments: Vec<String> },
+}
+
+#[cfg(test)]
+pub(crate) fn parse_daemon_command(arguments: &[&str]) -> Result<DaemonCommand, clap::Error> {
+    let command_line =
+        CommandLine::try_parse_from(std::iter::once("yabai").chain(arguments.iter().copied()))?;
+    match command_line.command {
+        Some(TopLevelCommand::SentToTheRunningWindowManager(command)) => Ok(command),
+        _ => panic!("{arguments:?} should parse as a command sent to the window manager"),
+    }
 }
 
 #[cfg(test)]
@@ -187,6 +206,58 @@ mod tests {
                 ScriptingAdditionAction::Uninstall
             ))
         ));
+    }
+
+    #[test]
+    fn every_kind_of_command_crosses_the_socket_unchanged() {
+        for arguments in [
+            &[
+                "config",
+                "set",
+                "--mouse-follows-focus",
+                "on",
+                "--insert-feedback-color",
+                "0xff0a7aff",
+            ][..],
+            &["config", "set", "--space", "2", "--layout", "stack"],
+            &["query", "displays", "--window", "--fields", "id"],
+            &["query", "windows", "--space", "recent"],
+            &["query", "windows"],
+            &[
+                "rule",
+                "add",
+                "--app",
+                "Raycast",
+                "--display",
+                "2",
+                "--opacity",
+                "0.9",
+            ],
+            &[
+                "signal",
+                "add",
+                "space-changed",
+                "--action",
+                "true",
+                "--label",
+                "bar",
+            ],
+            &["display", "-d", "external", "label"],
+            &["display", "show-space", "code"],
+            &["space", "-s", "2", "padding", "by", "-10", "0", "5", "0"],
+            &["space", "rotate", "90"],
+        ] {
+            let command = super::parse_daemon_command(arguments).unwrap();
+            let command_as_json = serde_json::to_string(&command).unwrap();
+
+            let command_read_back: DaemonCommand = serde_json::from_str(&command_as_json).unwrap();
+
+            assert_eq!(
+                serde_json::to_string(&command_read_back).unwrap(),
+                command_as_json,
+                "{arguments:?}"
+            );
+        }
     }
 
     #[test]

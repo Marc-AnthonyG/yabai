@@ -2,8 +2,8 @@
 
 The daemon side of client commands: the socket that accepts clients and decodes their requests,
 the dispatch of a typed command to its domain, the resolution of typed selectors against live
-state and, until window, space and display are typed, the bridge that runs their old argument
-vector through the tokenizer, selectors, labels, argument words and failure texts they share.
+state and, until window is typed, the bridge that runs its old argument vector through the
+tokenizer, selectors, labels, argument words and failure texts.
 
 ## Notes
 

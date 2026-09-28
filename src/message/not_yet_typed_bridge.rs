@@ -1,6 +1,4 @@
 use crate::display::manager::DisplayManager;
-use crate::message::domain::display::run_display_command;
-use crate::message::domain::space::run_space_command;
 use crate::message::domain::window::run_window_command;
 use crate::message::token::{MessageCursor, is_token_equal_to};
 use crate::mouse::drag::MouseDragState;
@@ -11,8 +9,6 @@ use crate::state::mission_control_mode::MissionControlMode;
 use crate::support::response::{FailurePiece, Response};
 use crate::window::manager::WindowManager;
 
-const DOMAIN_DISPLAY: &str = "display";
-const DOMAIN_SPACE: &str = "space";
 const DOMAIN_WINDOW: &str = "window";
 
 pub(crate) fn run_message_to_a_domain_not_yet_typed(
@@ -29,28 +25,7 @@ pub(crate) fn run_message_to_a_domain_not_yet_typed(
     let mut message_cursor = MessageCursor::new(&mut message);
     let domain = message_cursor.take_next_token();
 
-    if is_token_equal_to(domain, message_cursor.bytes(), DOMAIN_DISPLAY) {
-        run_display_command(
-            &mut response,
-            domain,
-            &mut message_cursor,
-            display_manager,
-            window_manager,
-            space_manager,
-            mission_control_mode,
-        );
-    } else if is_token_equal_to(domain, message_cursor.bytes(), DOMAIN_SPACE) {
-        run_space_command(
-            &mut response,
-            domain,
-            &mut message_cursor,
-            display_manager,
-            window_manager,
-            space_manager,
-            mouse_drag_state,
-            mission_control_mode,
-        );
-    } else if is_token_equal_to(domain, message_cursor.bytes(), DOMAIN_WINDOW) {
+    if is_token_equal_to(domain, message_cursor.bytes(), DOMAIN_WINDOW) {
         run_window_command(
             &mut response,
             domain,

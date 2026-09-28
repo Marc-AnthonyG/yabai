@@ -229,17 +229,4 @@ mod tests {
         ));
         assert!(parse_rule_command(&["remove"]).is_err());
     }
-
-    #[test]
-    fn a_rule_crosses_the_socket_unchanged() {
-        let (_, definition) =
-            parse_rule_add(&["--app", "Raycast", "--display", "2", "--opacity", "0.9"]).unwrap();
-
-        let definition_read_back: RuleDefinition =
-            serde_json::from_str(&serde_json::to_string(&definition).unwrap()).unwrap();
-
-        assert_eq!(definition_read_back.app.as_deref(), Some("Raycast"));
-        assert_eq!(definition_read_back.display, definition.display);
-        assert_eq!(definition_read_back.opacity, Some(0.9));
-    }
 }

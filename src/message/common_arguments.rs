@@ -11,6 +11,4 @@ pub(crate) const ARGUMENT_COMMON_SELECTOR_WEST: &str = "west";
 pub(crate) const ARGUMENT_COMMON_SELECTOR_MOUSE: &str = "mouse";
 pub(crate) const ARGUMENT_COMMON_SELECTOR_STACK: &str = "stack";
 pub(crate) const ARGUMENT_COMMON_SELECTOR_STACK_PREFIX: &str = "stack.";
-pub(crate) const ARGUMENT_COMMON_VALUE_AXIS_X: &str = "x-axis";
-pub(crate) const ARGUMENT_COMMON_VALUE_AXIS_Y: &str = "y-axis";
 /* ----------------------------------------------------------------------------- */

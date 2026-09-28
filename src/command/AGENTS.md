@@ -14,5 +14,5 @@ manager, which crosses the socket as JSON.
 - Values are checked while parsing, so a bad value is a usage error before anything is sent.
   Selectors are only parsed here; the daemon resolves them against live state.
 - The hidden `-m` passes an old argument vector on as `DaemonCommand::NotYetTyped`, for the
-  domains that are not typed yet. It is a bridge, not a second grammar: nothing new goes through
-  it.
+  window domain, which is not typed yet. It is a bridge, not a second grammar: nothing new goes
+  through it.

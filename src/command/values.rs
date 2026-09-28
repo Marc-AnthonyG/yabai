@@ -23,6 +23,14 @@ impl OnOrOff {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug, ValueEnum, Serialize, Deserialize)]
+pub(crate) enum AbsoluteOrRelativeChange {
+    /// Set the value
+    To,
+    /// Add to the current value
+    By,
+}
+
 pub(crate) fn command_line_spelling_of<Value: ValueEnum>(value: &Value) -> String {
     value
         .to_possible_value()
@@ -220,7 +228,7 @@ where
     Value::deserialize(deserializer).map(Some)
 }
 
-fn parse_finite_number(text: &str) -> Result<f32, String> {
+pub(crate) fn parse_finite_number(text: &str) -> Result<f32, String> {
     text.parse::<f32>()
         .ok()
         .filter(|number| number.is_finite())

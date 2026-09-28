@@ -509,33 +509,6 @@ mod tests {
     }
 
     #[test]
-    fn config_set_crosses_the_socket_unchanged() {
-        let arguments = parse_config_set(&[
-            "--mouse-follows-focus",
-            "on",
-            "--insert-feedback-color",
-            "0xff0a7aff",
-        ])
-        .unwrap();
-
-        let arguments_read_back: ConfigSetArguments =
-            serde_json::from_str(&serde_json::to_string(&arguments).unwrap()).unwrap();
-
-        assert_eq!(
-            arguments_read_back
-                .settings_for_every_space
-                .mouse_follows_focus,
-            Some(OnOrOff::On)
-        );
-        assert_eq!(
-            arguments_read_back
-                .settings_for_every_space
-                .insert_feedback_color,
-            Some(PackedArgbColor(0xff0a7aff))
-        );
-    }
-
-    #[test]
     fn every_setting_value_is_spelled_alike_on_the_command_line_and_in_json() {
         assert_every_value_is_spelled_alike_on_the_command_line_and_in_json::<ViewLayout>();
         assert_every_value_is_spelled_alike_on_the_command_line_and_in_json::<WindowNodeSplit>();

@@ -1,4 +1,4 @@
-use std::ffi::CString;
+use regex::Regex;
 
 use crate::daemon_fail;
 use crate::message::common_failures::{
@@ -15,7 +15,6 @@ use crate::signal::definition::{
     add_signal_replacing_any_with_the_same_label, remove_signal_at_listing_index,
     remove_signal_with_label, signal_type_for_event_name,
 };
-use crate::support::regex::PosixRegex;
 use crate::support::response::{FailurePiece, Response};
 
 /* --------------------------------DOMAIN SIGNAL-------------------------------- */
@@ -91,8 +90,7 @@ pub(crate) fn run_signal_command(
                 } else if key == ARGUMENT_SIGNAL_KEY_APPLICATION.as_bytes() {
                     signal.app = Some(String::from_utf8_lossy(&value).into_owned());
                     signal.app_regex_exclude = pair.exclusion;
-                    signal.app_regex =
-                        PosixRegex::compile(&CString::new(value.clone()).unwrap_or_default());
+                    signal.app_regex = Regex::new(&String::from_utf8_lossy(&value)).ok();
                     if signal.app_regex.is_none() {
                         daemon_fail_with_invalid_regex_pattern_for_key(response, &value, &key);
                         did_parse = false;
@@ -100,8 +98,7 @@ pub(crate) fn run_signal_command(
                 } else if key == ARGUMENT_SIGNAL_KEY_TITLE.as_bytes() {
                     signal.title = Some(String::from_utf8_lossy(&value).into_owned());
                     signal.title_regex_exclude = pair.exclusion;
-                    signal.title_regex =
-                        PosixRegex::compile(&CString::new(value.clone()).unwrap_or_default());
+                    signal.title_regex = Regex::new(&String::from_utf8_lossy(&value)).ok();
                     if signal.title_regex.is_none() {
                         daemon_fail_with_invalid_regex_pattern_for_key(response, &value, &key);
                         did_parse = false;

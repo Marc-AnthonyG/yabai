@@ -1,5 +1,7 @@
 use std::ffi::CString;
 
+use regex::Regex;
+
 use crate::daemon_fail;
 use crate::display::identity::query_display_showing_the_active_menu_bar;
 use crate::display::manager::DisplayManager;
@@ -26,7 +28,6 @@ use crate::space::manager::SpaceManager;
 use crate::state::mission_control_mode::MissionControlMode;
 use crate::support::arithmetic::is_within_range_including_both_bounds;
 use crate::support::layer::{LAYER_ABOVE, LAYER_AUTO, LAYER_BELOW, LAYER_NORMAL};
-use crate::support::regex::PosixRegex;
 use crate::support::response::{FailurePiece, Response};
 use crate::window::manager::WindowManager;
 use crate::window::rule::{
@@ -134,8 +135,7 @@ pub(crate) fn parse_rule(
                 if pair.exclusion {
                     rule.flags |= RuleFlag::APPLICATION_PATTERN_IS_NEGATED;
                 }
-                rule.app_regex =
-                    PosixRegex::compile(&CString::new(value.clone()).unwrap_or_default());
+                rule.app_regex = Regex::new(&String::from_utf8_lossy(&value)).ok();
                 if rule.app_regex.is_none() {
                     daemon_fail_with_invalid_regex_pattern_for_key(response, &value, &key);
                     did_parse = false;
@@ -146,8 +146,7 @@ pub(crate) fn parse_rule(
                 if pair.exclusion {
                     rule.flags |= RuleFlag::TITLE_PATTERN_IS_NEGATED;
                 }
-                rule.title_regex =
-                    PosixRegex::compile(&CString::new(value.clone()).unwrap_or_default());
+                rule.title_regex = Regex::new(&String::from_utf8_lossy(&value)).ok();
                 if rule.title_regex.is_none() {
                     daemon_fail_with_invalid_regex_pattern_for_key(response, &value, &key);
                     did_parse = false;
@@ -158,8 +157,7 @@ pub(crate) fn parse_rule(
                 if pair.exclusion {
                     rule.flags |= RuleFlag::ROLE_PATTERN_IS_NEGATED;
                 }
-                rule.role_regex =
-                    PosixRegex::compile(&CString::new(value.clone()).unwrap_or_default());
+                rule.role_regex = Regex::new(&String::from_utf8_lossy(&value)).ok();
                 if rule.role_regex.is_none() {
                     daemon_fail_with_invalid_regex_pattern_for_key(response, &value, &key);
                     did_parse = false;
@@ -170,8 +168,7 @@ pub(crate) fn parse_rule(
                 if pair.exclusion {
                     rule.flags |= RuleFlag::SUBROLE_PATTERN_IS_NEGATED;
                 }
-                rule.subrole_regex =
-                    PosixRegex::compile(&CString::new(value.clone()).unwrap_or_default());
+                rule.subrole_regex = Regex::new(&String::from_utf8_lossy(&value)).ok();
                 if rule.subrole_regex.is_none() {
                     daemon_fail_with_invalid_regex_pattern_for_key(response, &value, &key);
                     did_parse = false;

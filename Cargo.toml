@@ -123,6 +123,12 @@ libc = { version = "0.2.189", default-features = false, features = ["std"] }
 
 bitflags = { version = "2.13.2", default-features = false }
 
+regex = { version = "1.13.1", default-features = false, features = [
+    "std",
+    "perf",
+    "unicode",
+] }
+
 [profile.dev]
 opt-level       = 0
 debug           = true

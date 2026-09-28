@@ -1,173 +1,162 @@
-const _: () = assert!(std::mem::size_of::<libc::regex_t>() == 32);
+use regex::Regex;
 
-pub struct PosixRegex {
-    regex: Box<libc::regex_t>,
-}
-
-impl PosixRegex {
-    pub fn compile(pattern: &std::ffi::CStr) -> Option<PosixRegex> {
-        let mut regex: Box<libc::regex_t> = Box::new(unsafe { std::mem::zeroed() });
-        let status = unsafe { libc::regcomp(regex.as_mut(), pattern.as_ptr(), libc::REG_EXTENDED) };
-        if status == 0 {
-            Some(PosixRegex { regex })
-        } else {
-            None
-        }
-    }
-
-    pub fn matches(&self, subject: &std::ffi::CStr) -> bool {
-        let status = unsafe {
-            libc::regexec(
-                self.regex.as_ref(),
-                subject.as_ptr(),
-                0,
-                std::ptr::null_mut(),
-                0,
-            )
-        };
-        status == 0
-    }
-}
-
-impl Drop for PosixRegex {
-    fn drop(&mut self) {
-        unsafe { libc::regfree(self.regex.as_mut()) };
-    }
-}
-
-#[repr(i32)]
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum RegexMatch {
-    Undefined = 0,
-    Yes = 1,
-    No = 2,
-}
-
-pub fn match_subject_against_optional_regex(
-    regex: Option<&PosixRegex>,
-    subject: &std::ffi::CStr,
-) -> RegexMatch {
-    match regex {
-        None => RegexMatch::Undefined,
-        Some(regex) => {
-            if regex.matches(subject) {
-                RegexMatch::Yes
-            } else {
-                RegexMatch::No
-            }
-        }
-    }
+pub fn is_subject_rejected_by_optional_pattern(
+    pattern: Option<&Regex>,
+    pattern_is_negated: bool,
+    subject: &str,
+) -> bool {
+    pattern.is_some_and(|pattern| pattern.is_match(subject) == pattern_is_negated)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::ffi::CStr;
+    use regex::Regex;
 
-    use super::{PosixRegex, RegexMatch, match_subject_against_optional_regex};
+    use super::is_subject_rejected_by_optional_pattern;
 
-    fn compile_or_panic(pattern: &CStr) -> PosixRegex {
-        PosixRegex::compile(pattern)
-            .unwrap_or_else(|| panic!("{pattern:?} should compile as an extended regex"))
+    fn compile_or_panic(pattern: &str) -> Regex {
+        Regex::new(pattern).unwrap_or_else(|error| panic!("{pattern:?} should compile: {error}"))
     }
 
-    fn pattern_matches_subject(pattern: &CStr, subject: &CStr) -> bool {
-        compile_or_panic(pattern).matches(subject)
+    fn assert_pattern_matches_exactly(pattern: &str, matching: &[&str], not_matching: &[&str]) {
+        let regex = compile_or_panic(pattern);
+        for subject in matching {
+            assert!(
+                regex.is_match(subject),
+                "{pattern:?} should match {subject:?}"
+            );
+        }
+        for subject in not_matching {
+            assert!(
+                !regex.is_match(subject),
+                "{pattern:?} should not match {subject:?}"
+            );
+        }
     }
 
     #[test]
-    fn match_subject_against_optional_regex_without_a_regex_is_undefined() {
-        assert!(match_subject_against_optional_regex(None, c"Safari") == RegexMatch::Undefined);
+    fn a_missing_pattern_rejects_nothing_even_when_negated() {
+        assert!(!is_subject_rejected_by_optional_pattern(
+            None, false, "Safari"
+        ));
+        assert!(!is_subject_rejected_by_optional_pattern(
+            None, true, "Safari"
+        ));
     }
 
     #[test]
-    fn match_subject_against_optional_regex_is_yes_when_the_subject_matches() {
-        let regex = compile_or_panic(c"^Safari$");
+    fn a_pattern_rejects_the_subjects_it_does_not_match() {
+        let regex = compile_or_panic("^Safari$");
 
-        assert!(match_subject_against_optional_regex(Some(&regex), c"Safari") == RegexMatch::Yes);
+        assert!(!is_subject_rejected_by_optional_pattern(
+            Some(&regex),
+            false,
+            "Safari"
+        ));
+        assert!(is_subject_rejected_by_optional_pattern(
+            Some(&regex),
+            false,
+            "Safari Technology Preview"
+        ));
     }
 
     #[test]
-    fn match_subject_against_optional_regex_is_no_when_the_subject_does_not_match() {
-        let regex = compile_or_panic(c"^Safari$");
+    fn a_negated_pattern_rejects_the_subjects_it_matches() {
+        let regex = compile_or_panic("^Safari$");
 
-        assert!(
-            match_subject_against_optional_regex(Some(&regex), c"Safari Technology Preview")
-                == RegexMatch::No
+        assert!(is_subject_rejected_by_optional_pattern(
+            Some(&regex),
+            true,
+            "Safari"
+        ));
+        assert!(!is_subject_rejected_by_optional_pattern(
+            Some(&regex),
+            true,
+            "Safari Technology Preview"
+        ));
+    }
+
+    #[test]
+    fn the_floating_application_rule_matches_only_the_whole_listed_names() {
+        assert_pattern_matches_exactly(
+            "^(Harvest|Stickies|Calculator|Software Update|Dictionary|System Preferences|System Settings|zoom.us|App Store|Activity Monitor|Raycast)$",
+            &[
+                "Harvest",
+                "Calculator",
+                "Software Update",
+                "System Settings",
+                "zoom.us",
+                "App Store",
+                "Activity Monitor",
+                "Raycast",
+            ],
+            &["Calculator Pro", "Harvest Moon", "Settings", "Safari"],
         );
     }
 
     #[test]
-    fn match_subject_against_optional_regex_results_keep_the_c_values() {
-        assert_eq!(RegexMatch::Undefined as i32, 0);
-        assert_eq!(RegexMatch::Yes as i32, 1);
-        assert_eq!(RegexMatch::No as i32, 2);
+    fn the_finder_rule_matches_only_the_finder() {
+        assert_pattern_matches_exactly("^Finder$", &["Finder"], &["Finder Helper", "The Finder"]);
     }
 
     #[test]
-    fn an_unanchored_pattern_matches_anywhere_in_the_subject() {
-        assert!(pattern_matches_subject(
-            c"Safari",
-            c"Safari Technology Preview"
-        ));
-        assert!(pattern_matches_subject(
-            c"Preview",
-            c"Safari Technology Preview"
-        ));
+    fn the_finder_dialog_title_rule_matches_copy_connect_move_info_and_preferences() {
+        assert_pattern_matches_exactly(
+            "(Co(py|nnect)|Move|Info|Pref)",
+            &[
+                "Copy",
+                "Connect to Server",
+                "Move",
+                "Macintosh HD Info",
+                "Finder Preferences",
+            ],
+            &["Trash", "Downloads", "Co"],
+        );
     }
 
     #[test]
-    fn matching_is_case_sensitive() {
-        assert!(!pattern_matches_subject(c"safari", c"Safari"));
+    fn the_about_this_mac_rule_matches_its_title() {
+        assert_pattern_matches_exactly(
+            "About This Mac",
+            &["About This Mac"],
+            &["About", "This Mac"],
+        );
     }
 
     #[test]
-    fn backslash_d_is_a_literal_d_and_not_a_digit_class_as_with_regcomp() {
-        assert!(!pattern_matches_subject(c"\\d", c"5"));
-        assert!(pattern_matches_subject(c"\\d", c"d"));
+    fn the_jetbrains_application_rule_matches_every_listed_ide() {
+        assert_pattern_matches_exactly(
+            "^(WebStorm|PyCharm|IntelliJ.*|GoLand|DataGrip|RustRover)$",
+            &[
+                "WebStorm",
+                "PyCharm",
+                "IntelliJ IDEA",
+                "IntelliJ IDEA Ultimate",
+                "GoLand",
+                "DataGrip",
+                "RustRover",
+            ],
+            &["CLion", "PyCharm CE", "Android Studio"],
+        );
     }
 
     #[test]
-    fn backslash_w_is_a_literal_w_and_not_a_word_class_as_with_regcomp() {
-        assert!(pattern_matches_subject(c"\\w+", c"w"));
-        assert!(!pattern_matches_subject(c"\\w+", c"abc"));
-    }
-
-    #[test]
-    fn posix_bracket_classes_and_ranges_match_digits() {
-        assert!(pattern_matches_subject(c"[[:digit:]]+", c"abc123"));
-        assert!(!pattern_matches_subject(c"[0-9]+", c"abc"));
-    }
-
-    #[test]
-    fn extended_syntax_supports_alternation_groups_and_intervals_without_escaping() {
-        assert!(pattern_matches_subject(c"^(Finder|Safari)$", c"Finder"));
-        assert!(!pattern_matches_subject(c"^(Finder|Safari)$", c"Terminal"));
-        assert!(pattern_matches_subject(
-            c"System Settings|System Preferences",
-            c"System Preferences"
-        ));
-        assert!(pattern_matches_subject(c"a{2}", c"caab"));
-        assert!(!pattern_matches_subject(c"a{2}", c"cab"));
-    }
-
-    #[test]
-    fn an_escaped_dot_matches_only_a_dot() {
-        assert!(pattern_matches_subject(c"\\.", c"a.b"));
-        assert!(!pattern_matches_subject(c"\\.", c"ab"));
-    }
-
-    #[test]
-    fn an_anchored_empty_pattern_matches_an_empty_subject() {
-        assert!(pattern_matches_subject(c"^$", c""));
-    }
-
-    #[test]
-    fn compile_rejects_the_patterns_regcomp_rejects() {
-        for pattern in [c"(", c"[", c"a**", c"a+?", c"(?i)safari", c"a|*b", c""] {
-            assert!(
-                PosixRegex::compile(pattern).is_none(),
-                "{pattern:?} should not compile as an extended regex"
-            );
-        }
+    fn the_jetbrains_dialog_title_rule_accepts_an_escaped_slash_and_matches_the_dialogs() {
+        assert_pattern_matches_exactly(
+            r"(Run\/Debug.*|Settings|Rename|Conflicts|Copy|Merge Revisions.*|Delete|Move|Keyboard Shortcut|Notifications|Data Sources and Drivers|Database|Database Query|Database Search|Change Signature.*|File Cache Conflict|Extract .*|Modify)",
+            &[
+                "Run/Debug Configurations",
+                "Settings",
+                "Rename",
+                "Merge Revisions for yabai",
+                "Keyboard Shortcut",
+                "Data Sources and Drivers",
+                "Change Signature",
+                "File Cache Conflict",
+                "Extract Method",
+                "Modify",
+            ],
+            &["yabai – main.rs", "Project", "Run"],
+        );
     }
 }

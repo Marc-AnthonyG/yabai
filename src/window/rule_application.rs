@@ -1,7 +1,5 @@
 #![allow(deprecated)]
 
-use std::ffi::CString;
-
 use crate::display::manager::DisplayManager;
 use crate::display::spaces::query_current_space_of_display;
 use crate::ffi::accessibility::{AXUIElementSetAttributeValue, kAXFullscreenAttribute};
@@ -14,7 +12,7 @@ use crate::space::manager::SpaceManager;
 use crate::state::mission_control_mode::MissionControlMode;
 use crate::support::arithmetic::is_within_range_including_both_bounds;
 use crate::support::handles::WindowId;
-use crate::support::regex::{RegexMatch, match_subject_against_optional_regex};
+use crate::support::regex::is_subject_rejected_by_optional_pattern;
 use crate::support::strings::{are_both_strings_present_and_equal, copy_into_owned_string};
 use crate::window::floating_and_sticky::{set_whether_window_floats, set_whether_window_is_sticky};
 use crate::window::grid::place_floating_window_on_display_grid;
@@ -51,59 +49,24 @@ pub(crate) fn is_window_matched_by_rule(
     let Some(application) = window_manager.application.get(&application_process_id) else {
         return false;
     };
-    let application_name = CString::new(application.name.as_bytes()).unwrap();
-
-    let regex_match_app = if rule
-        .flags
-        .contains(RuleFlag::APPLICATION_PATTERN_IS_NEGATED)
-    {
-        RegexMatch::Yes
-    } else {
-        RegexMatch::No
-    };
-    if match_subject_against_optional_regex(rule.app_regex.as_ref(), &application_name)
-        == regex_match_app
-    {
-        return false;
-    }
-
-    let window_title = CString::new(window_title).unwrap();
-    let regex_match_title = if rule.flags.contains(RuleFlag::TITLE_PATTERN_IS_NEGATED) {
-        RegexMatch::Yes
-    } else {
-        RegexMatch::No
-    };
-    if match_subject_against_optional_regex(rule.title_regex.as_ref(), &window_title)
-        == regex_match_title
-    {
-        return false;
-    }
-
-    let window_role = CString::new(window_role).unwrap();
-    let regex_match_role = if rule.flags.contains(RuleFlag::ROLE_PATTERN_IS_NEGATED) {
-        RegexMatch::Yes
-    } else {
-        RegexMatch::No
-    };
-    if match_subject_against_optional_regex(rule.role_regex.as_ref(), &window_role)
-        == regex_match_role
-    {
-        return false;
-    }
-
-    let window_subrole = CString::new(window_subrole).unwrap();
-    let regex_match_subrole = if rule.flags.contains(RuleFlag::SUBROLE_PATTERN_IS_NEGATED) {
-        RegexMatch::Yes
-    } else {
-        RegexMatch::No
-    };
-    if match_subject_against_optional_regex(rule.subrole_regex.as_ref(), &window_subrole)
-        == regex_match_subrole
-    {
-        return false;
-    }
-
-    true
+    !(is_subject_rejected_by_optional_pattern(
+        rule.app_regex.as_ref(),
+        rule.flags
+            .contains(RuleFlag::APPLICATION_PATTERN_IS_NEGATED),
+        &application.name,
+    ) || is_subject_rejected_by_optional_pattern(
+        rule.title_regex.as_ref(),
+        rule.flags.contains(RuleFlag::TITLE_PATTERN_IS_NEGATED),
+        window_title,
+    ) || is_subject_rejected_by_optional_pattern(
+        rule.role_regex.as_ref(),
+        rule.flags.contains(RuleFlag::ROLE_PATTERN_IS_NEGATED),
+        window_role,
+    ) || is_subject_rejected_by_optional_pattern(
+        rule.subrole_regex.as_ref(),
+        rule.flags.contains(RuleFlag::SUBROLE_PATTERN_IS_NEGATED),
+        window_subrole,
+    ))
 }
 
 pub(crate) fn apply_manage_effect_of_rule_to_window(

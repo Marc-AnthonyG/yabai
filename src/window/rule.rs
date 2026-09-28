@@ -1,6 +1,7 @@
+use regex::Regex;
+
 use crate::support::arithmetic::is_within_range_including_both_bounds;
 use crate::support::handles::{DisplayId, SpaceId};
-use crate::support::regex::PosixRegex;
 use crate::support::strings::{are_both_strings_present_and_equal, copy_into_owned_string};
 use crate::window::manager::WindowManager;
 
@@ -55,10 +56,10 @@ pub(crate) struct Rule {
     pub(crate) title: Option<String>,
     pub(crate) role: Option<String>,
     pub(crate) subrole: Option<String>,
-    pub(crate) app_regex: Option<PosixRegex>,
-    pub(crate) title_regex: Option<PosixRegex>,
-    pub(crate) role_regex: Option<PosixRegex>,
-    pub(crate) subrole_regex: Option<PosixRegex>,
+    pub(crate) app_regex: Option<Regex>,
+    pub(crate) title_regex: Option<Regex>,
+    pub(crate) role_regex: Option<Regex>,
+    pub(crate) subrole_regex: Option<Regex>,
     pub(crate) effects: RuleEffects,
     pub(crate) flags: RuleFlag,
 }
@@ -161,23 +162,6 @@ pub(crate) fn remove_rule_with_label(label: &[u8], window_manager: &mut WindowMa
     }
 
     false
-}
-
-impl Drop for Rule {
-    fn drop(&mut self) {
-        drop(self.app_regex.take());
-        drop(self.title_regex.take());
-        drop(self.role_regex.take());
-        drop(self.subrole_regex.take());
-
-        drop(self.label.take());
-        drop(self.app.take());
-        drop(self.title.take());
-        drop(self.role.take());
-        drop(self.subrole.take());
-
-        drop(self.effects.scratchpad.take());
-    }
 }
 
 #[cfg(test)]

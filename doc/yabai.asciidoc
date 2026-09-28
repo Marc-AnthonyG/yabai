@@ -83,7 +83,7 @@ Definitions
 
 [subs=+macros]
 ----
-REGEX       := https://www.gnu.org/software/findutils/manual/html_node/find_html/posix_002dextended-regular-expression-syntax.html[POSIX extended regular expression syntax]
+REGEX       := https://docs.rs/regex/latest/regex/#syntax[Rust regex crate syntax]
 
 LABEL       := arbitrary string/text used as an identifier
 

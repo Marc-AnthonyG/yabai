@@ -5,20 +5,11 @@ use crate::signal::definition::{
     SIGNAL_TYPE_COUNT, SIGNAL_TYPE_NAMES, Signal, SignalPropertyRequirement, SignalType,
 };
 use crate::signal::queue::PendingSignal;
-use crate::support::regex::{RegexMatch, match_subject_against_optional_regex};
+use crate::support::regex::is_subject_rejected_by_optional_pattern;
 
 pub(crate) struct PreparedSignalCommand {
     arguments: Vec<CString>,
     environment: Vec<CString>,
-}
-
-fn regex_subject_truncated_at_the_first_null(subject: Option<&str>) -> CString {
-    let bytes = subject.unwrap_or("").as_bytes();
-    let end = bytes
-        .iter()
-        .position(|byte| *byte == 0)
-        .unwrap_or(bytes.len());
-    CString::new(&bytes[..end]).unwrap_or_default()
 }
 
 pub(crate) fn is_signal_filtered_out_for_pending_signal(
@@ -29,29 +20,19 @@ pub(crate) fn is_signal_filtered_out_for_pending_signal(
         SignalType::ApplicationLaunched
         | SignalType::ApplicationActivated
         | SignalType::ApplicationDeactivated
-        | SignalType::ApplicationVisible => {
-            let regex_match_app = if signal.app_regex_exclude {
-                RegexMatch::Yes
-            } else {
-                RegexMatch::No
-            };
-            match_subject_against_optional_regex(
-                signal.app_regex.as_ref(),
-                &regex_subject_truncated_at_the_first_null(event_signal.app.as_deref()),
-            ) == regex_match_app
-        }
+        | SignalType::ApplicationVisible => is_subject_rejected_by_optional_pattern(
+            signal.app_regex.as_ref(),
+            signal.app_regex_exclude,
+            event_signal.app.as_deref().unwrap_or(""),
+        ),
         SignalType::ApplicationTerminated
         | SignalType::ApplicationHidden
         | SignalType::WindowDestroyed => {
-            let regex_match_app = if signal.app_regex_exclude {
-                RegexMatch::Yes
-            } else {
-                RegexMatch::No
-            };
-            let app_no_match = match_subject_against_optional_regex(
+            let app_no_match = is_subject_rejected_by_optional_pattern(
                 signal.app_regex.as_ref(),
-                &regex_subject_truncated_at_the_first_null(event_signal.app.as_deref()),
-            ) == regex_match_app;
+                signal.app_regex_exclude,
+                event_signal.app.as_deref().unwrap_or(""),
+            );
 
             let mut active = signal.active == SignalPropertyRequirement::Undefined;
             if !active {
@@ -62,25 +43,17 @@ pub(crate) fn is_signal_filtered_out_for_pending_signal(
             app_no_match || !active
         }
         SignalType::WindowCreated | SignalType::WindowFocused | SignalType::WindowDeminimized => {
-            let regex_match_app = if signal.app_regex_exclude {
-                RegexMatch::Yes
-            } else {
-                RegexMatch::No
-            };
-            let app_no_match = match_subject_against_optional_regex(
+            let app_no_match = is_subject_rejected_by_optional_pattern(
                 signal.app_regex.as_ref(),
-                &regex_subject_truncated_at_the_first_null(event_signal.app.as_deref()),
-            ) == regex_match_app;
+                signal.app_regex_exclude,
+                event_signal.app.as_deref().unwrap_or(""),
+            );
 
-            let regex_match_title = if signal.title_regex_exclude {
-                RegexMatch::Yes
-            } else {
-                RegexMatch::No
-            };
-            let title_no_match = match_subject_against_optional_regex(
+            let title_no_match = is_subject_rejected_by_optional_pattern(
                 signal.title_regex.as_ref(),
-                &regex_subject_truncated_at_the_first_null(event_signal.title.as_deref()),
-            ) == regex_match_title;
+                signal.title_regex_exclude,
+                event_signal.title.as_deref().unwrap_or(""),
+            );
 
             app_no_match || title_no_match
         }
@@ -88,25 +61,17 @@ pub(crate) fn is_signal_filtered_out_for_pending_signal(
         | SignalType::WindowResized
         | SignalType::WindowMinimized
         | SignalType::WindowTitleChanged => {
-            let regex_match_app = if signal.app_regex_exclude {
-                RegexMatch::Yes
-            } else {
-                RegexMatch::No
-            };
-            let app_no_match = match_subject_against_optional_regex(
+            let app_no_match = is_subject_rejected_by_optional_pattern(
                 signal.app_regex.as_ref(),
-                &regex_subject_truncated_at_the_first_null(event_signal.app.as_deref()),
-            ) == regex_match_app;
+                signal.app_regex_exclude,
+                event_signal.app.as_deref().unwrap_or(""),
+            );
 
-            let regex_match_title = if signal.title_regex_exclude {
-                RegexMatch::Yes
-            } else {
-                RegexMatch::No
-            };
-            let title_no_match = match_subject_against_optional_regex(
+            let title_no_match = is_subject_rejected_by_optional_pattern(
                 signal.title_regex.as_ref(),
-                &regex_subject_truncated_at_the_first_null(event_signal.title.as_deref()),
-            ) == regex_match_title;
+                signal.title_regex_exclude,
+                event_signal.title.as_deref().unwrap_or(""),
+            );
 
             let mut active = signal.active == SignalPropertyRequirement::Undefined;
             if !active {

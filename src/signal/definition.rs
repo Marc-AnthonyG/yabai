@@ -1,4 +1,5 @@
-use crate::support::regex::PosixRegex;
+use regex::Regex;
+
 use crate::support::strings::are_both_strings_present_and_equal;
 
 #[repr(u32)]
@@ -57,8 +58,8 @@ pub(crate) struct Signal {
     pub(crate) title: Option<String>,
     pub(crate) app_regex_exclude: bool,
     pub(crate) title_regex_exclude: bool,
-    pub(crate) app_regex: Option<PosixRegex>,
-    pub(crate) title_regex: Option<PosixRegex>,
+    pub(crate) app_regex: Option<Regex>,
+    pub(crate) title_regex: Option<Regex>,
     pub(crate) active: SignalPropertyRequirement,
     pub(crate) command: Option<String>,
     pub(crate) label: Option<String>,
@@ -154,17 +155,6 @@ pub(crate) fn add_signal_replacing_any_with_the_same_label(
         remove_signal_with_label(label.as_bytes(), signal_event);
     }
     signal_event[signal_type as usize].push(signal);
-}
-
-impl Drop for Signal {
-    fn drop(&mut self) {
-        drop(self.app_regex.take());
-        drop(self.title_regex.take());
-        drop(self.command.take());
-        drop(self.label.take());
-        drop(self.app.take());
-        drop(self.title.take());
-    }
 }
 
 pub(crate) fn remove_signal_at_listing_index(

@@ -53,6 +53,7 @@ pub(crate) enum SignalPropertyRequirement {
     No = 2,
 }
 
+#[derive(Default)]
 pub(crate) struct Signal {
     pub(crate) app: Option<String>,
     pub(crate) title: Option<String>,

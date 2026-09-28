@@ -19,6 +19,6 @@ scripting addition, moving windows onto a space, and what SkyLight reports about
 - Space operations refuse while Mission Control is active or the display is animating, and
   report why through the space operation outcome.
 - Moving windows onto a space tries SkyLight's bridged operation when it resolved at start-up, then the managed-space move, then the scripting addition, and last the
-  compat-id workaround; which path runs depends on the macOS version and is behaviour.
+  compat-id workaround; which path runs depends on the macOS version.
 - When the scripting addition cannot focus a space, focus falls back to synthesized Dock swipe
   gestures; their event field numbers and values are what the Dock reads and must not change.

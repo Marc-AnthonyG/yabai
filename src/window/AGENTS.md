@@ -57,7 +57,7 @@ new frames through proxy windows.
   the packed sub-level Mach message (its size is asserted and its message id differs on Tahoe) and the JankyBorders
   notification, whose size is asserted at compile time and whose service name and event numbers
   JankyBorders listens for.
-- The sleeps are timing behaviour and stay: 40 ms between the two focus events,
+- The sleeps are timing that matters: 40 ms between the two focus events,
   100 ms per spin while a native-fullscreen transition finishes, 20 ms after a JankyBorders
   notification that waits.
 - Focus follows mouse also runs once under a still cursor, the animation duration plus 50 ms after

@@ -9,15 +9,13 @@ preview, a SkyLight overlay window drawn as a ghost of that frame.
 
 - Everything here runs on the event-loop thread and takes the managers it touches as explicit
   parameters. Nodes are named by `(space id, NodeId)` and looked up at each use; a missing view is an early return.
-- The tree is an index arena owned by its view. The root is always `NodeId` 0
-  because the C reset the root in place instead of reallocating it; do not free or move it.
+- The tree is an index arena owned by its view. The root is always `NodeId` 0 and is reset in
+  place; do not free or move it.
 - Freed node ids are recycled. Before a node is freed, every reference to it outside the arena
   (the window manager's insert-feedback table, the mouse drag state) is scrubbed, so a stale
   `NodeId` can never name a reused node.
 - A node's feedback window is a SkyLight window owned by the node and released when the node's
   feedback slot is dropped.
-- Areas are `f32`. The truncations and the `+ 0.5` rounding in the split arithmetic
-  place windows to the pixel and are observable.
 - The name tables for view layout, split, child, auto-balance and insertion point are the CLI and
   query spellings; each index is the enum discriminant.
 - The preview is computed by one pure function from the node's area, the insert

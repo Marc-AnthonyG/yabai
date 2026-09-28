@@ -11,22 +11,15 @@ curves, colours) that several modules share.
 
 - Nothing here depends on a manager or on `EventLoopOwnedState`; the only crate modules it
   reaches are `ffi` and the process-wide statics. Any thread may call into it.
-- Text built here reaches clients byte for byte: the failure prefix byte, JSON fragments and
-  string escaping, and the on/off, layer and easing names that replies print and
-  the CLI parses. Layer and easing values index their name tables. None of it may
-  be respelled, reordered or renumbered.
-- The hash table keeps the C hash functions, bucket iteration order and the "add does not
-  overwrite" rule; the order of query output depends on it.
-- The response owns the failure prefix and the "no response wanted" case. The
-  regex match stays three-valued.
+- The client tells a failure from a reply by the failure prefix byte. Layer and easing values
+  index their name tables.
+- The response owns the failure prefix and the "no response wanted" case.
 - `error!` exits with a failure status and `require!` with success, so launchd does not restart the
   daemon after a `require!`; which one a call site uses is deliberate.
 - Handles are plain ids looked up at each use, never pointers. The tree root handle
   is `NodeId` 0.
-- The alpha restore uses the SSE2 intrinsics on x86_64 and the NEON ones on arm64, instruction for
-  instruction, so both targets produce the same pixels as the C.
 - The macOS version flags are written once at start-up, when the workspace observer is created,
-  and only read afterwards. Which version-specific path runs is behaviour.
+  and only read afterwards.
 - The spawner reads a child's exit status even while the process ignores SIGCHLD, when the
   system reaps children itself and `waitpid` only fails with `ECHILD`. It spawns the program
   suspended, watches its exit on a kqueue with `NOTE_EXITSTATUS`, then resumes it, so the exit

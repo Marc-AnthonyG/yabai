@@ -15,8 +15,8 @@ it and how it is installed, loaded and validated, and the socket protocol yabai 
   animation completion thread. They share nothing but the socket path, which is set once before
   either thread runs.
 - Install, uninstall and load run on the command-line path as root. They shell out through
-  `system` and `popen` and build their paths as a C `snprintf` into a 512-byte buffer would. The bundle layout under `/Library/ScriptingAdditions/yabai.osax` and both plist
-  texts are externally observable.
+  `system` and `popen`. The loader finds the payload through the bundle layout under
+  `/Library/ScriptingAdditions/yabai.osax`.
 - The loader and the payload are linked with `-no_mac_public_arm64e`. Xcode 26 stamps arm64e
   executables with pointer-authentication ABI version 1, while Dock on macOS 15 runs version 0 and
   refuses a thread created from a version 1 loader ("could not spawn remote thread: (os/kern)

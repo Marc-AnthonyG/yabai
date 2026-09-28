@@ -4,7 +4,7 @@ Bringing the daemon up: the panic hook, the checks that refuse to run, asking fo
 permissions and waiting for Accessibility, the process-wide settings and the lock file, the
 watcher that relaunches the daemon once a Screen Recording grant arrives, the start-up order that
 builds the event-loop state and begins every manager and observer before the event loop starts,
-and running the user's config file.
+and running the user's config file once the message socket listens.
 
 ## Notes
 
@@ -39,6 +39,3 @@ and running the user's config file.
   to restart yabai. It touches no event-loop state and does nothing else.
 - Because the daemon ignores SIGCHLD, `waitpid` cannot read a child's exit status; the watcher's
   children are read through the support spawner, which waits on a kqueue instead.
-- Unless `-c` names one, the config file is the first of `$XDG_CONFIG_HOME/yabai/yabairc`,
-  `~/.config/yabai/yabairc` and `~/.yabairc` that exists. It runs in a forked child through
-  `/usr/bin/env sh`, with `-c` when the file is executable.

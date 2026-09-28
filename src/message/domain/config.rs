@@ -1,5 +1,6 @@
 use std::sync::atomic::Ordering;
 
+use crate::config_file::change_watcher::start_watching_the_config_file_to_reload_it_on_change_unless_already_watching;
 use crate::daemon_fail;
 use crate::display::manager::{
     DISPLAY_ARRANGEMENT_ORDER_NAMES, DisplayArrangementOrder, DisplayManager,
@@ -49,7 +50,9 @@ use crate::space::view_settings::{
     set_global_top_padding_applying_it_to_views_without_their_own,
     set_global_window_gap_applying_it_to_views_without_their_own,
 };
-use crate::state::process_wide::VERBOSE_DEBUG_OUTPUT_ENABLED;
+use crate::state::process_wide::{
+    RELOAD_CONFIG_FILE_ON_CHANGE_ENABLED, VERBOSE_DEBUG_OUTPUT_ENABLED,
+};
 use crate::support::arithmetic::{
     is_within_range_excluding_low_including_high, is_within_range_including_both_bounds,
 };
@@ -76,6 +79,7 @@ use crate::window::space_reconciliation::reconcile_space_view_with_windows_on_sp
 
 /* --------------------------------DOMAIN CONFIG-------------------------------- */
 pub(crate) const COMMAND_CONFIG_DEBUG_OUTPUT: &str = "debug_output";
+pub(crate) const COMMAND_CONFIG_RELOAD_CONFIG_FILE_ON_CHANGE: &str = "reload_config_file_on_change";
 pub(crate) const COMMAND_CONFIG_MOUSE_FOLLOWS_FOCUS: &str = "mouse_follows_focus";
 pub(crate) const COMMAND_CONFIG_FOCUS_FOLLOWS_MOUSE: &str = "focus_follows_mouse";
 pub(crate) const COMMAND_CONFIG_DISPLAY_ORDER: &str = "display_arrangement_order";
@@ -181,6 +185,32 @@ pub(crate) fn run_config_command(
                 VERBOSE_DEBUG_OUTPUT_ENABLED.store(false, Ordering::Relaxed);
             } else if is_token_equal_to(value, message_cursor.bytes(), ARGUMENT_COMMON_VALUE_ON) {
                 VERBOSE_DEBUG_OUTPUT_ENABLED.store(true, Ordering::Relaxed);
+            } else {
+                daemon_fail_with_unknown_value_given_to_command_for_domain(
+                    response,
+                    message_cursor.bytes(),
+                    value,
+                    command,
+                    domain,
+                );
+            }
+        } else if is_token_equal_to(
+            command,
+            message_cursor.bytes(),
+            COMMAND_CONFIG_RELOAD_CONFIG_FILE_ON_CHANGE,
+        ) {
+            let value = message_cursor.take_next_token();
+            if !value.is_not_empty() {
+                response.write(format_args!(
+                    "{}\n",
+                    BOOLEAN_NAMES
+                        [RELOAD_CONFIG_FILE_ON_CHANGE_ENABLED.load(Ordering::Relaxed) as usize]
+                ));
+            } else if is_token_equal_to(value, message_cursor.bytes(), ARGUMENT_COMMON_VALUE_OFF) {
+                RELOAD_CONFIG_FILE_ON_CHANGE_ENABLED.store(false, Ordering::Relaxed);
+            } else if is_token_equal_to(value, message_cursor.bytes(), ARGUMENT_COMMON_VALUE_ON) {
+                RELOAD_CONFIG_FILE_ON_CHANGE_ENABLED.store(true, Ordering::Relaxed);
+                start_watching_the_config_file_to_reload_it_on_change_unless_already_watching();
             } else {
                 daemon_fail_with_unknown_value_given_to_command_for_domain(
                     response,
@@ -1746,5 +1776,37 @@ mod tests {
             );
             assert!(window_manager.insert_feedback_color_follows_the_system_accent_color);
         }
+    }
+
+    #[test]
+    fn after_reload_config_file_on_change_is_turned_off_the_query_prints_off() {
+        let mut window_manager = create_window_manager_tracking_nothing_with_its_initial_settings();
+
+        let response_to_turning_it_off = handle_config_message_and_read_the_response(
+            &["reload_config_file_on_change", "off"],
+            &mut window_manager,
+        );
+        let response_to_the_query = handle_config_message_and_read_the_response(
+            &["reload_config_file_on_change"],
+            &mut window_manager,
+        );
+
+        assert_eq!(response_to_turning_it_off, "");
+        assert_eq!(response_to_the_query, "off\n");
+    }
+
+    #[test]
+    fn reload_config_file_on_change_refuses_a_value_other_than_on_or_off() {
+        let mut window_manager = create_window_manager_tracking_nothing_with_its_initial_settings();
+
+        let response_text = handle_config_message_and_read_the_response(
+            &["reload_config_file_on_change", "yes"],
+            &mut window_manager,
+        );
+
+        assert_eq!(
+            response_text,
+            "\x07unknown value 'yes' given to command 'reload_config_file_on_change' for domain 'config'\n"
+        );
     }
 }

@@ -11,7 +11,8 @@ thread may read.
   CoreFoundation and Accessibility objects it holds are not `Send` on their own, but the whole
   state changes thread exactly once, before the event loop runs, and only the event-loop thread
   uses it from then on. Its managers are passed on explicitly, never reached through a global.
-- The process-wide statics are `OnceLock`s written once before any other thread starts. The exceptions are atomics: the verbose flag, and the pending-focus,
-  pending-gesture, last-gesture and last cmd-tab stamps that main-thread callbacks write and the
-  event loop reads.
+- The process-wide statics are `OnceLock`s written once before any other thread starts. The
+  exceptions are atomics: the verbose and config file reload flags, which the event loop writes
+  and other threads read, and the pending-focus, pending-gesture, last-gesture and last cmd-tab
+  stamps that main-thread callbacks write and the event loop reads.
 - The Mission Control mode names are what signals export in `YABAI_MISSION_CONTROL_MODE`, indexed by the mode's discriminant.

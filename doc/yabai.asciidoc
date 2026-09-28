@@ -137,6 +137,11 @@ Global Settings
 *debug_output* ['<BOOL_SEL>']::
     Enable output of debug information to stdout.
 
+*reload_config_file_on_change* ['<BOOL_SEL>']::
+    Run the config file again whenever its contents change. +
+    Rules and signals without a label are added once more on every reload; give them a label so that they replace themselves. +
+    Removing a setting from the config file does not restore its default value until yabai restarts.
+
 *external_bar* ['<main|all|off>:<top_padding>:<bottom_padding>']::
     Specify top and bottom padding for a potential custom bar that you may be running. +
     'main': Apply the given padding only to spaces located on the main display. +

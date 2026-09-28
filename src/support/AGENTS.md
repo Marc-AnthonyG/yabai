@@ -32,3 +32,6 @@ curves, colours) that several modules share.
   suspended, watches its exit on a kqueue with `NOTE_EXITSTATUS`, then resumes it, so the exit
   cannot slip past the watch; a `WNOHANG` reap afterwards covers SIGCHLD at its default. A
   program ended by a signal, or one that cannot be spawned, has no exit status.
+- A file change watch is on the file itself, reached through any symlink, not on its path. A save
+  that renames a new file over it ends the watch with a delete, and only a new watch sees the file
+  now at that path.

@@ -1,8 +1,5 @@
-use core::ffi::c_char;
-
-use crate::support::filesystem::{
-    can_owner_execute_file, is_existing_file_that_is_not_a_directory,
-};
+use crate::state::process_wide::CONFIG_FILE_PATH;
+use crate::support::filesystem::is_existing_file_that_is_not_a_directory;
 
 pub fn find_config_file_in_xdg_or_home_directories(filename: &str) -> Option<String> {
     if let Some(xdg_home) = std::env::var_os("XDG_CONFIG_HOME")
@@ -25,18 +22,19 @@ pub fn find_config_file_in_xdg_or_home_directories(filename: &str) -> Option<Str
     is_existing_file_that_is_not_a_directory(&buffer).then_some(buffer)
 }
 
-pub fn run_config_file_in_a_forked_shell(config_file: String) {
-    let config_file = if config_file.is_empty() {
+pub fn locate_the_config_file_warning_when_there_is_none() -> Option<String> {
+    let config_file_from_the_command_line = CONFIG_FILE_PATH.get().map_or("", String::as_str);
+    let config_file = if config_file_from_the_command_line.is_empty() {
         match find_config_file_in_xdg_or_home_directories("yabairc") {
             Some(config_file) => config_file,
             None => {
                 crate::warn!("yabai: could not locate config file..\n");
                 crate::notify!("configuration", "could not locate config file..");
-                return;
+                return None;
             }
         }
     } else {
-        config_file
+        String::from(config_file_from_the_command_line)
     };
 
     if !is_existing_file_that_is_not_a_directory(&config_file) {
@@ -45,33 +43,8 @@ pub fn run_config_file_in_a_forked_shell(config_file: String) {
             config_file
         );
         crate::notify!("configuration", "file '{}' does not exist..", config_file);
-        return;
+        return None;
     }
 
-    let config_file_argument = std::ffi::CString::new(config_file.as_str()).unwrap();
-    let exec: [*const c_char; 5] = if can_owner_execute_file(&config_file) {
-        [
-            c"/usr/bin/env".as_ptr(),
-            c"sh".as_ptr(),
-            c"-c".as_ptr(),
-            config_file_argument.as_ptr(),
-            std::ptr::null(),
-        ]
-    } else {
-        [
-            c"/usr/bin/env".as_ptr(),
-            c"sh".as_ptr(),
-            config_file_argument.as_ptr(),
-            std::ptr::null(),
-            std::ptr::null(),
-        ]
-    };
-
-    let process_id = unsafe { libc::fork() };
-    if process_id == 0 {
-        unsafe { libc::_exit(libc::execvp(exec[0], exec.as_ptr())) };
-    } else if process_id == -1 {
-        crate::warn!("yabai: failed to load config file '{}'\n", config_file);
-        crate::notify!("configuration", "failed to load file '{}'", config_file);
-    }
+    Some(config_file)
 }

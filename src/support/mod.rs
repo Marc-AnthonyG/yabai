@@ -2,6 +2,7 @@ pub mod arithmetic;
 pub mod color;
 pub mod direction;
 pub mod easing;
+pub mod file_change_watch;
 pub mod filesystem;
 pub mod geometry;
 pub mod handles;

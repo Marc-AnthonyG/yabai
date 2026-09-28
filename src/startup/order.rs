@@ -4,6 +4,8 @@ use std::sync::Arc;
 
 use objc2::MainThreadMarker;
 
+use crate::config_file::location::locate_the_config_file_warning_when_there_is_none;
+use crate::config_file::shell_run::run_config_file_in_a_forked_shell;
 use crate::display::manager::{
     DisplayManager, start_display_manager_observing_display_reconfiguration,
 };
@@ -29,10 +31,9 @@ use crate::process::manager::{ProcessManager, start_process_manager_observing_ap
 use crate::space::manager::{
     SpaceManager, hash_view_key, start_space_manager_creating_a_view_for_every_space,
 };
-use crate::startup::config_file::run_config_file_in_a_forked_shell;
 use crate::state::event_loop_owned::EventLoopOwnedState;
 use crate::state::mission_control_mode::MissionControlMode;
-use crate::state::process_wide::{CONFIG_FILE_PATH, MESSAGE_SOCKET_PATH, SKYLIGHT_CONNECTION_ID};
+use crate::state::process_wide::{MESSAGE_SOCKET_PATH, SKYLIGHT_CONNECTION_ID};
 use crate::support::color::RgbaColor;
 use crate::support::easing::AnimationEasingType;
 use crate::support::handles::{ProcessId, SpaceId, WindowId};
@@ -269,7 +270,9 @@ pub(crate) fn start_the_daemon_and_enter_the_main_run_loop() {
         error!("yabai: could not start message loop! abort..\n");
     }
 
-    run_config_file_in_a_forked_shell(CONFIG_FILE_PATH.get().cloned().unwrap_or_default());
+    if let Some(config_file) = locate_the_config_file_warning_when_there_is_none() {
+        run_config_file_in_a_forked_shell(&config_file);
+    }
 
     if let Some(main_thread_marker) = MainThreadMarker::new() {
         NSApplication::sharedApplication(main_thread_marker).run();

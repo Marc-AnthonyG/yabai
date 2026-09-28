@@ -1,5 +1,4 @@
 pub mod accessibility_trust_wait;
-pub mod config_file;
 pub mod daemon_relaunch_after_screen_recording_grant;
 pub mod order;
 pub mod permission_requests;

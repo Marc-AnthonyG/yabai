@@ -14,6 +14,7 @@ pub static LOCK_FILE_PATH: OnceLock<String> = OnceLock::new();
 pub static BOOTSTRAP_PORT: OnceLock<libc::mach_port_t> = OnceLock::new();
 pub static SKYLIGHT_CONNECTION_ID: OnceLock<i32> = OnceLock::new();
 pub static VERBOSE_DEBUG_OUTPUT_ENABLED: AtomicBool = AtomicBool::new(false);
+pub static RELOAD_CONFIG_FILE_ON_CHANGE_ENABLED: AtomicBool = AtomicBool::new(false);
 pub static DAEMON_PROCESS_ID: OnceLock<i32> = OnceLock::new();
 
 pub static WINDOW_FOCUS_NOTIFICATION_IS_PENDING: AtomicBool = AtomicBool::new(false);

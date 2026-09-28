@@ -18,6 +18,7 @@ mod query;
 mod serialise;
 mod cli;
 mod startup;
+mod config_file;
 
 use crate::cli::arguments::store_config_file_path_from_command_line;
 use crate::startup::order::start_the_daemon_and_enter_the_main_run_loop;

@@ -176,6 +176,15 @@ Get or set the value of <space setting>.
 Enable output of debug information to stdout.
 .RE
 .sp
+\fBreload_config_file_on_change\fP [\fI<BOOL_SEL>\fP]
+.RS 4
+Run the config file again whenever its contents change.
+.br
+Rules and signals without a label are added once more on every reload; give them a label so that they replace themselves.
+.br
+Removing a setting from the config file does not restore its default value until yabai restarts.
+.RE
+.sp
 \fBexternal_bar\fP [\fI<main|all|off>:<top_padding>:<bottom_padding>\fP]
 .RS 4
 Specify top and bottom padding for a potential custom bar that you may be running.

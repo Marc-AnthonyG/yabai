@@ -1,27 +1,27 @@
-use crate::support::arithmetic::in_range_ii;
+use crate::support::arithmetic::is_within_range_including_both_bounds;
 use crate::support::handles::{DisplayId, SpaceId};
 use crate::support::regex::PosixRegex;
-use crate::support::strings::{string_copy, string_equals};
+use crate::support::strings::{are_both_strings_present_and_equal, copy_into_owned_string};
 use crate::window::manager::WindowManager;
 
-pub(crate) const RULE_PROP_UD: i32 = 0;
-pub(crate) const RULE_PROP_ON: i32 = 1;
-pub(crate) const RULE_PROP_OFF: i32 = 2;
+pub(crate) const RULE_PROPERTY_UNSET: i32 = 0;
+pub(crate) const RULE_PROPERTY_ON: i32 = 1;
+pub(crate) const RULE_PROPERTY_OFF: i32 = 2;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RuleFlag(pub u16);
 
 impl RuleFlag {
-    pub(crate) const APP_VALID: RuleFlag = RuleFlag(0x001);
-    pub(crate) const TITLE_VALID: RuleFlag = RuleFlag(0x002);
-    pub(crate) const ROLE_VALID: RuleFlag = RuleFlag(0x004);
-    pub(crate) const SUBROLE_VALID: RuleFlag = RuleFlag(0x008);
-    pub(crate) const APP_EXCLUDE: RuleFlag = RuleFlag(0x010);
-    pub(crate) const TITLE_EXCLUDE: RuleFlag = RuleFlag(0x020);
-    pub(crate) const ROLE_EXCLUDE: RuleFlag = RuleFlag(0x040);
-    pub(crate) const SUBROLE_EXCLUDE: RuleFlag = RuleFlag(0x080);
+    pub(crate) const APPLICATION_PATTERN_IS_VALID: RuleFlag = RuleFlag(0x001);
+    pub(crate) const TITLE_PATTERN_IS_VALID: RuleFlag = RuleFlag(0x002);
+    pub(crate) const ROLE_PATTERN_IS_VALID: RuleFlag = RuleFlag(0x004);
+    pub(crate) const SUBROLE_PATTERN_IS_VALID: RuleFlag = RuleFlag(0x008);
+    pub(crate) const APPLICATION_PATTERN_IS_NEGATED: RuleFlag = RuleFlag(0x010);
+    pub(crate) const TITLE_PATTERN_IS_NEGATED: RuleFlag = RuleFlag(0x020);
+    pub(crate) const ROLE_PATTERN_IS_NEGATED: RuleFlag = RuleFlag(0x040);
+    pub(crate) const SUBROLE_PATTERN_IS_NEGATED: RuleFlag = RuleFlag(0x080);
     pub(crate) const ONE_SHOT: RuleFlag = RuleFlag(0x100);
-    pub(crate) const ONE_SHOT_REMOVE: RuleFlag = RuleFlag(0x200);
+    pub(crate) const ONE_SHOT_DUE_FOR_REMOVAL: RuleFlag = RuleFlag(0x200);
 
     pub(crate) fn contains(self, flag: RuleFlag) -> bool {
         (self.0 & flag.0) != 0
@@ -36,9 +36,9 @@ impl RuleFlag {
 pub(crate) struct RuleEffectsFlag(pub u16);
 
 impl RuleEffectsFlag {
-    pub(crate) const FOLLOW_SPACE: RuleEffectsFlag = RuleEffectsFlag(0x01);
-    pub(crate) const OPACITY: RuleEffectsFlag = RuleEffectsFlag(0x02);
-    pub(crate) const LAYER: RuleEffectsFlag = RuleEffectsFlag(0x04);
+    pub(crate) const FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE: RuleEffectsFlag = RuleEffectsFlag(0x01);
+    pub(crate) const OPACITY_IS_SET: RuleEffectsFlag = RuleEffectsFlag(0x02);
+    pub(crate) const LAYER_IS_SET: RuleEffectsFlag = RuleEffectsFlag(0x04);
 
     pub(crate) fn contains(self, flag: RuleEffectsFlag) -> bool {
         (self.0 & flag.0) != 0
@@ -83,56 +83,59 @@ pub(crate) struct Rule {
     pub(crate) flags: u16,
 }
 
-pub(crate) fn rule_combine_effects(effects: &RuleEffects, result: &mut RuleEffects) {
+pub(crate) fn combine_rule_effects_into_accumulated_effects(
+    effects: &RuleEffects,
+    result: &mut RuleEffects,
+) {
     let effects_flags = RuleEffectsFlag(effects.flags);
     let mut result_flags = RuleEffectsFlag(result.flags);
 
     if effects.display_id.0 != 0 {
         result.display_id = effects.display_id;
-        if effects_flags.contains(RuleEffectsFlag::FOLLOW_SPACE) {
-            result_flags.insert(RuleEffectsFlag::FOLLOW_SPACE);
+        if effects_flags.contains(RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE) {
+            result_flags.insert(RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE);
         } else {
-            result_flags.remove(RuleEffectsFlag::FOLLOW_SPACE);
+            result_flags.remove(RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE);
         }
     }
 
     if effects.space_id.0 != 0 {
         result.space_id = effects.space_id;
-        if effects_flags.contains(RuleEffectsFlag::FOLLOW_SPACE) {
-            result_flags.insert(RuleEffectsFlag::FOLLOW_SPACE);
+        if effects_flags.contains(RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE) {
+            result_flags.insert(RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE);
         } else {
-            result_flags.remove(RuleEffectsFlag::FOLLOW_SPACE);
+            result_flags.remove(RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE);
         }
     }
 
-    if effects_flags.contains(RuleEffectsFlag::OPACITY)
-        && in_range_ii(effects.opacity, 0.0f32, 1.0f32)
+    if effects_flags.contains(RuleEffectsFlag::OPACITY_IS_SET)
+        && is_within_range_including_both_bounds(effects.opacity, 0.0f32, 1.0f32)
     {
         result.opacity = effects.opacity;
-        result_flags.insert(RuleEffectsFlag::OPACITY);
+        result_flags.insert(RuleEffectsFlag::OPACITY_IS_SET);
     }
 
-    if effects_flags.contains(RuleEffectsFlag::LAYER) {
+    if effects_flags.contains(RuleEffectsFlag::LAYER_IS_SET) {
         result.layer = effects.layer;
-        result_flags.insert(RuleEffectsFlag::LAYER);
+        result_flags.insert(RuleEffectsFlag::LAYER_IS_SET);
     }
 
     result.flags = result_flags.0;
 
     if let Some(scratchpad) = effects.scratchpad.as_deref() {
-        result.scratchpad = Some(string_copy(scratchpad));
+        result.scratchpad = Some(copy_into_owned_string(scratchpad));
     }
 
-    if effects.manage != RULE_PROP_UD {
+    if effects.manage != RULE_PROPERTY_UNSET {
         result.manage = effects.manage;
     }
-    if effects.sticky != RULE_PROP_UD {
+    if effects.sticky != RULE_PROPERTY_UNSET {
         result.sticky = effects.sticky;
     }
-    if effects.mff != RULE_PROP_UD {
+    if effects.mff != RULE_PROPERTY_UNSET {
         result.mff = effects.mff;
     }
-    if effects.fullscreen != RULE_PROP_UD {
+    if effects.fullscreen != RULE_PROPERTY_UNSET {
         result.fullscreen = effects.fullscreen;
     }
 
@@ -146,14 +149,17 @@ pub(crate) fn rule_combine_effects(effects: &RuleEffects, result: &mut RuleEffec
     }
 }
 
-pub(crate) fn rule_add(rule: Rule, window_manager: &mut WindowManager) {
+pub(crate) fn add_rule_replacing_any_with_the_same_label(
+    rule: Rule,
+    window_manager: &mut WindowManager,
+) {
     if let Some(label) = rule.label.as_deref() {
-        rule_remove_by_label(label.as_bytes(), window_manager);
+        remove_rule_with_label(label.as_bytes(), window_manager);
     }
     window_manager.rules.push(rule);
 }
 
-pub(crate) fn rule_remove_by_index(index: i32, window_manager: &mut WindowManager) -> bool {
+pub(crate) fn remove_rule_at_index(index: i32, window_manager: &mut WindowManager) -> bool {
     for rule_index in 0..window_manager.rules.len() {
         if rule_index as i32 == index {
             window_manager.rules.swap_remove(rule_index);
@@ -164,11 +170,11 @@ pub(crate) fn rule_remove_by_index(index: i32, window_manager: &mut WindowManage
     false
 }
 
-pub(crate) fn rule_remove_by_label(label: &[u8], window_manager: &mut WindowManager) -> bool {
+pub(crate) fn remove_rule_with_label(label: &[u8], window_manager: &mut WindowManager) -> bool {
     let label = String::from_utf8_lossy(label);
 
     for rule_index in 0..window_manager.rules.len() {
-        if string_equals(
+        if are_both_strings_present_and_equal(
             window_manager.rules[rule_index].label.as_deref(),
             Some(&*label),
         ) {

@@ -2,11 +2,15 @@ use core::ffi::{c_int, c_void};
 use std::io::Write;
 
 use crate::error;
-use crate::startup::settings_and_lock_file::SOCKET_PATH_FMT;
-use crate::support::response::FAILURE_MESSAGE;
-use crate::support::sockets::{socket_close, socket_connect, socket_open};
+use crate::startup::settings_and_lock_file::MESSAGE_SOCKET_PATH_FORMAT;
+use crate::support::response::FAILURE_RESPONSE_MARKER;
+use crate::support::sockets::{
+    connect_socket_to_unix_path, open_unix_stream_socket, shut_down_and_close_socket,
+};
 
-pub(crate) fn client_send_message(arguments: &[std::ffi::OsString]) -> i32 {
+pub(crate) fn send_message_to_daemon_and_print_its_response(
+    arguments: &[std::ffi::OsString],
+) -> i32 {
     let argument_count = arguments.len() as i32;
 
     if argument_count <= 1 {
@@ -38,13 +42,13 @@ pub(crate) fn client_send_message(arguments: &[std::ffi::OsString]) -> i32 {
     message.push(b'\0');
 
     let mut socket_file_descriptor: c_int = 0;
-    let socket_file = SOCKET_PATH_FMT.replacen("%s", &user, 1);
+    let socket_file = MESSAGE_SOCKET_PATH_FORMAT.replacen("%s", &user, 1);
 
-    if !socket_open(&mut socket_file_descriptor) {
+    if !open_unix_stream_socket(&mut socket_file_descriptor) {
         error!("yabai-msg: failed to open socket..\n");
     }
 
-    if !socket_connect(socket_file_descriptor, &socket_file) {
+    if !connect_socket_to_unix_path(socket_file_descriptor, &socket_file) {
         error!("yabai-msg: failed to connect to socket..\n");
     }
 
@@ -84,7 +88,7 @@ pub(crate) fn client_send_message(arguments: &[std::ffi::OsString]) -> i32 {
 
         response[bytes_read as usize] = b'\0';
 
-        if response[0] == FAILURE_MESSAGE[0] {
+        if response[0] == FAILURE_RESPONSE_MARKER[0] {
             result = libc::EXIT_FAILURE;
             output = &mut standard_error;
             let text = &response[1..];
@@ -105,6 +109,6 @@ pub(crate) fn client_send_message(arguments: &[std::ffi::OsString]) -> i32 {
         }
     }
 
-    socket_close(socket_file_descriptor);
+    shut_down_and_close_socket(socket_file_descriptor);
     result
 }

@@ -7,7 +7,7 @@ use objc2_core_graphics::{CGContext, CGError};
 
 use crate::ffi::carbon_process::ProcessSerialNumber;
 
-pub type ConnectionCallback = unsafe extern "C-unwind" fn(
+pub type SkylightConnectionNotificationCallback = unsafe extern "C-unwind" fn(
     notification_type: u32,
     data: *mut c_void,
     data_length: usize,
@@ -22,7 +22,7 @@ unsafe extern "C" {
     pub fn SLSReleaseConnection(connection_id: c_int) -> CGError;
     pub fn SLSRegisterConnectionNotifyProc(
         connection_id: c_int,
-        handler: ConnectionCallback,
+        handler: SkylightConnectionNotificationCallback,
         event: u32,
         context: *mut c_void,
     ) -> CGError;

@@ -38,13 +38,13 @@ impl AnimatedWindows {
         }
     }
 
-    fn find(&self, window_id: WindowId) -> Option<&AnimatedWindow> {
+    fn animated_window_with_id(&self, window_id: WindowId) -> Option<&AnimatedWindow> {
         self.animated_window_list
             .iter()
             .find(|animated_window| animated_window.window_id == window_id)
     }
 
-    fn find_mut(&mut self, window_id: WindowId) -> Option<&mut AnimatedWindow> {
+    fn animated_window_with_id_mut(&mut self, window_id: WindowId) -> Option<&mut AnimatedWindow> {
         self.animated_window_list
             .iter_mut()
             .find(|animated_window| animated_window.window_id == window_id)
@@ -60,7 +60,7 @@ impl AnimatedWindows {
         let Some(AnimatedWindow {
             phase: AnimatedWindowPhase::Moving(moving_window),
             ..
-        }) = self.find_mut(window_id)
+        }) = self.animated_window_with_id_mut(window_id)
         else {
             return false;
         };
@@ -73,7 +73,7 @@ impl AnimatedWindows {
 
     pub(crate) fn is_awaiting_proxy_swap_out(&self, window_id: WindowId) -> bool {
         matches!(
-            self.find(window_id),
+            self.animated_window_with_id(window_id),
             Some(AnimatedWindow {
                 phase: AnimatedWindowPhase::AwaitingProxySwapOut,
                 ..
@@ -89,7 +89,7 @@ impl AnimatedWindows {
         easing: AnimationEasingType,
     ) {
         let window_id = proxy.real_window_id;
-        debug_assert!(self.find(window_id).is_none());
+        debug_assert!(self.animated_window_with_id(window_id).is_none());
 
         let layered_frame_animation =
             LayeredFrameAnimation::from_current_frame_towards_target_with_a_held_layer(

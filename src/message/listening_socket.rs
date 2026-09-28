@@ -5,17 +5,17 @@ use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::sync::OnceLock;
 
-use crate::event::queue::{Event, event_loop_post};
-use crate::message::token::c_string_at;
+use crate::event::queue::{Event, post_event_to_event_loop};
+use crate::message::token::null_terminated_bytes_starting_at;
 
-pub(crate) struct MessageLoop {
+pub(crate) struct MessageSocketListener {
     pub(crate) listener: UnixListener,
 }
 
-pub(crate) static MESSAGE_LOOP: OnceLock<MessageLoop> = OnceLock::new();
+pub(crate) static MESSAGE_SOCKET_LISTENER: OnceLock<MessageSocketListener> = OnceLock::new();
 
-pub(crate) fn message_loop_run() {
-    let Some(message_loop) = MESSAGE_LOOP.get() else {
+pub(crate) fn accept_message_connections_and_post_them_to_the_event_loop() {
+    let Some(message_loop) = MESSAGE_SOCKET_LISTENER.get() else {
         return;
     };
     for stream in message_loop.listener.incoming() {
@@ -23,15 +23,15 @@ pub(crate) fn message_loop_run() {
             continue;
         };
 
-        event_loop_post(Event::DaemonMessage(stream));
+        post_event_to_event_loop(Event::DaemonMessage(stream));
     }
 }
 
-pub(crate) fn message_loop_begin(socket_path: &Path) -> bool {
+pub(crate) fn start_listening_on_message_socket(socket_path: &Path) -> bool {
     let mut socket_address: libc::sockaddr_un = unsafe { std::mem::zeroed() };
     socket_address.sun_family = libc::AF_UNIX as libc::sa_family_t;
     let socket_path_bytes = socket_path.as_os_str().as_bytes();
-    let socket_path_length = c_string_at(socket_path_bytes, 0)
+    let socket_path_length = null_terminated_bytes_starting_at(socket_path_bytes, 0)
         .len()
         .min(socket_address.sun_path.len() - 1);
     for index in 0..socket_path_length {
@@ -73,8 +73,9 @@ pub(crate) fn message_loop_begin(socket_path: &Path) -> bool {
     };
 
     let listener = UnixListener::from(socket);
-    let _ = MESSAGE_LOOP.set(MessageLoop { listener });
-    let _ = std::thread::Builder::new().spawn(message_loop_run);
+    let _ = MESSAGE_SOCKET_LISTENER.set(MessageSocketListener { listener });
+    let _ = std::thread::Builder::new()
+        .spawn(accept_message_connections_and_post_them_to_the_event_loop);
 
     true
 }

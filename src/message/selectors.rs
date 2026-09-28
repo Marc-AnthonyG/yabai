@@ -1,49 +1,53 @@
 use crate::daemon_fail;
 use crate::display::arrangement::{
-    display_manager_arrangement_display_id, display_manager_find_closest_display_in_direction,
-    display_manager_first_display_id, display_manager_last_display_id,
-    display_manager_next_display_id, display_manager_prev_display_id,
+    closest_display_in_direction_of_display, query_display_at_arrangement_index,
+    query_first_display_in_arrangement, query_last_display_in_arrangement,
+    query_next_display_in_arrangement, query_previous_display_in_arrangement,
 };
-use crate::display::identity::display_manager_cursor_display_id;
-use crate::display::labels::display_manager_get_display_for_label;
+use crate::display::identity::query_display_under_the_cursor;
+use crate::display::labels::display_label_with_name;
 use crate::display::manager::DisplayManager;
 use crate::message::common_arguments::{
-    ARGUMENT_COMMON_SEL_EAST, ARGUMENT_COMMON_SEL_FIRST, ARGUMENT_COMMON_SEL_LAST,
-    ARGUMENT_COMMON_SEL_MOUSE, ARGUMENT_COMMON_SEL_NEXT, ARGUMENT_COMMON_SEL_NORTH,
-    ARGUMENT_COMMON_SEL_PREV, ARGUMENT_COMMON_SEL_RECENT, ARGUMENT_COMMON_SEL_SOUTH,
-    ARGUMENT_COMMON_SEL_STACK, ARGUMENT_COMMON_SEL_STACK_PREFIX, ARGUMENT_COMMON_SEL_WEST,
+    ARGUMENT_COMMON_SELECTOR_EAST, ARGUMENT_COMMON_SELECTOR_FIRST, ARGUMENT_COMMON_SELECTOR_LAST,
+    ARGUMENT_COMMON_SELECTOR_MOUSE, ARGUMENT_COMMON_SELECTOR_NEXT, ARGUMENT_COMMON_SELECTOR_NORTH,
+    ARGUMENT_COMMON_SELECTOR_PREVIOUS, ARGUMENT_COMMON_SELECTOR_RECENT,
+    ARGUMENT_COMMON_SELECTOR_SOUTH, ARGUMENT_COMMON_SELECTOR_STACK,
+    ARGUMENT_COMMON_SELECTOR_STACK_PREFIX, ARGUMENT_COMMON_SELECTOR_WEST,
 };
 use crate::message::token::{
-    MessageCursor, Token, TokenType, c_string_at, token_equals, token_is_positive_integer,
-    token_prefix, token_to_value,
+    MessageCursor, Token, TokenValueType, is_token_equal_to, is_token_prefixed_by,
+    null_terminated_bytes_starting_at, parse_token_as_non_negative_decimal_integer,
+    parse_token_into_typed_value,
 };
-use crate::space::labels::space_manager_get_space_for_label;
+use crate::space::labels::space_label_with_name;
 use crate::space::lookup::{
-    space_manager_cursor_space, space_manager_first_space, space_manager_last_space,
-    space_manager_mission_control_space, space_manager_next_space, space_manager_prev_space,
+    query_current_space_of_display_under_the_cursor, query_first_space_in_mission_control_order,
+    query_last_space_in_mission_control_order, query_next_space_in_mission_control_order,
+    query_previous_space_in_mission_control_order, query_space_at_mission_control_index,
 };
 use crate::space::manager::SpaceManager;
-use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, STACK};
+use crate::support::direction::{
+    DIRECTION_EAST, DIRECTION_NORTH, DIRECTION_SOUTH, DIRECTION_STACK_INSTEAD_OF_SPLIT,
+    DIRECTION_WEST,
+};
 use crate::support::handles::{DisplayId, SpaceId, WindowId};
 use crate::support::response::{FailurePiece, Response};
-use crate::window::manager::{WindowManager, window_manager_find_window};
-use crate::window::screen_lookup::window_manager_find_window_below_cursor;
+use crate::window::manager::{WindowManager, tracked_window_with_id};
+use crate::window::screen_lookup::query_tracked_window_under_cursor;
 use crate::window::stack_lookup::{
-    window_manager_find_first_window_in_stack, window_manager_find_last_window_in_stack,
-    window_manager_find_next_window_in_stack, window_manager_find_prev_window_in_stack,
-    window_manager_find_recent_window_in_stack, window_manager_find_window_in_stack,
+    first_window_in_stack_holding_window, last_window_in_stack_holding_window,
+    next_window_in_stack_holding_window, previous_window_in_stack_holding_window,
+    previously_focused_window_in_stack_holding_window,
+    window_at_one_based_position_in_stack_holding_window,
 };
 use crate::window::tree_lookup::{
-    window_manager_find_closest_managed_window_in_direction,
-    window_manager_find_first_cousin_for_managed_window, window_manager_find_first_managed_window,
-    window_manager_find_first_nephew_for_managed_window,
-    window_manager_find_largest_managed_window, window_manager_find_last_managed_window,
-    window_manager_find_next_managed_window, window_manager_find_prev_managed_window,
-    window_manager_find_recent_managed_window,
-    window_manager_find_second_cousin_for_managed_window,
-    window_manager_find_second_nephew_for_managed_window,
-    window_manager_find_sibling_for_managed_window, window_manager_find_smallest_managed_window,
-    window_manager_find_uncle_for_managed_window,
+    closest_managed_window_in_direction, first_cousin_window_of_managed_window,
+    first_managed_window_in_active_space, first_nephew_window_of_managed_window,
+    largest_managed_window_in_active_space, last_managed_window_in_active_space,
+    managed_window_after_window_in_active_space, managed_window_before_window_in_active_space,
+    previously_focused_window_if_managed, second_cousin_window_of_managed_window,
+    second_nephew_window_of_managed_window, sibling_window_of_managed_window,
+    smallest_managed_window_in_active_space, uncle_window_of_managed_window,
 };
 
 pub(crate) enum SelectorOutcome<Target> {
@@ -58,11 +62,11 @@ pub(crate) struct Selector<Target> {
 }
 
 impl<Target: Copy> Selector<Target> {
-    pub(crate) fn did_parse(&self) -> bool {
+    pub(crate) fn is_recognised_selector(&self) -> bool {
         !matches!(self.outcome, SelectorOutcome::NotASelector)
     }
 
-    pub(crate) fn resolved(&self) -> Option<Target> {
+    pub(crate) fn resolved_target(&self) -> Option<Target> {
         match self.outcome {
             SelectorOutcome::Resolved(value) => Some(value),
             _ => None,
@@ -70,14 +74,14 @@ impl<Target: Copy> Selector<Target> {
     }
 }
 
-pub(crate) const ARGUMENT_WINDOW_SEL_LARGEST: &str = "largest";
-pub(crate) const ARGUMENT_WINDOW_SEL_SMALLEST: &str = "smallest";
-pub(crate) const ARGUMENT_WINDOW_SEL_SIBLING: &str = "sibling";
-pub(crate) const ARGUMENT_WINDOW_SEL_FNEPHEW: &str = "first_nephew";
-pub(crate) const ARGUMENT_WINDOW_SEL_SNEPHEW: &str = "second_nephew";
-pub(crate) const ARGUMENT_WINDOW_SEL_UNCLE: &str = "uncle";
-pub(crate) const ARGUMENT_WINDOW_SEL_FCOUSIN: &str = "first_cousin";
-pub(crate) const ARGUMENT_WINDOW_SEL_SCOUSIN: &str = "second_cousin";
+pub(crate) const ARGUMENT_WINDOW_SELECTOR_LARGEST: &str = "largest";
+pub(crate) const ARGUMENT_WINDOW_SELECTOR_SMALLEST: &str = "smallest";
+pub(crate) const ARGUMENT_WINDOW_SELECTOR_SIBLING: &str = "sibling";
+pub(crate) const ARGUMENT_WINDOW_SELECTOR_FIRST_NEPHEW: &str = "first_nephew";
+pub(crate) const ARGUMENT_WINDOW_SELECTOR_SECOND_NEPHEW: &str = "second_nephew";
+pub(crate) const ARGUMENT_WINDOW_SELECTOR_UNCLE: &str = "uncle";
+pub(crate) const ARGUMENT_WINDOW_SELECTOR_FIRST_COUSIN: &str = "first_cousin";
+pub(crate) const ARGUMENT_WINDOW_SELECTOR_SECOND_COUSIN: &str = "second_cousin";
 
 pub(crate) fn parse_display_selector(
     response: &mut Response,
@@ -87,14 +91,14 @@ pub(crate) fn parse_display_selector(
     display_manager: &mut DisplayManager,
 ) -> Selector<DisplayId> {
     let mut result = Selector {
-        token: message_cursor.get_token(),
+        token: message_cursor.take_next_token(),
         outcome: SelectorOutcome::ParsedButUnresolved,
     };
 
-    let value = token_to_value(result.token, message_cursor.bytes());
+    let value = parse_token_into_typed_value(result.token, message_cursor.bytes());
     match value.type_of_value {
-        TokenType::Int(int_value) => {
-            let display_id = display_manager_arrangement_display_id(int_value, display_manager);
+        TokenValueType::Integer(int_value) => {
+            let display_id = query_display_at_arrangement_index(int_value, display_manager);
             if display_id != DisplayId(0) {
                 result.outcome = SelectorOutcome::Resolved(display_id);
             } else {
@@ -105,17 +109,15 @@ pub(crate) fn parse_display_selector(
                 );
             }
         }
-        TokenType::String => {
-            if token_equals(
+        TokenValueType::String => {
+            if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_NORTH,
+                ARGUMENT_COMMON_SELECTOR_NORTH,
             ) {
                 if acting_display_id != DisplayId(0) {
-                    let display_id = display_manager_find_closest_display_in_direction(
-                        acting_display_id,
-                        DIR_NORTH,
-                    );
+                    let display_id =
+                        closest_display_in_direction_of_display(acting_display_id, DIRECTION_NORTH);
                     if display_id != DisplayId(0) {
                         result.outcome = SelectorOutcome::Resolved(display_id);
                     } else {
@@ -124,16 +126,14 @@ pub(crate) fn parse_display_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected display.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_EAST,
+                ARGUMENT_COMMON_SELECTOR_EAST,
             ) {
                 if acting_display_id != DisplayId(0) {
-                    let display_id = display_manager_find_closest_display_in_direction(
-                        acting_display_id,
-                        DIR_EAST,
-                    );
+                    let display_id =
+                        closest_display_in_direction_of_display(acting_display_id, DIRECTION_EAST);
                     if display_id != DisplayId(0) {
                         result.outcome = SelectorOutcome::Resolved(display_id);
                     } else {
@@ -142,16 +142,14 @@ pub(crate) fn parse_display_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected display.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_SOUTH,
+                ARGUMENT_COMMON_SELECTOR_SOUTH,
             ) {
                 if acting_display_id != DisplayId(0) {
-                    let display_id = display_manager_find_closest_display_in_direction(
-                        acting_display_id,
-                        DIR_SOUTH,
-                    );
+                    let display_id =
+                        closest_display_in_direction_of_display(acting_display_id, DIRECTION_SOUTH);
                     if display_id != DisplayId(0) {
                         result.outcome = SelectorOutcome::Resolved(display_id);
                     } else {
@@ -160,16 +158,14 @@ pub(crate) fn parse_display_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected display.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_WEST,
+                ARGUMENT_COMMON_SELECTOR_WEST,
             ) {
                 if acting_display_id != DisplayId(0) {
-                    let display_id = display_manager_find_closest_display_in_direction(
-                        acting_display_id,
-                        DIR_WEST,
-                    );
+                    let display_id =
+                        closest_display_in_direction_of_display(acting_display_id, DIRECTION_WEST);
                     if display_id != DisplayId(0) {
                         result.outcome = SelectorOutcome::Resolved(display_id);
                     } else {
@@ -178,14 +174,14 @@ pub(crate) fn parse_display_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected display.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_PREV,
+                ARGUMENT_COMMON_SELECTOR_PREVIOUS,
             ) {
                 if acting_display_id != DisplayId(0) {
                     let display_id =
-                        display_manager_prev_display_id(acting_display_id, display_manager);
+                        query_previous_display_in_arrangement(acting_display_id, display_manager);
                     if display_id != DisplayId(0) {
                         result.outcome = SelectorOutcome::Resolved(display_id);
                     } else {
@@ -194,14 +190,14 @@ pub(crate) fn parse_display_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected display.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_NEXT,
+                ARGUMENT_COMMON_SELECTOR_NEXT,
             ) {
                 if acting_display_id != DisplayId(0) {
                     let display_id =
-                        display_manager_next_display_id(acting_display_id, display_manager);
+                        query_next_display_in_arrangement(acting_display_id, display_manager);
                     if display_id != DisplayId(0) {
                         result.outcome = SelectorOutcome::Resolved(display_id);
                     } else {
@@ -210,51 +206,51 @@ pub(crate) fn parse_display_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected display.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_FIRST,
+                ARGUMENT_COMMON_SELECTOR_FIRST,
             ) {
-                let display_id = display_manager_first_display_id(display_manager);
+                let display_id = query_first_display_in_arrangement(display_manager);
                 if display_id != DisplayId(0) {
                     result.outcome = SelectorOutcome::Resolved(display_id);
                 } else {
                     daemon_fail!(response, "could not locate the first display.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_LAST,
+                ARGUMENT_COMMON_SELECTOR_LAST,
             ) {
-                let display_id = display_manager_last_display_id(display_manager);
+                let display_id = query_last_display_in_arrangement(display_manager);
                 if display_id != DisplayId(0) {
                     result.outcome = SelectorOutcome::Resolved(display_id);
                 } else {
                     daemon_fail!(response, "could not locate the last display.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_RECENT,
+                ARGUMENT_COMMON_SELECTOR_RECENT,
             ) {
                 if display_manager.last_display_id != DisplayId(0) {
                     result.outcome = SelectorOutcome::Resolved(display_manager.last_display_id);
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_MOUSE,
+                ARGUMENT_COMMON_SELECTOR_MOUSE,
             ) {
-                let display_id = display_manager_cursor_display_id();
+                let display_id = query_display_under_the_cursor();
                 if display_id != DisplayId(0) {
                     result.outcome = SelectorOutcome::Resolved(display_id);
                 } else {
                     daemon_fail!(response, "could not locate display containing cursor.\n");
                 }
             } else {
-                let display_id = display_manager_get_display_for_label(
+                let display_id = display_label_with_name(
                     display_manager,
-                    c_string_at(message_cursor.bytes(), value.token.start),
+                    null_terminated_bytes_starting_at(message_cursor.bytes(), value.token.start),
                 )
                 .map(|display_label| display_label.display_id);
                 if let Some(display_id) = display_id {
@@ -265,7 +261,7 @@ pub(crate) fn parse_display_selector(
                     }
                 } else {
                     result.outcome = SelectorOutcome::NotASelector;
-                    response.fail_pieces(&[
+                    response.write_failure_pieces_unless_silent(&[
                         FailurePiece::Text("value '"),
                         FailurePiece::Bytes(result.token.bytes(message_cursor.bytes())),
                         FailurePiece::Text("' is not a valid option for DISPLAY_SEL\n"),
@@ -273,19 +269,19 @@ pub(crate) fn parse_display_selector(
                 }
             }
         }
-        TokenType::Invalid => {
+        TokenValueType::Invalid => {
             result.outcome = SelectorOutcome::NotASelector;
             if !optional {
-                response.fail_pieces(&[
+                response.write_failure_pieces_unless_silent(&[
                     FailurePiece::Text("value '"),
                     FailurePiece::Bytes(result.token.bytes(message_cursor.bytes())),
                     FailurePiece::Text("' is not a valid option for DISPLAY_SEL\n"),
                 ]);
             }
         }
-        TokenType::Float(_) | TokenType::U32(_) => {
+        TokenValueType::Float(_) | TokenValueType::Hexadecimal(_) => {
             result.outcome = SelectorOutcome::NotASelector;
-            response.fail_pieces(&[
+            response.write_failure_pieces_unless_silent(&[
                 FailurePiece::Text("value '"),
                 FailurePiece::Bytes(result.token.bytes(message_cursor.bytes())),
                 FailurePiece::Text("' is not a valid option for DISPLAY_SEL\n"),
@@ -304,14 +300,14 @@ pub(crate) fn parse_space_selector(
     space_manager: &mut SpaceManager,
 ) -> Selector<SpaceId> {
     let mut result = Selector {
-        token: message_cursor.get_token(),
+        token: message_cursor.take_next_token(),
         outcome: SelectorOutcome::ParsedButUnresolved,
     };
 
-    let value = token_to_value(result.token, message_cursor.bytes());
+    let value = parse_token_into_typed_value(result.token, message_cursor.bytes());
     match value.type_of_value {
-        TokenType::Int(int_value) => {
-            let space_id = space_manager_mission_control_space(int_value);
+        TokenValueType::Integer(int_value) => {
+            let space_id = query_space_at_mission_control_index(int_value);
             if space_id != SpaceId(0) {
                 result.outcome = SelectorOutcome::Resolved(space_id);
             } else {
@@ -322,14 +318,14 @@ pub(crate) fn parse_space_selector(
                 );
             }
         }
-        TokenType::String => {
-            if token_equals(
+        TokenValueType::String => {
+            if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_PREV,
+                ARGUMENT_COMMON_SELECTOR_PREVIOUS,
             ) {
                 if acting_space_id != SpaceId(0) {
-                    let space_id = space_manager_prev_space(acting_space_id);
+                    let space_id = query_previous_space_in_mission_control_order(acting_space_id);
                     if space_id != SpaceId(0) {
                         result.outcome = SelectorOutcome::Resolved(space_id);
                     } else {
@@ -338,13 +334,13 @@ pub(crate) fn parse_space_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected space.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_NEXT,
+                ARGUMENT_COMMON_SELECTOR_NEXT,
             ) {
                 if acting_space_id != SpaceId(0) {
-                    let space_id = space_manager_next_space(acting_space_id);
+                    let space_id = query_next_space_in_mission_control_order(acting_space_id);
                     if space_id != SpaceId(0) {
                         result.outcome = SelectorOutcome::Resolved(space_id);
                     } else {
@@ -353,51 +349,51 @@ pub(crate) fn parse_space_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected space.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_FIRST,
+                ARGUMENT_COMMON_SELECTOR_FIRST,
             ) {
-                let space_id = space_manager_first_space();
+                let space_id = query_first_space_in_mission_control_order();
                 if space_id != SpaceId(0) {
                     result.outcome = SelectorOutcome::Resolved(space_id);
                 } else {
                     daemon_fail!(response, "could not locate the first space.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_LAST,
+                ARGUMENT_COMMON_SELECTOR_LAST,
             ) {
-                let space_id = space_manager_last_space();
+                let space_id = query_last_space_in_mission_control_order();
                 if space_id != SpaceId(0) {
                     result.outcome = SelectorOutcome::Resolved(space_id);
                 } else {
                     daemon_fail!(response, "could not locate the last space.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_RECENT,
+                ARGUMENT_COMMON_SELECTOR_RECENT,
             ) {
                 if space_manager.last_space_id != SpaceId(0) {
                     result.outcome = SelectorOutcome::Resolved(space_manager.last_space_id);
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_MOUSE,
+                ARGUMENT_COMMON_SELECTOR_MOUSE,
             ) {
-                let space_id = space_manager_cursor_space();
+                let space_id = query_current_space_of_display_under_the_cursor();
                 if space_id != SpaceId(0) {
                     result.outcome = SelectorOutcome::Resolved(space_id);
                 } else {
                     daemon_fail!(response, "could not locate space containing cursor.\n");
                 }
             } else {
-                let space_id = space_manager_get_space_for_label(
+                let space_id = space_label_with_name(
                     space_manager,
-                    c_string_at(message_cursor.bytes(), value.token.start),
+                    null_terminated_bytes_starting_at(message_cursor.bytes(), value.token.start),
                 )
                 .map(|space_label| space_label.space_id);
                 if let Some(space_id) = space_id {
@@ -408,7 +404,7 @@ pub(crate) fn parse_space_selector(
                     }
                 } else {
                     result.outcome = SelectorOutcome::NotASelector;
-                    response.fail_pieces(&[
+                    response.write_failure_pieces_unless_silent(&[
                         FailurePiece::Text("value '"),
                         FailurePiece::Bytes(result.token.bytes(message_cursor.bytes())),
                         FailurePiece::Text("' is not a valid option for SPACE_SEL\n"),
@@ -416,19 +412,19 @@ pub(crate) fn parse_space_selector(
                 }
             }
         }
-        TokenType::Invalid => {
+        TokenValueType::Invalid => {
             result.outcome = SelectorOutcome::NotASelector;
             if !optional {
-                response.fail_pieces(&[
+                response.write_failure_pieces_unless_silent(&[
                     FailurePiece::Text("value '"),
                     FailurePiece::Bytes(result.token.bytes(message_cursor.bytes())),
                     FailurePiece::Text("' is not a valid option for SPACE_SEL\n"),
                 ]);
             }
         }
-        TokenType::Float(_) | TokenType::U32(_) => {
+        TokenValueType::Float(_) | TokenValueType::Hexadecimal(_) => {
             result.outcome = SelectorOutcome::NotASelector;
-            response.fail_pieces(&[
+            response.write_failure_pieces_unless_silent(&[
                 FailurePiece::Text("value '"),
                 FailurePiece::Bytes(result.token.bytes(message_cursor.bytes())),
                 FailurePiece::Text("' is not a valid option for SPACE_SEL\n"),
@@ -449,14 +445,14 @@ pub(crate) fn parse_window_selector(
     space_manager: &mut SpaceManager,
 ) -> Selector<WindowId> {
     let mut result = Selector {
-        token: message_cursor.get_token(),
+        token: message_cursor.take_next_token(),
         outcome: SelectorOutcome::ParsedButUnresolved,
     };
 
-    let value = token_to_value(result.token, message_cursor.bytes());
+    let value = parse_token_into_typed_value(result.token, message_cursor.bytes());
     match value.type_of_value {
-        TokenType::Int(int_value) => {
-            let window = window_manager_find_window(window_manager, WindowId(int_value as u32));
+        TokenValueType::Integer(int_value) => {
+            let window = tracked_window_with_id(window_manager, WindowId(int_value as u32));
             if let Some(window) = window {
                 result.outcome = SelectorOutcome::Resolved(window);
             } else {
@@ -467,17 +463,17 @@ pub(crate) fn parse_window_selector(
                 );
             }
         }
-        TokenType::String => {
-            if token_equals(
+        TokenValueType::String => {
+            if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_NORTH,
+                ARGUMENT_COMMON_SELECTOR_NORTH,
             ) {
                 if let Some(acting_window) = acting_window_id {
-                    let closest_window = window_manager_find_closest_managed_window_in_direction(
+                    let closest_window = closest_managed_window_in_direction(
                         window_manager,
                         acting_window,
-                        DIR_NORTH,
+                        DIRECTION_NORTH,
                         space_manager,
                     );
                     if let Some(closest_window) = closest_window {
@@ -488,16 +484,16 @@ pub(crate) fn parse_window_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected window.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_EAST,
+                ARGUMENT_COMMON_SELECTOR_EAST,
             ) {
                 if let Some(acting_window) = acting_window_id {
-                    let closest_window = window_manager_find_closest_managed_window_in_direction(
+                    let closest_window = closest_managed_window_in_direction(
                         window_manager,
                         acting_window,
-                        DIR_EAST,
+                        DIRECTION_EAST,
                         space_manager,
                     );
                     if let Some(closest_window) = closest_window {
@@ -508,16 +504,16 @@ pub(crate) fn parse_window_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected window.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_SOUTH,
+                ARGUMENT_COMMON_SELECTOR_SOUTH,
             ) {
                 if let Some(acting_window) = acting_window_id {
-                    let closest_window = window_manager_find_closest_managed_window_in_direction(
+                    let closest_window = closest_managed_window_in_direction(
                         window_manager,
                         acting_window,
-                        DIR_SOUTH,
+                        DIRECTION_SOUTH,
                         space_manager,
                     );
                     if let Some(closest_window) = closest_window {
@@ -528,16 +524,16 @@ pub(crate) fn parse_window_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected window.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_WEST,
+                ARGUMENT_COMMON_SELECTOR_WEST,
             ) {
                 if let Some(acting_window) = acting_window_id {
-                    let closest_window = window_manager_find_closest_managed_window_in_direction(
+                    let closest_window = closest_managed_window_in_direction(
                         window_manager,
                         acting_window,
-                        DIR_WEST,
+                        DIRECTION_WEST,
                         space_manager,
                     );
                     if let Some(closest_window) = closest_window {
@@ -548,23 +544,23 @@ pub(crate) fn parse_window_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected window.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_MOUSE,
+                ARGUMENT_COMMON_SELECTOR_MOUSE,
             ) {
-                let mouse_window = window_manager_find_window_below_cursor(window_manager);
+                let mouse_window = query_tracked_window_under_cursor(window_manager);
                 if let Some(mouse_window) = mouse_window {
                     result.outcome = SelectorOutcome::Resolved(mouse_window);
                 } else {
                     daemon_fail!(response, "could not locate a window below the cursor.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_WINDOW_SEL_LARGEST,
+                ARGUMENT_WINDOW_SELECTOR_LARGEST,
             ) {
-                let area_window = window_manager_find_largest_managed_window(
+                let area_window = largest_managed_window_in_active_space(
                     space_manager,
                     window_manager,
                     display_manager,
@@ -574,12 +570,12 @@ pub(crate) fn parse_window_selector(
                 } else {
                     daemon_fail!(response, "could not locate window with the largest area.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_WINDOW_SEL_SMALLEST,
+                ARGUMENT_WINDOW_SELECTOR_SMALLEST,
             ) {
-                let area_window = window_manager_find_smallest_managed_window(
+                let area_window = smallest_managed_window_in_active_space(
                     space_manager,
                     window_manager,
                     display_manager,
@@ -589,13 +585,13 @@ pub(crate) fn parse_window_selector(
                 } else {
                     daemon_fail!(response, "could not locate window with the smallest area.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_WINDOW_SEL_SIBLING,
+                ARGUMENT_WINDOW_SELECTOR_SIBLING,
             ) {
                 if let Some(acting_window) = acting_window_id {
-                    let sibling_window = window_manager_find_sibling_for_managed_window(
+                    let sibling_window = sibling_window_of_managed_window(
                         window_manager,
                         acting_window,
                         space_manager,
@@ -608,13 +604,13 @@ pub(crate) fn parse_window_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected window.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_WINDOW_SEL_FNEPHEW,
+                ARGUMENT_WINDOW_SELECTOR_FIRST_NEPHEW,
             ) {
                 if let Some(acting_window) = acting_window_id {
-                    let nephew_window = window_manager_find_first_nephew_for_managed_window(
+                    let nephew_window = first_nephew_window_of_managed_window(
                         window_manager,
                         acting_window,
                         space_manager,
@@ -627,13 +623,13 @@ pub(crate) fn parse_window_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected window.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_WINDOW_SEL_SNEPHEW,
+                ARGUMENT_WINDOW_SELECTOR_SECOND_NEPHEW,
             ) {
                 if let Some(acting_window) = acting_window_id {
-                    let nephew_window = window_manager_find_second_nephew_for_managed_window(
+                    let nephew_window = second_nephew_window_of_managed_window(
                         window_manager,
                         acting_window,
                         space_manager,
@@ -646,13 +642,13 @@ pub(crate) fn parse_window_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected window.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_WINDOW_SEL_UNCLE,
+                ARGUMENT_WINDOW_SELECTOR_UNCLE,
             ) {
                 if let Some(acting_window) = acting_window_id {
-                    let uncle_window = window_manager_find_uncle_for_managed_window(
+                    let uncle_window = uncle_window_of_managed_window(
                         window_manager,
                         acting_window,
                         space_manager,
@@ -665,13 +661,13 @@ pub(crate) fn parse_window_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected window.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_WINDOW_SEL_FCOUSIN,
+                ARGUMENT_WINDOW_SELECTOR_FIRST_COUSIN,
             ) {
                 if let Some(acting_window) = acting_window_id {
-                    let cousin_window = window_manager_find_first_cousin_for_managed_window(
+                    let cousin_window = first_cousin_window_of_managed_window(
                         window_manager,
                         acting_window,
                         space_manager,
@@ -684,13 +680,13 @@ pub(crate) fn parse_window_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected window.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_WINDOW_SEL_SCOUSIN,
+                ARGUMENT_WINDOW_SELECTOR_SECOND_COUSIN,
             ) {
                 if let Some(acting_window) = acting_window_id {
-                    let cousin_window = window_manager_find_second_cousin_for_managed_window(
+                    let cousin_window = second_cousin_window_of_managed_window(
                         window_manager,
                         acting_window,
                         space_manager,
@@ -703,13 +699,13 @@ pub(crate) fn parse_window_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected window.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_PREV,
+                ARGUMENT_COMMON_SELECTOR_PREVIOUS,
             ) {
                 if let Some(acting_window) = acting_window_id {
-                    let previous_window = window_manager_find_prev_managed_window(
+                    let previous_window = managed_window_before_window_in_active_space(
                         space_manager,
                         window_manager,
                         acting_window,
@@ -723,13 +719,13 @@ pub(crate) fn parse_window_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected window.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_NEXT,
+                ARGUMENT_COMMON_SELECTOR_NEXT,
             ) {
                 if let Some(acting_window) = acting_window_id {
-                    let next_window = window_manager_find_next_managed_window(
+                    let next_window = managed_window_after_window_in_active_space(
                         space_manager,
                         window_manager,
                         acting_window,
@@ -743,12 +739,12 @@ pub(crate) fn parse_window_selector(
                 } else {
                     daemon_fail!(response, "could not locate the selected window.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_FIRST,
+                ARGUMENT_COMMON_SELECTOR_FIRST,
             ) {
-                let first_window = window_manager_find_first_managed_window(
+                let first_window = first_managed_window_in_active_space(
                     space_manager,
                     window_manager,
                     display_manager,
@@ -758,12 +754,12 @@ pub(crate) fn parse_window_selector(
                 } else {
                     daemon_fail!(response, "could not locate the first managed window.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_LAST,
+                ARGUMENT_COMMON_SELECTOR_LAST,
             ) {
-                let last_window = window_manager_find_last_managed_window(
+                let last_window = last_managed_window_in_active_space(
                     space_manager,
                     window_manager,
                     display_manager,
@@ -773,12 +769,12 @@ pub(crate) fn parse_window_selector(
                 } else {
                     daemon_fail!(response, "could not locate the last managed window.\n");
                 }
-            } else if token_equals(
+            } else if is_token_equal_to(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_RECENT,
+                ARGUMENT_COMMON_SELECTOR_RECENT,
             ) {
-                let recent_window = window_manager_find_recent_managed_window(window_manager);
+                let recent_window = previously_focused_window_if_managed(window_manager);
                 if let Some(recent_window) = recent_window {
                     result.outcome = SelectorOutcome::Resolved(recent_window);
                 } else {
@@ -787,21 +783,21 @@ pub(crate) fn parse_window_selector(
                         "could not locate the most recently focused window.\n"
                     );
                 }
-            } else if token_prefix(
+            } else if is_token_prefixed_by(
                 result.token,
                 message_cursor.bytes(),
-                ARGUMENT_COMMON_SEL_STACK_PREFIX,
+                ARGUMENT_COMMON_SELECTOR_STACK_PREFIX,
             ) {
                 if let Some(acting_window) = acting_window_id {
-                    result.token.start += ARGUMENT_COMMON_SEL_STACK_PREFIX.len();
-                    result.token.length -= ARGUMENT_COMMON_SEL_STACK_PREFIX.len();
+                    result.token.start += ARGUMENT_COMMON_SELECTOR_STACK_PREFIX.len();
+                    result.token.length -= ARGUMENT_COMMON_SELECTOR_STACK_PREFIX.len();
 
-                    if token_equals(
+                    if is_token_equal_to(
                         result.token,
                         message_cursor.bytes(),
-                        ARGUMENT_COMMON_SEL_PREV,
+                        ARGUMENT_COMMON_SELECTOR_PREVIOUS,
                     ) {
-                        let previous_window = window_manager_find_prev_window_in_stack(
+                        let previous_window = previous_window_in_stack_holding_window(
                             space_manager,
                             window_manager,
                             acting_window,
@@ -812,12 +808,12 @@ pub(crate) fn parse_window_selector(
                         } else {
                             daemon_fail!(response, "could not locate the prev stacked window.\n");
                         }
-                    } else if token_equals(
+                    } else if is_token_equal_to(
                         result.token,
                         message_cursor.bytes(),
-                        ARGUMENT_COMMON_SEL_NEXT,
+                        ARGUMENT_COMMON_SELECTOR_NEXT,
                     ) {
-                        let next_window = window_manager_find_next_window_in_stack(
+                        let next_window = next_window_in_stack_holding_window(
                             space_manager,
                             window_manager,
                             acting_window,
@@ -828,12 +824,12 @@ pub(crate) fn parse_window_selector(
                         } else {
                             daemon_fail!(response, "could not locate the next stacked window.\n");
                         }
-                    } else if token_equals(
+                    } else if is_token_equal_to(
                         result.token,
                         message_cursor.bytes(),
-                        ARGUMENT_COMMON_SEL_FIRST,
+                        ARGUMENT_COMMON_SELECTOR_FIRST,
                     ) {
-                        let first_window = window_manager_find_first_window_in_stack(
+                        let first_window = first_window_in_stack_holding_window(
                             space_manager,
                             window_manager,
                             acting_window,
@@ -844,12 +840,12 @@ pub(crate) fn parse_window_selector(
                         } else {
                             daemon_fail!(response, "could not locate the first stacked window.\n");
                         }
-                    } else if token_equals(
+                    } else if is_token_equal_to(
                         result.token,
                         message_cursor.bytes(),
-                        ARGUMENT_COMMON_SEL_LAST,
+                        ARGUMENT_COMMON_SELECTOR_LAST,
                     ) {
-                        let last_window = window_manager_find_last_window_in_stack(
+                        let last_window = last_window_in_stack_holding_window(
                             space_manager,
                             window_manager,
                             acting_window,
@@ -860,12 +856,12 @@ pub(crate) fn parse_window_selector(
                         } else {
                             daemon_fail!(response, "could not locate the last stacked window.\n");
                         }
-                    } else if token_equals(
+                    } else if is_token_equal_to(
                         result.token,
                         message_cursor.bytes(),
-                        ARGUMENT_COMMON_SEL_RECENT,
+                        ARGUMENT_COMMON_SELECTOR_RECENT,
                     ) {
-                        let recent_window = window_manager_find_recent_window_in_stack(
+                        let recent_window = previously_focused_window_in_stack_holding_window(
                             space_manager,
                             window_manager,
                             acting_window,
@@ -876,12 +872,14 @@ pub(crate) fn parse_window_selector(
                         } else {
                             daemon_fail!(response, "could not locate the recent stacked window.\n");
                         }
-                    } else if result.token.is_valid()
-                        && let Some(index) =
-                            token_is_positive_integer(result.token, message_cursor.bytes())
+                    } else if result.token.is_not_empty()
+                        && let Some(index) = parse_token_as_non_negative_decimal_integer(
+                            result.token,
+                            message_cursor.bytes(),
+                        )
                         && index > 0
                     {
-                        let index_window = window_manager_find_window_in_stack(
+                        let index_window = window_at_one_based_position_in_stack_holding_window(
                             space_manager,
                             window_manager,
                             acting_window,
@@ -899,9 +897,9 @@ pub(crate) fn parse_window_selector(
                         }
                     } else {
                         result.outcome = SelectorOutcome::NotASelector;
-                        response.fail_pieces(&[
+                        response.write_failure_pieces_unless_silent(&[
                             FailurePiece::Text("value '"),
-                            FailurePiece::Text(ARGUMENT_COMMON_SEL_STACK_PREFIX),
+                            FailurePiece::Text(ARGUMENT_COMMON_SELECTOR_STACK_PREFIX),
                             FailurePiece::Bytes(result.token.bytes(message_cursor.bytes())),
                             FailurePiece::Text("' is not a valid option for WINDOW_SEL\n"),
                         ]);
@@ -911,26 +909,26 @@ pub(crate) fn parse_window_selector(
                 }
             } else {
                 result.outcome = SelectorOutcome::NotASelector;
-                response.fail_pieces(&[
+                response.write_failure_pieces_unless_silent(&[
                     FailurePiece::Text("value '"),
                     FailurePiece::Bytes(result.token.bytes(message_cursor.bytes())),
                     FailurePiece::Text("' is not a valid option for WINDOW_SEL\n"),
                 ]);
             }
         }
-        TokenType::Invalid => {
+        TokenValueType::Invalid => {
             result.outcome = SelectorOutcome::NotASelector;
             if !optional {
-                response.fail_pieces(&[
+                response.write_failure_pieces_unless_silent(&[
                     FailurePiece::Text("value '"),
                     FailurePiece::Bytes(result.token.bytes(message_cursor.bytes())),
                     FailurePiece::Text("' is not a valid option for WINDOW_SEL\n"),
                 ]);
             }
         }
-        TokenType::Float(_) | TokenType::U32(_) => {
+        TokenValueType::Float(_) | TokenValueType::Hexadecimal(_) => {
             result.outcome = SelectorOutcome::NotASelector;
-            response.fail_pieces(&[
+            response.write_failure_pieces_unless_silent(&[
                 FailurePiece::Text("value '"),
                 FailurePiece::Bytes(result.token.bytes(message_cursor.bytes())),
                 FailurePiece::Text("' is not a valid option for WINDOW_SEL\n"),
@@ -941,40 +939,48 @@ pub(crate) fn parse_window_selector(
     result
 }
 
-pub(crate) fn parse_insert_selector(
+pub(crate) fn parse_insertion_direction_selector(
     response: &mut Response,
     message_cursor: &mut MessageCursor,
 ) -> Selector<i32> {
     let mut result = Selector {
-        token: message_cursor.get_token(),
+        token: message_cursor.take_next_token(),
         outcome: SelectorOutcome::ParsedButUnresolved,
     };
 
-    if token_equals(
+    if is_token_equal_to(
         result.token,
         message_cursor.bytes(),
-        ARGUMENT_COMMON_SEL_NORTH,
+        ARGUMENT_COMMON_SELECTOR_NORTH,
     ) {
-        result.outcome = SelectorOutcome::Resolved(DIR_NORTH);
-    } else if token_equals(result.token, message_cursor.bytes(), ARGUMENT_COMMON_SEL_EAST) {
-        result.outcome = SelectorOutcome::Resolved(DIR_EAST);
-    } else if token_equals(
+        result.outcome = SelectorOutcome::Resolved(DIRECTION_NORTH);
+    } else if is_token_equal_to(
         result.token,
         message_cursor.bytes(),
-        ARGUMENT_COMMON_SEL_SOUTH,
+        ARGUMENT_COMMON_SELECTOR_EAST,
     ) {
-        result.outcome = SelectorOutcome::Resolved(DIR_SOUTH);
-    } else if token_equals(result.token, message_cursor.bytes(), ARGUMENT_COMMON_SEL_WEST) {
-        result.outcome = SelectorOutcome::Resolved(DIR_WEST);
-    } else if token_equals(
+        result.outcome = SelectorOutcome::Resolved(DIRECTION_EAST);
+    } else if is_token_equal_to(
         result.token,
         message_cursor.bytes(),
-        ARGUMENT_COMMON_SEL_STACK,
+        ARGUMENT_COMMON_SELECTOR_SOUTH,
     ) {
-        result.outcome = SelectorOutcome::Resolved(STACK);
+        result.outcome = SelectorOutcome::Resolved(DIRECTION_SOUTH);
+    } else if is_token_equal_to(
+        result.token,
+        message_cursor.bytes(),
+        ARGUMENT_COMMON_SELECTOR_WEST,
+    ) {
+        result.outcome = SelectorOutcome::Resolved(DIRECTION_WEST);
+    } else if is_token_equal_to(
+        result.token,
+        message_cursor.bytes(),
+        ARGUMENT_COMMON_SELECTOR_STACK,
+    ) {
+        result.outcome = SelectorOutcome::Resolved(DIRECTION_STACK_INSTEAD_OF_SPLIT);
     } else {
         result.outcome = SelectorOutcome::NotASelector;
-        response.fail_pieces(&[
+        response.write_failure_pieces_unless_silent(&[
             FailurePiece::Text("value '"),
             FailurePiece::Bytes(result.token.bytes(message_cursor.bytes())),
             FailurePiece::Text("' is not a valid option for DIR_SEL\n"),

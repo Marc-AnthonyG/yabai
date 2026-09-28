@@ -1,17 +1,20 @@
 use crate::daemon_fail;
-use crate::display::focus::{display_manager_focus_display, display_manager_focus_space};
-use crate::display::identity::display_manager_active_display_id;
+use crate::display::focus::{
+    focus_display_through_its_front_window_or_a_click_at_its_center,
+    focus_space_if_it_is_on_display,
+};
+use crate::display::identity::query_display_showing_the_active_menu_bar;
 use crate::display::labels::{
-    display_manager_remove_label_for_display, display_manager_set_label_for_display,
+    remove_label_of_display, set_label_of_display_removing_it_from_any_other_display,
 };
 use crate::display::manager::DisplayManager;
-use crate::display::spaces::display_space_id;
+use crate::display::spaces::query_current_space_of_display;
 use crate::message::common_failures::daemon_fail_with_unknown_command_for_domain;
-use crate::message::labels::{LabelType, parse_label};
+use crate::message::labels::{LabelType, parse_label_refusing_numbers_and_reserved_words};
 use crate::message::selectors::{parse_display_selector, parse_space_selector};
-use crate::message::token::{MessageCursor, Token, token_equals};
+use crate::message::token::{MessageCursor, Token, is_token_equal_to};
 use crate::space::manager::SpaceManager;
-use crate::space::operations::SpaceOpError;
+use crate::space::operations::SpaceOperationOutcome;
 use crate::state::mission_control_mode::MissionControlMode;
 use crate::support::handles::DisplayId;
 use crate::support::response::Response;
@@ -23,7 +26,7 @@ pub(crate) const COMMAND_DISPLAY_SPACE: &str = "--space";
 pub(crate) const COMMAND_DISPLAY_LABEL: &str = "--label";
 /* ----------------------------------------------------------------------------- */
 
-pub(crate) fn handle_domain_display(
+pub(crate) fn run_display_command(
     response: &mut Response,
     domain: Token,
     message_cursor: &mut MessageCursor,
@@ -33,7 +36,7 @@ pub(crate) fn handle_domain_display(
     mission_control_mode: &mut MissionControlMode,
 ) {
     let command;
-    let mut acting_display_id = display_manager_active_display_id();
+    let mut acting_display_id = query_display_showing_the_active_menu_bar();
     let selector = parse_display_selector(
         &mut Response::silent(),
         message_cursor,
@@ -42,9 +45,9 @@ pub(crate) fn handle_domain_display(
         display_manager,
     );
 
-    if selector.did_parse() {
-        acting_display_id = selector.resolved().unwrap_or(DisplayId(0));
-        command = message_cursor.get_token();
+    if selector.is_recognised_selector() {
+        acting_display_id = selector.resolved_target().unwrap_or(DisplayId(0));
+        command = message_cursor.take_next_token();
     } else {
         command = selector.token;
     }
@@ -54,7 +57,7 @@ pub(crate) fn handle_domain_display(
         return;
     }
 
-    if token_equals(command, message_cursor.bytes(), COMMAND_DISPLAY_FOCUS) {
+    if is_token_equal_to(command, message_cursor.bytes(), COMMAND_DISPLAY_FOCUS) {
         let selector = parse_display_selector(
             response,
             message_cursor,
@@ -62,48 +65,57 @@ pub(crate) fn handle_domain_display(
             false,
             display_manager,
         );
-        if let Some(selector_display_id) = selector.resolved() {
+        if let Some(selector_display_id) = selector.resolved_target() {
             if acting_display_id != selector_display_id {
-                display_manager_focus_display(
+                focus_display_through_its_front_window_or_a_click_at_its_center(
                     selector_display_id,
-                    display_space_id(selector_display_id),
+                    query_current_space_of_display(selector_display_id),
                     window_manager,
                 );
             } else {
                 daemon_fail!(response, "cannot focus an already focused display.\n");
             }
         }
-    } else if token_equals(command, message_cursor.bytes(), COMMAND_DISPLAY_SPACE) {
+    } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_DISPLAY_SPACE) {
         let selector = parse_space_selector(
             response,
             message_cursor,
-            display_space_id(acting_display_id),
+            query_current_space_of_display(acting_display_id),
             false,
             space_manager,
         );
-        if let Some(selector_space_id) = selector.resolved() {
-            let result =
-                display_manager_focus_space(acting_display_id, selector_space_id, mission_control_mode);
-            if result == SpaceOpError::SameDisplay {
-                daemon_fail!(response, "acting display does not contain the given space.\n");
-            } else if result == SpaceOpError::DisplayIsAnimating {
+        if let Some(selector_space_id) = selector.resolved_target() {
+            let result = focus_space_if_it_is_on_display(
+                acting_display_id,
+                selector_space_id,
+                mission_control_mode,
+            );
+            if result == SpaceOperationOutcome::NotOnTheSameDisplay {
+                daemon_fail!(
+                    response,
+                    "acting display does not contain the given space.\n"
+                );
+            } else if result == SpaceOperationOutcome::DisplayIsAnimating {
                 daemon_fail!(
                     response,
                     "cannot focus space because the display is in the middle of an animation.\n"
                 );
-            } else if result == SpaceOpError::InMissionControl {
-                daemon_fail!(response, "cannot focus space because mission-control is active.\n");
-            } else if result == SpaceOpError::ScriptingAddition {
+            } else if result == SpaceOperationOutcome::MissionControlIsActive {
+                daemon_fail!(
+                    response,
+                    "cannot focus space because mission-control is active.\n"
+                );
+            } else if result == SpaceOperationOutcome::ScriptingAdditionFailed {
                 daemon_fail!(
                     response,
                     "cannot focus space due to an error with the scripting-addition.\n"
                 );
             }
         }
-    } else if token_equals(command, message_cursor.bytes(), COMMAND_DISPLAY_LABEL) {
+    } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_DISPLAY_LABEL) {
         let mut label = None;
-        let token = message_cursor.get_token();
-        if parse_label(
+        let token = message_cursor.take_next_token();
+        if parse_label_refusing_numbers_and_reserved_words(
             response,
             message_cursor.bytes(),
             token,
@@ -111,9 +123,12 @@ pub(crate) fn handle_domain_display(
             &mut label,
         ) {
             if let Some(label) = label {
-                display_manager_set_label_for_display(display_manager, acting_display_id, label);
-            } else if !display_manager_remove_label_for_display(display_manager, acting_display_id)
-            {
+                set_label_of_display_removing_it_from_any_other_display(
+                    display_manager,
+                    acting_display_id,
+                    label,
+                );
+            } else if !remove_label_of_display(display_manager, acting_display_id) {
                 daemon_fail!(
                     response,
                     "the selected display was not associated with a label!\n"

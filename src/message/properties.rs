@@ -1,4 +1,4 @@
-use crate::message::token::{Token, c_string_at, token_prefix};
+use crate::message::token::{Token, is_token_prefixed_by, null_terminated_bytes_starting_at};
 use crate::support::response::{FailurePiece, Response};
 
 pub(crate) struct Properties {
@@ -8,7 +8,7 @@ pub(crate) struct Properties {
     pub(crate) flags: u64,
 }
 
-pub(crate) fn parse_property(
+pub(crate) fn add_flag_of_property_if_known(
     properties: &mut Properties,
     property: &[u8],
     property_values: &[u64],
@@ -24,7 +24,7 @@ pub(crate) fn parse_property(
     false
 }
 
-pub(crate) fn parse_properties(
+pub(crate) fn parse_comma_separated_properties(
     response: &mut Response,
     message_bytes: &mut [u8],
     token: Token,
@@ -38,7 +38,7 @@ pub(crate) fn parse_properties(
         flags: 0,
     };
 
-    result.did_parse = token.is_valid() && !token_prefix(token, message_bytes, "--");
+    result.did_parse = token.is_not_empty() && !is_token_prefixed_by(token, message_bytes, "--");
     if !result.did_parse {
         return result;
     }
@@ -46,10 +46,15 @@ pub(crate) fn parse_properties(
     let mut cursor = 0;
     for index in 0..token.length {
         if index + 1 == token.length {
-            let property = c_string_at(message_bytes, token.start + cursor);
-            if !parse_property(&mut result, property, property_values, property_strings) {
+            let property = null_terminated_bytes_starting_at(message_bytes, token.start + cursor);
+            if !add_flag_of_property_if_known(
+                &mut result,
+                property,
+                property_values,
+                property_strings,
+            ) {
                 let reported = &message_bytes[token.start + cursor..token.start + index + 1];
-                response.fail_pieces(&[
+                response.write_failure_pieces_unless_silent(&[
                     FailurePiece::Text("'"),
                     FailurePiece::BytesStoppingAtFirstNull(reported),
                     FailurePiece::Text("' is not a valid property.\n"),
@@ -59,10 +64,15 @@ pub(crate) fn parse_properties(
         } else if message_bytes[token.start + index] == b',' {
             message_bytes[token.start + index] = 0;
 
-            let property = c_string_at(message_bytes, token.start + cursor);
-            if !parse_property(&mut result, property, property_values, property_strings) {
+            let property = null_terminated_bytes_starting_at(message_bytes, token.start + cursor);
+            if !add_flag_of_property_if_known(
+                &mut result,
+                property,
+                property_values,
+                property_strings,
+            ) {
                 let reported = &message_bytes[token.start + cursor..token.start + index + 1];
-                response.fail_pieces(&[
+                response.write_failure_pieces_unless_silent(&[
                     FailurePiece::Text("'"),
                     FailurePiece::BytesStoppingAtFirstNull(reported),
                     FailurePiece::Text("' is not a valid property.\n"),
@@ -82,7 +92,7 @@ mod tests {
     use std::io::Read;
     use std::os::unix::net::UnixStream;
 
-    use super::parse_properties;
+    use super::parse_comma_separated_properties;
     use crate::message::token::MessageCursor;
     use crate::support::response::Response;
 
@@ -100,12 +110,12 @@ mod tests {
     fn parse_the_properties_argument(argument: &str) -> ParsedProperties {
         let mut message = argument.as_bytes().to_vec();
         message.extend_from_slice(b"\0\0");
-        let token = MessageCursor::new(&mut message).get_token();
+        let token = MessageCursor::new(&mut message).take_next_token();
         let (daemon_side, mut client_side) = UnixStream::pair().expect("a connected socket pair");
 
         let properties = {
             let mut response = Response::to_client(daemon_side);
-            parse_properties(
+            parse_comma_separated_properties(
                 &mut response,
                 &mut message,
                 token,
@@ -128,7 +138,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_properties_ors_the_value_of_each_comma_separated_property() {
+    fn parse_comma_separated_properties_ors_the_value_of_each_comma_separated_property() {
         let expected_flags: [(&str, u64, &[u8]); 3] = [
             ("id", 0x1, b"id\0\0"),
             ("id,app,title", 0xd, b"id\0app\0title\0\0"),
@@ -150,7 +160,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_properties_reports_an_unknown_property_and_keeps_the_known_ones() {
+    fn parse_comma_separated_properties_reports_an_unknown_property_and_keeps_the_known_ones() {
         let parsed = parse_the_properties_argument("id,bogus,app");
 
         assert!(parsed.did_parse);
@@ -164,7 +174,8 @@ mod tests {
     }
 
     #[test]
-    fn parse_properties_keeps_a_trailing_comma_on_the_last_property_and_rejects_it() {
+    fn parse_comma_separated_properties_keeps_a_trailing_comma_on_the_last_property_and_rejects_it()
+    {
         let parsed = parse_the_properties_argument("id,title,");
 
         assert!(parsed.did_error);
@@ -177,7 +188,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_properties_rejects_an_empty_property_between_two_commas() {
+    fn parse_comma_separated_properties_rejects_an_empty_property_between_two_commas() {
         let parsed = parse_the_properties_argument("id,,app");
 
         assert!(parsed.did_error);
@@ -187,7 +198,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_properties_rejects_a_prefix_or_an_extension_of_a_property_name() {
+    fn parse_comma_separated_properties_rejects_a_prefix_or_an_extension_of_a_property_name() {
         for (argument, expected_response) in [
             ("i", &b"\x07'i' is not a valid property.\n"[..]),
             ("idx", b"\x07'idx' is not a valid property.\n"),
@@ -205,7 +216,7 @@ mod tests {
     }
 
     #[test]
-    fn parse_properties_does_not_parse_an_empty_token_or_an_option() {
+    fn parse_comma_separated_properties_does_not_parse_an_empty_token_or_an_option() {
         for argument in ["", "--space"] {
             let parsed = parse_the_properties_argument(argument);
 
@@ -217,11 +228,11 @@ mod tests {
     }
 
     #[test]
-    fn parse_properties_with_a_silent_response_still_reports_the_error() {
+    fn parse_comma_separated_properties_with_a_silent_response_still_reports_the_error() {
         let mut message = b"bogus\0\0".to_vec();
-        let token = MessageCursor::new(&mut message).get_token();
+        let token = MessageCursor::new(&mut message).take_next_token();
 
-        let properties = parse_properties(
+        let properties = parse_comma_separated_properties(
             &mut Response::silent(),
             &mut message,
             token,

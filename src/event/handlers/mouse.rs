@@ -5,17 +5,15 @@ use std::sync::atomic::Ordering;
 use objc2_core_graphics::CGMouseButton;
 
 use crate::debug;
-use crate::display::bounds::display_bounds_constrained;
-use crate::display::focus::{
-    display_manager_focus_display_with_window_at_point, display_manager_set_active_display_id,
-};
-use crate::display::identity::display_manager_point_display_id;
+use crate::display::bounds::query_bounds_of_display_left_for_windows;
+use crate::display::focus::{focus_window_under_point, move_active_menu_bar_to_display};
+use crate::display::identity::query_display_at_point;
 use crate::display::manager::DisplayManager;
-use crate::display::spaces::display_space_id;
+use crate::display::spaces::query_current_space_of_display;
 use crate::ffi::accessibility::{kAXDrawerRole, kAXSheetRole};
-use crate::ffi::carbon_core::{read_os_freq, read_os_timer};
+use crate::ffi::carbon_core::{read_system_clock_in_nanoseconds, system_clock_ticks_per_second};
 use crate::ffi::core_foundation::{
-    CFArrayGetCount, CFEqual, CFIndex, CFNumber, CGPoint, SendCFRetained, as_cftype,
+    CFArrayGetCount, CFEqual, CFIndex, CFNumber, CFRetainedAssumedSendAndSync, CGPoint, as_cftype,
     cfarray_borrow_value_at_index, cfnumber_read_i32, take_create_rule_result,
 };
 use crate::ffi::core_graphics::{
@@ -23,48 +21,58 @@ use crate::ffi::core_graphics::{
     CGRectGetMidX, CGRectGetMidY,
 };
 use crate::ffi::skylight::SLSCopyAssociatedWindows;
-use crate::layout::insertion::{insert_feedback_destroy, insert_feedback_show};
-use crate::layout::tree::{WindowNodeChild, WindowNodeSplit, view_find_window_node};
-use crate::mouse::drag::{MouseDragState, MouseWindowInfo, mouse_window_info_populate};
-use crate::mouse::drop::{
-    MouseDropAction, mouse_determine_drop_action, mouse_drop_action_stack, mouse_drop_action_swap,
-    mouse_drop_action_warp, mouse_drop_no_target, mouse_drop_try_adjust_bsp_grid,
+use crate::layout::insertion::{destroy_insert_feedback_of_node, show_insert_feedback_of_node};
+use crate::layout::tree::{WindowNodeChild, WindowNodeSplit, leaf_holding_window};
+use crate::mouse::drag::{
+    DraggedWindowFrameDelta, MouseDragState, measure_dragged_window_frame_delta,
 };
-use crate::mouse::tap::{MOUSE_TAP_STATE, MouseMod, MouseMode};
-use crate::scripting_addition::client::scripting_addition_move_window;
-use crate::space::managed_space::space_window_list;
-use crate::space::manager::{SpaceManager, space_manager_find_view};
-use crate::state::mission_control_mode::{MissionControlMode, mission_control_is_active};
-use crate::state::process_wide::{CONNECTION, LAST_GESTURE_TIME, PENDING_GESTURE};
-use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, STACK};
-use crate::support::geometry::cgrect_contains_point;
+use crate::mouse::drop::{
+    MouseDropAction, adjust_split_ratios_to_mouse_moved_window_or_restore_its_frame,
+    determine_drop_action_for_dragged_window, retile_window_dropped_on_no_target_window,
+    stack_dropped_window_onto_destination_window, swap_dropped_window_with_destination_window,
+    warp_dropped_window_beside_destination_window,
+};
+use crate::mouse::tap::{MOUSE_TAP_STATE, MouseMode, MouseModifier};
+use crate::scripting_addition::client::move_window_through_scripting_addition;
+use crate::space::managed_space::query_windows_on_space;
+use crate::space::manager::{SpaceManager, find_or_create_view_for_space};
+use crate::state::mission_control_mode::{MissionControlMode, is_mission_control_active};
+use crate::state::process_wide::{
+    DOCK_SWIPE_GESTURE_IS_IN_PROGRESS, LAST_DOCK_SWIPE_GESTURE_END_TIME, SKYLIGHT_CONNECTION_ID,
+};
+use crate::support::direction::{
+    DIRECTION_EAST, DIRECTION_NORTH, DIRECTION_SOUTH, DIRECTION_STACK_INSTEAD_OF_SPLIT,
+    DIRECTION_WEST,
+};
+use crate::support::geometry::is_point_inside_rectangle_including_its_edges;
 use crate::support::handles::WindowId;
 use crate::support::resize_handle::ResizeHandle;
 use crate::window::focus::{
-    window_manager_focus_window_with_raise, window_manager_focus_window_without_raise,
+    focus_and_raise_window_of_process, focus_window_of_process_without_raising_it,
 };
 use crate::window::frame::{
-    window_manager_move_window, window_manager_resize_window_relative_internal,
+    move_window_through_accessibility, resize_floating_window_by_dragging_edges,
 };
 use crate::window::manager::{
-    FfmMode, WindowManager, window_manager_find_managed_window, window_manager_find_window,
-    window_manager_is_window_eligible,
+    FocusFollowsMouseMode, WindowManager, is_window_eligible_for_management, space_managing_window,
+    tracked_window_with_id,
 };
 use crate::window::model::{
-    WindowFlag, window_check_flag, window_level, window_role, window_sub_level,
+    WindowFlag, is_window_flag_set, query_window_level_from_window_server,
+    query_window_sub_level_from_window_server, window_role,
 };
 use crate::window::screen_lookup::{
-    window_manager_find_window_at_point, window_manager_find_window_at_point_filtering_window,
+    query_tracked_window_at_point, query_tracked_window_at_point_skipping_window,
 };
 
-pub(crate) fn event_handler_mouse_down(
-    event: SendCFRetained<CGEvent>,
-    event_modifier: MouseMod,
+pub(crate) fn handle_mouse_down_event(
+    event: CFRetainedAssumedSendAndSync<CGEvent>,
+    event_modifier: MouseModifier,
     window_manager: &mut WindowManager,
     mouse_drag_state: &mut MouseDragState,
     mission_control_mode: &mut MissionControlMode,
 ) {
-    if mission_control_is_active(mission_control_mode) {
+    if is_mission_control_active(mission_control_mode) {
         return;
     }
     if mouse_drag_state.current_action != MouseMode::None {
@@ -74,17 +82,17 @@ pub(crate) fn event_handler_mouse_down(
     let point = CGEventGetLocation(Some(event.as_ref()));
     debug!(
         "{}: {:.2}, {:.2}\n",
-        "EVENT_HANDLER_MOUSE_DOWN", point.x as f64, point.y as f64
+        "handle_mouse_down_event", point.x as f64, point.y as f64
     );
 
-    let window = window_manager_find_window_at_point(window_manager, point);
+    let window = query_tracked_window_at_point(window_manager, point);
     let Some(window) = window else {
         return;
     };
     let Some(window_record) = window_manager.window.find(&window) else {
         return;
     };
-    if window_check_flag(window_record, WindowFlag::FULLSCREEN) {
+    if is_window_flag_set(window_record, WindowFlag::IN_NATIVE_FULLSCREEN) {
         return;
     }
 
@@ -128,8 +136,8 @@ pub(crate) fn event_handler_mouse_down(
     }
 }
 
-pub(crate) fn event_handler_mouse_up(
-    event: SendCFRetained<CGEvent>,
+pub(crate) fn handle_mouse_up_event(
+    event: CFRetainedAssumedSendAndSync<CGEvent>,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
@@ -137,7 +145,7 @@ pub(crate) fn event_handler_mouse_up(
     mission_control_mode: &mut MissionControlMode,
 ) {
     'set_current_action_to_none: {
-        if mission_control_is_active(mission_control_mode) {
+        if is_mission_control_active(mission_control_mode) {
             return;
         }
 
@@ -153,7 +161,7 @@ pub(crate) fn event_handler_mouse_up(
             if !is_still_alive {
                 debug!(
                     "{}: {} has been marked invalid by the system, ignoring event..\n",
-                    "EVENT_HANDLER_MOUSE_UP", mouse_window.0 as i32
+                    "handle_mouse_up_event", mouse_window.0 as i32
                 );
                 break 'clear_mouse_state_window;
             }
@@ -161,11 +169,11 @@ pub(crate) fn event_handler_mouse_up(
             let is_fullscreen = window_manager
                 .window
                 .find(&mouse_window)
-                .is_some_and(|window| window_check_flag(window, WindowFlag::FULLSCREEN));
+                .is_some_and(|window| is_window_flag_set(window, WindowFlag::IN_NATIVE_FULLSCREEN));
             if is_fullscreen {
                 debug!(
                     "{}: {} is transitioning into native-fullscreen mode, ignoring event..\n",
-                    "EVENT_HANDLER_MOUSE_UP", mouse_window.0 as i32
+                    "handle_mouse_up_event", mouse_window.0 as i32
                 );
                 break 'clear_mouse_state_window;
             }
@@ -173,41 +181,41 @@ pub(crate) fn event_handler_mouse_up(
             let point = CGEventGetLocation(Some(event.as_ref()));
             debug!(
                 "{}: {:.2}, {:.2}\n",
-                "EVENT_HANDLER_MOUSE_UP", point.x as f64, point.y as f64
+                "handle_mouse_up_event", point.x as f64, point.y as f64
             );
 
-            let source_view = window_manager_find_managed_window(window_manager, mouse_window);
+            let source_view = space_managing_window(window_manager, mouse_window);
             let Some(source_view) = source_view else {
                 break 'clear_mouse_state_window;
             };
 
-            let mut info = MouseWindowInfo::default();
-            mouse_window_info_populate(mouse_drag_state, &mut info, window_manager);
+            let mut info = DraggedWindowFrameDelta::default();
+            measure_dragged_window_frame_delta(mouse_drag_state, &mut info, window_manager);
 
             if info.changed_position && !info.changed_size {
-                let cursor_space_id = display_space_id(display_manager_point_display_id(point));
-                let destination_view = space_manager_find_view(
+                let cursor_space_id = query_current_space_of_display(query_display_at_point(point));
+                let destination_view = find_or_create_view_for_space(
                     space_manager,
                     cursor_space_id,
                     display_manager,
                     window_manager,
                 );
 
-                let mut window = window_manager_find_window_at_point_filtering_window(
+                let mut window = query_tracked_window_at_point_skipping_window(
                     window_manager,
                     point,
                     mouse_window,
                 );
                 if window.is_none() {
-                    window = window_manager_find_window_at_point(window_manager, point);
+                    window = query_tracked_window_at_point(window_manager, point);
                 }
                 if window == Some(mouse_window) {
                     window = None;
                 }
 
-                let a_node = view_find_window_node(space_manager, source_view, mouse_window);
+                let a_node = leaf_holding_window(space_manager, source_view, mouse_window);
                 let b_node = match window {
-                    Some(window) => view_find_window_node(space_manager, destination_view, window),
+                    Some(window) => leaf_holding_window(space_manager, destination_view, window),
                     None => None,
                 };
 
@@ -226,7 +234,7 @@ pub(crate) fn event_handler_mouse_up(
                         {
                             feedback_node.insert_direction = 0;
                         }
-                        insert_feedback_destroy(
+                        destroy_insert_feedback_of_node(
                             feedback_space_id,
                             feedback_node_id,
                             window_manager,
@@ -235,7 +243,7 @@ pub(crate) fn event_handler_mouse_up(
                         mouse_drag_state.feedback_node = None;
                     }
 
-                    let drop_action = mouse_determine_drop_action(
+                    let drop_action = determine_drop_action_for_dragged_window(
                         source_view,
                         a_node,
                         window,
@@ -245,7 +253,7 @@ pub(crate) fn event_handler_mouse_up(
                     );
                     match drop_action {
                         MouseDropAction::Stack => {
-                            mouse_drop_action_stack(
+                            stack_dropped_window_onto_destination_window(
                                 window_manager,
                                 space_manager,
                                 source_view,
@@ -257,7 +265,7 @@ pub(crate) fn event_handler_mouse_up(
                             );
                         }
                         MouseDropAction::Swap => {
-                            mouse_drop_action_swap(
+                            swap_dropped_window_with_destination_window(
                                 window_manager,
                                 space_manager,
                                 source_view,
@@ -269,7 +277,7 @@ pub(crate) fn event_handler_mouse_up(
                             );
                         }
                         MouseDropAction::WarpTop => {
-                            mouse_drop_action_warp(
+                            warp_dropped_window_beside_destination_window(
                                 window_manager,
                                 space_manager,
                                 source_view,
@@ -278,14 +286,14 @@ pub(crate) fn event_handler_mouse_up(
                                 destination_view,
                                 b_node,
                                 window,
-                                WindowNodeSplit::X,
+                                WindowNodeSplit::Horizontal,
                                 WindowNodeChild::First,
                                 display_manager,
                                 mouse_drag_state,
                             );
                         }
                         MouseDropAction::WarpRight => {
-                            mouse_drop_action_warp(
+                            warp_dropped_window_beside_destination_window(
                                 window_manager,
                                 space_manager,
                                 source_view,
@@ -294,14 +302,14 @@ pub(crate) fn event_handler_mouse_up(
                                 destination_view,
                                 b_node,
                                 window,
-                                WindowNodeSplit::Y,
+                                WindowNodeSplit::Vertical,
                                 WindowNodeChild::Second,
                                 display_manager,
                                 mouse_drag_state,
                             );
                         }
                         MouseDropAction::WarpBottom => {
-                            mouse_drop_action_warp(
+                            warp_dropped_window_beside_destination_window(
                                 window_manager,
                                 space_manager,
                                 source_view,
@@ -310,14 +318,14 @@ pub(crate) fn event_handler_mouse_up(
                                 destination_view,
                                 b_node,
                                 window,
-                                WindowNodeSplit::X,
+                                WindowNodeSplit::Horizontal,
                                 WindowNodeChild::Second,
                                 display_manager,
                                 mouse_drag_state,
                             );
                         }
                         MouseDropAction::WarpLeft => {
-                            mouse_drop_action_warp(
+                            warp_dropped_window_beside_destination_window(
                                 window_manager,
                                 space_manager,
                                 source_view,
@@ -326,7 +334,7 @@ pub(crate) fn event_handler_mouse_up(
                                 destination_view,
                                 b_node,
                                 window,
-                                WindowNodeSplit::Y,
+                                WindowNodeSplit::Vertical,
                                 WindowNodeChild::First,
                                 display_manager,
                                 mouse_drag_state,
@@ -335,7 +343,7 @@ pub(crate) fn event_handler_mouse_up(
                         MouseDropAction::None => { /* silence compiler warning.. */ }
                     }
                 } else if let Some(a_node) = a_node {
-                    mouse_drop_no_target(
+                    retile_window_dropped_on_no_target_window(
                         space_manager,
                         window_manager,
                         source_view,
@@ -347,7 +355,7 @@ pub(crate) fn event_handler_mouse_up(
                     );
                 }
             } else if info.changed_position || info.changed_size {
-                mouse_drop_try_adjust_bsp_grid(
+                adjust_split_ratios_to_mouse_moved_window_or_restore_its_frame(
                     window_manager,
                     space_manager,
                     source_view,
@@ -364,15 +372,15 @@ pub(crate) fn event_handler_mouse_up(
     mouse_drag_state.current_action = MouseMode::None;
 }
 
-pub(crate) fn event_handler_mouse_dragged(
-    event: SendCFRetained<CGEvent>,
+pub(crate) fn handle_mouse_dragged_event(
+    event: CFRetainedAssumedSendAndSync<CGEvent>,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
     mouse_drag_state: &mut MouseDragState,
     mission_control_mode: &mut MissionControlMode,
 ) {
-    if mission_control_is_active(mission_control_mode) {
+    if is_mission_control_active(mission_control_mode) {
         return;
     }
     let Some(mouse_window) = mouse_drag_state.window_id else {
@@ -386,7 +394,7 @@ pub(crate) fn event_handler_mouse_dragged(
     if !is_still_alive {
         debug!(
             "{}: {} has been marked invalid by the system, ignoring event..\n",
-            "EVENT_HANDLER_MOUSE_DRAGGED", mouse_window.0 as i32
+            "handle_mouse_dragged_event", mouse_window.0 as i32
         );
         mouse_drag_state.window_id = None;
         mouse_drag_state.current_action = MouseMode::None;
@@ -397,7 +405,7 @@ pub(crate) fn event_handler_mouse_dragged(
     let point = CGEventGetLocation(Some(event.as_ref()));
     debug!(
         "{}: {:.2}, {:.2}\n",
-        "EVENT_HANDLER_MOUSE_DRAGGED", point.x as f64, point.y as f64
+        "handle_mouse_dragged_event", point.x as f64, point.y as f64
     );
 
     if mouse_drag_state.current_action == MouseMode::Move {
@@ -408,16 +416,21 @@ pub(crate) fn event_handler_mouse_dragged(
                 + (point.y - mouse_drag_state.down_location.y),
         };
 
-        let display_id = display_manager_point_display_id(new_point);
+        let display_id = query_display_at_point(new_point);
         if display_id.0 != 0 {
-            let bounds = display_bounds_constrained(display_id, false, display_manager);
+            let bounds =
+                query_bounds_of_display_left_for_windows(display_id, false, display_manager);
             if new_point.y < bounds.origin.y {
                 new_point.y = bounds.origin.y;
             }
         }
 
-        if !scripting_addition_move_window(mouse_window, new_point.x as i32, new_point.y as i32) {
-            window_manager_move_window(
+        if !move_window_through_scripting_addition(
+            mouse_window,
+            new_point.x as i32,
+            new_point.y as i32,
+        ) {
+            move_window_through_accessibility(
                 mouse_window,
                 new_point.x as f32,
                 new_point.y as f32,
@@ -425,9 +438,9 @@ pub(crate) fn event_handler_mouse_dragged(
             );
         }
     } else if mouse_drag_state.current_action == MouseMode::Resize {
-        let event_time = read_os_timer();
+        let event_time = read_system_clock_in_nanoseconds();
         let delta_time = (event_time as f32 - mouse_drag_state.last_moved_time as f32)
-            * (1000.0f32 / read_os_freq() as f32);
+            * (1000.0f32 / system_clock_ticks_per_second() as f32);
         if delta_time < 67.67f32 {
             return;
         }
@@ -442,7 +455,7 @@ pub(crate) fn event_handler_mouse_dragged(
         else {
             return;
         };
-        window_manager_resize_window_relative_internal(
+        resize_floating_window_by_dragging_edges(
             mouse_window,
             mouse_window_frame,
             mouse_drag_state.direction as i32,
@@ -456,38 +469,35 @@ pub(crate) fn event_handler_mouse_dragged(
         mouse_drag_state.down_location = point;
     }
 
-    let source_view = window_manager_find_managed_window(window_manager, mouse_window);
+    let source_view = space_managing_window(window_manager, mouse_window);
     let Some(source_view) = source_view else {
         return;
     };
 
-    let mut info = MouseWindowInfo::default();
-    mouse_window_info_populate(mouse_drag_state, &mut info, window_manager);
+    let mut info = DraggedWindowFrameDelta::default();
+    measure_dragged_window_frame_delta(mouse_drag_state, &mut info, window_manager);
 
     if info.changed_position && !info.changed_size {
-        let cursor_space_id = display_space_id(display_manager_point_display_id(point));
-        let destination_view = space_manager_find_view(
+        let cursor_space_id = query_current_space_of_display(query_display_at_point(point));
+        let destination_view = find_or_create_view_for_space(
             space_manager,
             cursor_space_id,
             display_manager,
             window_manager,
         );
 
-        let mut window = window_manager_find_window_at_point_filtering_window(
-            window_manager,
-            point,
-            mouse_window,
-        );
+        let mut window =
+            query_tracked_window_at_point_skipping_window(window_manager, point, mouse_window);
         if window.is_none() {
-            window = window_manager_find_window_at_point(window_manager, point);
+            window = query_tracked_window_at_point(window_manager, point);
         }
         if window == Some(mouse_window) {
             window = None;
         }
 
-        let a_node = view_find_window_node(space_manager, source_view, mouse_window);
+        let a_node = leaf_holding_window(space_manager, source_view, mouse_window);
         let b_node = match window {
-            Some(window) => view_find_window_node(space_manager, destination_view, window),
+            Some(window) => leaf_holding_window(space_manager, destination_view, window),
             None => None,
         };
 
@@ -506,7 +516,7 @@ pub(crate) fn event_handler_mouse_dragged(
                 {
                     feedback_node.insert_direction = 0;
                 }
-                insert_feedback_destroy(
+                destroy_insert_feedback_of_node(
                     feedback_space_id,
                     feedback_node_id,
                     window_manager,
@@ -515,7 +525,7 @@ pub(crate) fn event_handler_mouse_dragged(
             }
 
             let mut insert_direction = 0;
-            let drop_action = mouse_determine_drop_action(
+            let drop_action = determine_drop_action_for_dragged_window(
                 source_view,
                 a_node,
                 window,
@@ -525,22 +535,22 @@ pub(crate) fn event_handler_mouse_dragged(
             );
             match drop_action {
                 MouseDropAction::Stack => {
-                    insert_direction = STACK;
+                    insert_direction = DIRECTION_STACK_INSTEAD_OF_SPLIT;
                 }
                 MouseDropAction::Swap => {
-                    insert_direction = STACK;
+                    insert_direction = DIRECTION_STACK_INSTEAD_OF_SPLIT;
                 }
                 MouseDropAction::WarpTop => {
-                    insert_direction = DIR_NORTH;
+                    insert_direction = DIRECTION_NORTH;
                 }
                 MouseDropAction::WarpRight => {
-                    insert_direction = DIR_EAST;
+                    insert_direction = DIRECTION_EAST;
                 }
                 MouseDropAction::WarpBottom => {
-                    insert_direction = DIR_SOUTH;
+                    insert_direction = DIRECTION_SOUTH;
                 }
                 MouseDropAction::WarpLeft => {
-                    insert_direction = DIR_WEST;
+                    insert_direction = DIRECTION_WEST;
                 }
                 MouseDropAction::None => { /* silence compiler warning.. */ }
             }
@@ -561,7 +571,7 @@ pub(crate) fn event_handler_mouse_dragged(
                     node.insert_direction = insert_direction;
                 }
                 if insert_direction == 0 {
-                    insert_feedback_destroy(
+                    destroy_insert_feedback_of_node(
                         destination_view,
                         b_node,
                         window_manager,
@@ -571,7 +581,12 @@ pub(crate) fn event_handler_mouse_dragged(
                         mouse_drag_state.feedback_node = None;
                     }
                 } else {
-                    insert_feedback_show(destination_view, b_node, window_manager, space_manager);
+                    show_insert_feedback_of_node(
+                        destination_view,
+                        b_node,
+                        window_manager,
+                        space_manager,
+                    );
                     mouse_drag_state.feedback_node = Some((destination_view, b_node));
                 }
             }
@@ -584,7 +599,7 @@ pub(crate) fn event_handler_mouse_dragged(
                 {
                     feedback_node.insert_direction = 0;
                 }
-                insert_feedback_destroy(
+                destroy_insert_feedback_of_node(
                     feedback_space_id,
                     feedback_node_id,
                     window_manager,
@@ -596,47 +611,47 @@ pub(crate) fn event_handler_mouse_dragged(
     }
 }
 
-pub(crate) fn event_handler_mouse_moved(
-    event: SendCFRetained<CGEvent>,
-    _event_modifier: MouseMod,
+pub(crate) fn handle_mouse_moved_event(
+    event: CFRetainedAssumedSendAndSync<CGEvent>,
+    _event_modifier: MouseModifier,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
     mouse_drag_state: &mut MouseDragState,
     mission_control_mode: &mut MissionControlMode,
 ) {
-    if window_manager.ffm_mode == FfmMode::Disabled {
+    if window_manager.focus_follows_mouse_mode == FocusFollowsMouseMode::Disabled {
         return;
     }
-    if mission_control_is_active(mission_control_mode) {
+    if is_mission_control_active(mission_control_mode) {
         return;
     }
     if mouse_drag_state.ffm_window_id.0 != 0 {
         return;
     }
 
-    if PENDING_GESTURE.load(Ordering::Relaxed) {
+    if DOCK_SWIPE_GESTURE_IS_IN_PROGRESS.load(Ordering::Relaxed) {
         return;
     }
-    let last_gesture_time = LAST_GESTURE_TIME.load(Ordering::Relaxed);
-    let delta_time =
-        (read_os_timer() as f32 - last_gesture_time as f32) * (1000.0f32 / read_os_freq() as f32);
+    let last_gesture_time = LAST_DOCK_SWIPE_GESTURE_END_TIME.load(Ordering::Relaxed);
+    let delta_time = (read_system_clock_in_nanoseconds() as f32 - last_gesture_time as f32)
+        * (1000.0f32 / system_clock_ticks_per_second() as f32);
     if delta_time < 1250.0f32 {
         return;
     }
 
     let point = CGEventGetLocation(Some(event.as_ref()));
-    let window = window_manager_find_window_at_point(window_manager, point);
+    let window = query_tracked_window_at_point(window_manager, point);
 
     if let Some(mut window) = window {
         if window == window_manager.focused_window_id {
             return;
         }
-        if !window_manager_is_window_eligible(window, window_manager) {
+        if !is_window_eligible_for_management(window, window_manager) {
             return;
         }
 
-        if window_manager.ffm_mode == FfmMode::Autofocus {
+        if window_manager.focus_follows_mouse_mode == FocusFollowsMouseMode::Autofocus {
             //
             // NOTE(asmvik): Look for a window with role AXSheet or AXDrawer
             // and forward focus to it because we are not allowed to focus the main
@@ -645,7 +660,7 @@ pub(crate) fn event_handler_mouse_moved(
 
             let window_list = unsafe {
                 take_create_rule_result(SLSCopyAssociatedWindows(
-                    *CONNECTION.get().unwrap(),
+                    *SKYLIGHT_CONNECTION_ID.get().unwrap(),
                     window.0,
                 ))
             };
@@ -658,7 +673,7 @@ pub(crate) fn event_handler_mouse_moved(
                     };
                     let child_window_id =
                         WindowId(child_number.map_or(0, cfnumber_read_i32) as u32);
-                    let child = window_manager_find_window(window_manager, child_window_id);
+                    let child = tracked_window_with_id(window_manager, child_window_id);
                     let Some(child) = child else {
                         continue;
                     };
@@ -692,13 +707,13 @@ pub(crate) fn event_handler_mouse_moved(
             let Some(window_process_serial_number) = window_process_serial_number else {
                 return;
             };
-            window_manager_focus_window_without_raise(
+            focus_window_of_process_without_raising_it(
                 &window_process_serial_number,
                 window,
                 window_manager,
             );
             mouse_drag_state.ffm_window_id = window;
-        } else if window_manager.ffm_mode == FfmMode::Autoraise {
+        } else if window_manager.focus_follows_mouse_mode == FocusFollowsMouseMode::Autoraise {
             //
             // NOTE(asmvik): If any **floating** window would be fully occluded by
             // autoraising the window below the cursor we do not actually perform the
@@ -709,7 +724,7 @@ pub(crate) fn event_handler_mouse_moved(
             let mut occludes_window = false;
 
             let window_list =
-                space_window_list(space_manager.current_space_id, false, window_manager);
+                query_windows_on_space(space_manager.current_space_id, false, window_manager);
 
             if let Some(window_list) = window_list {
                 let window_count = window_list.len() as i32;
@@ -719,7 +734,7 @@ pub(crate) fn event_handler_mouse_moved(
                         break;
                     }
 
-                    let sub_window = window_manager_find_window(window_manager, window_id);
+                    let sub_window = tracked_window_with_id(window_manager, window_id);
                     let Some(sub_window) = sub_window else {
                         continue;
                     };
@@ -727,13 +742,17 @@ pub(crate) fn event_handler_mouse_moved(
                         continue;
                     };
 
-                    if !window_check_flag(sub_window_record, WindowFlag::FLOAT) {
+                    if !is_window_flag_set(sub_window_record, WindowFlag::FLOATING) {
                         continue;
                     }
-                    if window_level(window) != window_level(sub_window) {
+                    if query_window_level_from_window_server(window)
+                        != query_window_level_from_window_server(sub_window)
+                    {
                         continue;
                     }
-                    if window_sub_level(window) != window_sub_level(sub_window) {
+                    if query_window_sub_level_from_window_server(window)
+                        != query_window_sub_level_from_window_server(sub_window)
+                    {
                         continue;
                     }
 
@@ -762,7 +781,7 @@ pub(crate) fn event_handler_mouse_moved(
                 let Some(window_process_serial_number) = window_process_serial_number else {
                     return;
                 };
-                window_manager_focus_window_with_raise(
+                focus_and_raise_window_of_process(
                     &window_process_serial_number,
                     window,
                     window_element_ref,
@@ -771,19 +790,20 @@ pub(crate) fn event_handler_mouse_moved(
             }
         }
     } else {
-        let cursor_display_id = display_manager_point_display_id(point);
+        let cursor_display_id = query_display_at_point(point);
         if display_manager.current_display_id == cursor_display_id {
             return;
         }
 
-        let bounds = display_bounds_constrained(cursor_display_id, false, display_manager);
-        if !cgrect_contains_point(bounds, point) {
+        let bounds =
+            query_bounds_of_display_left_for_windows(cursor_display_id, false, display_manager);
+        if !is_point_inside_rectangle_including_its_edges(bounds, point) {
             return;
         }
 
-        let window_id = display_manager_focus_display_with_window_at_point(point, window_manager);
+        let window_id = focus_window_under_point(point, window_manager);
         if window_id.0 == 0 {
-            display_manager_set_active_display_id(cursor_display_id);
+            move_active_menu_bar_to_display(cursor_display_id);
         }
         mouse_drag_state.ffm_window_id = window_id;
     }

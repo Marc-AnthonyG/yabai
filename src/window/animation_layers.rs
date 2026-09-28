@@ -59,7 +59,7 @@ impl AdditiveFrameLayer {
         if progress >= 1.0 {
             return 0.0;
         }
-        1.0 - self.easing.apply(progress as f32) as f64
+        1.0 - self.easing.ease_interpolant(progress as f32) as f64
     }
 }
 

@@ -1,9 +1,9 @@
 use std::ffi::CString;
 
 use crate::daemon_fail;
-use crate::display::identity::display_manager_active_display_id;
+use crate::display::identity::query_display_showing_the_active_menu_bar;
 use crate::display::manager::DisplayManager;
-use crate::message::common_arguments::{ARGUMENT_COMMON_VAL_OFF, ARGUMENT_COMMON_VAL_ON};
+use crate::message::common_arguments::{ARGUMENT_COMMON_VALUE_OFF, ARGUMENT_COMMON_VALUE_ON};
 use crate::message::common_failures::{
     daemon_fail_with_invalid_regex_pattern_for_key, daemon_fail_with_invalid_value_for_key,
     daemon_fail_with_unknown_command_for_domain,
@@ -15,36 +15,38 @@ use crate::message::domain::window::{
 use crate::message::labels::RESERVED_WINDOW_IDENTIFIERS;
 use crate::message::selectors::{parse_display_selector, parse_space_selector};
 use crate::message::token::{
-    MessageCursor, Token, TokenType, c_string_at, parse_key_value_pair, token_equals,
-    token_to_value,
+    MessageCursor, Token, TokenValueType, is_token_equal_to, null_terminated_bytes_starting_at,
+    parse_token_into_typed_value, split_token_into_key_value_pair_in_place,
 };
 use crate::mouse::drag::MouseDragState;
 use crate::process::manager::ProcessManager;
-use crate::serialise::rule::window_manager_query_window_rules;
-use crate::space::focus::space_manager_active_space;
+use crate::serialise::rule::write_every_rule_as_json_array;
+use crate::space::focus::query_current_space_of_the_focused_display;
 use crate::space::manager::SpaceManager;
 use crate::state::mission_control_mode::MissionControlMode;
-use crate::support::arithmetic::in_range_ii;
+use crate::support::arithmetic::is_within_range_including_both_bounds;
 use crate::support::layer::{LAYER_ABOVE, LAYER_AUTO, LAYER_BELOW, LAYER_NORMAL};
 use crate::support::regex::PosixRegex;
 use crate::support::response::{FailurePiece, Response};
 use crate::window::manager::WindowManager;
 use crate::window::rule::{
-    RULE_PROP_OFF, RULE_PROP_ON, Rule, RuleEffectsFlag, RuleFlag, rule_add, rule_remove_by_index,
-    rule_remove_by_label,
+    RULE_PROPERTY_OFF, RULE_PROPERTY_ON, Rule, RuleEffectsFlag, RuleFlag,
+    add_rule_replacing_any_with_the_same_label, remove_rule_at_index, remove_rule_with_label,
 };
 use crate::window::rule_application::{
-    rule_apply, rule_reapply_all, rule_reapply_by_index, rule_reapply_by_label,
+    apply_rule_to_every_matching_root_window,
+    reapply_every_rule_except_one_shot_rules_to_every_root_window,
+    reapply_rule_at_index_to_every_root_window, reapply_rule_with_label_to_every_root_window,
 };
 
 /* --------------------------------DOMAIN RULE---------------------------------- */
 pub(crate) const COMMAND_RULE_ADD: &str = "--add";
-pub(crate) const COMMAND_RULE_REM: &str = "--remove";
+pub(crate) const COMMAND_RULE_REMOVE: &str = "--remove";
 pub(crate) const COMMAND_RULE_APPLY: &str = "--apply";
-pub(crate) const COMMAND_RULE_LS: &str = "--list";
+pub(crate) const COMMAND_RULE_LIST: &str = "--list";
 
 pub(crate) const ARGUMENT_RULE_ONE_SHOT: &str = "--one-shot";
-pub(crate) const ARGUMENT_RULE_KEY_APP: &str = "app";
+pub(crate) const ARGUMENT_RULE_KEY_APPLICATION: &str = "app";
 pub(crate) const ARGUMENT_RULE_KEY_TITLE: &str = "title";
 pub(crate) const ARGUMENT_RULE_KEY_ROLE: &str = "role";
 pub(crate) const ARGUMENT_RULE_KEY_SUBROLE: &str = "subrole";
@@ -53,9 +55,9 @@ pub(crate) const ARGUMENT_RULE_KEY_SPACE: &str = "space";
 pub(crate) const ARGUMENT_RULE_KEY_OPACITY: &str = "opacity";
 pub(crate) const ARGUMENT_RULE_KEY_MANAGE: &str = "manage";
 pub(crate) const ARGUMENT_RULE_KEY_STICKY: &str = "sticky";
-pub(crate) const ARGUMENT_RULE_KEY_MFF: &str = "mouse_follows_focus";
+pub(crate) const ARGUMENT_RULE_KEY_MOUSE_FOLLOWS_FOCUS: &str = "mouse_follows_focus";
 pub(crate) const ARGUMENT_RULE_KEY_SUB_LAYER: &str = "sub-layer";
-pub(crate) const ARGUMENT_RULE_KEY_FULLSCR: &str = "native-fullscreen";
+pub(crate) const ARGUMENT_RULE_KEY_NATIVE_FULLSCREEN: &str = "native-fullscreen";
 pub(crate) const ARGUMENT_RULE_KEY_GRID: &str = "grid";
 pub(crate) const ARGUMENT_RULE_KEY_LABEL: &str = "label";
 pub(crate) const ARGUMENT_RULE_KEY_SCRATCHPAD: &str = "scratchpad";
@@ -64,7 +66,7 @@ pub(crate) const ARGUMENT_RULE_VALUE_SPACE: u8 = b'^';
 pub(crate) const ARGUMENT_RULE_VALUE_GRID: &std::ffi::CStr = c"%d:%d:%d:%d:%d:%d";
 /* ----------------------------------------------------------------------------- */
 
-pub(crate) const SCAN_ONE_FLOAT: &std::ffi::CStr = c"%f";
+pub(crate) const ONE_FLOAT_SCANF_FORMAT: &std::ffi::CStr = c"%f";
 
 pub(crate) fn parse_rule(
     response: &mut Response,
@@ -80,20 +82,26 @@ pub(crate) fn parse_rule(
     let mut has_filter = false;
 
     let mut token = token;
-    while token.is_valid() {
+    while token.is_not_empty() {
         'iteration: {
-            let Some(pair) = parse_key_value_pair(message_cursor.bytes_mut(), token.start) else {
-                response.fail_pieces(&[
+            let Some(pair) =
+                split_token_into_key_value_pair_in_place(message_cursor.bytes_mut(), token.start)
+            else {
+                response.write_failure_pieces_unless_silent(&[
                     FailurePiece::Text("invalid key-value pair '"),
-                    FailurePiece::Bytes(c_string_at(message_cursor.bytes(), token.start)),
+                    FailurePiece::Bytes(null_terminated_bytes_starting_at(
+                        message_cursor.bytes(),
+                        token.start,
+                    )),
                     FailurePiece::Text("'\n"),
                 ]);
                 did_parse = false;
                 break 'iteration;
             };
 
-            let key = c_string_at(message_cursor.bytes(), pair.key).to_vec();
-            let value = c_string_at(message_cursor.bytes(), pair.value).to_vec();
+            let key = null_terminated_bytes_starting_at(message_cursor.bytes(), pair.key).to_vec();
+            let value =
+                null_terminated_bytes_starting_at(message_cursor.bytes(), pair.value).to_vec();
 
             if key == ARGUMENT_RULE_KEY_LABEL.as_bytes() {
                 if pair.exclusion {
@@ -115,16 +123,16 @@ pub(crate) fn parse_rule(
 
                 if valid {
                     rule.effects.scratchpad = Some(String::from_utf8_lossy(&value).into_owned());
-                    rule.effects.manage = RULE_PROP_OFF;
+                    rule.effects.manage = RULE_PROPERTY_OFF;
                 } else {
                     daemon_fail_with_invalid_value_for_key(response, &value, &key);
                     did_parse = false;
                 }
-            } else if key == ARGUMENT_RULE_KEY_APP.as_bytes() {
+            } else if key == ARGUMENT_RULE_KEY_APPLICATION.as_bytes() {
                 has_filter = true;
                 rule.app = Some(String::from_utf8_lossy(&value).into_owned());
                 if pair.exclusion {
-                    rule.flags |= RuleFlag::APP_EXCLUDE.0;
+                    rule.flags |= RuleFlag::APPLICATION_PATTERN_IS_NEGATED.0;
                 }
                 rule.app_regex =
                     PosixRegex::compile(&CString::new(value.clone()).unwrap_or_default());
@@ -136,7 +144,7 @@ pub(crate) fn parse_rule(
                 has_filter = true;
                 rule.title = Some(String::from_utf8_lossy(&value).into_owned());
                 if pair.exclusion {
-                    rule.flags |= RuleFlag::TITLE_EXCLUDE.0;
+                    rule.flags |= RuleFlag::TITLE_PATTERN_IS_NEGATED.0;
                 }
                 rule.title_regex =
                     PosixRegex::compile(&CString::new(value.clone()).unwrap_or_default());
@@ -148,7 +156,7 @@ pub(crate) fn parse_rule(
                 has_filter = true;
                 rule.role = Some(String::from_utf8_lossy(&value).into_owned());
                 if pair.exclusion {
-                    rule.flags |= RuleFlag::ROLE_EXCLUDE.0;
+                    rule.flags |= RuleFlag::ROLE_PATTERN_IS_NEGATED.0;
                 }
                 rule.role_regex =
                     PosixRegex::compile(&CString::new(value.clone()).unwrap_or_default());
@@ -160,7 +168,7 @@ pub(crate) fn parse_rule(
                 has_filter = true;
                 rule.subrole = Some(String::from_utf8_lossy(&value).into_owned());
                 if pair.exclusion {
-                    rule.flags |= RuleFlag::SUBROLE_EXCLUDE.0;
+                    rule.flags |= RuleFlag::SUBROLE_PATTERN_IS_NEGATED.0;
                 }
                 rule.subrole_regex =
                     PosixRegex::compile(&CString::new(value.clone()).unwrap_or_default());
@@ -176,10 +184,10 @@ pub(crate) fn parse_rule(
                 let mut value_start = pair.value;
                 if message_cursor.bytes()[value_start] == ARGUMENT_RULE_VALUE_SPACE {
                     value_start += 1;
-                    rule.effects.flags |= RuleEffectsFlag::FOLLOW_SPACE.0;
+                    rule.effects.flags |= RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE.0;
                 }
 
-                let acting_display_id = display_manager_active_display_id();
+                let acting_display_id = query_display_showing_the_active_menu_bar();
                 let mut value_cursor = message_cursor.cursor_at(value_start);
                 let selector = parse_display_selector(
                     response,
@@ -188,7 +196,7 @@ pub(crate) fn parse_rule(
                     false,
                     display_manager,
                 );
-                if let Some(selector_display_id) = selector.resolved() {
+                if let Some(selector_display_id) = selector.resolved_target() {
                     rule.effects.display_id = selector_display_id;
                 } else {
                     did_parse = false;
@@ -201,10 +209,10 @@ pub(crate) fn parse_rule(
                 let mut value_start = pair.value;
                 if message_cursor.bytes()[value_start] == ARGUMENT_RULE_VALUE_SPACE {
                     value_start += 1;
-                    rule.effects.flags |= RuleEffectsFlag::FOLLOW_SPACE.0;
+                    rule.effects.flags |= RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE.0;
                 }
 
-                let acting_space_id = space_manager_active_space(window_manager);
+                let acting_space_id = query_current_space_of_the_focused_display(window_manager);
                 let mut value_cursor = message_cursor.cursor_at(value_start);
                 let selector = parse_space_selector(
                     response,
@@ -213,7 +221,7 @@ pub(crate) fn parse_rule(
                     false,
                     space_manager,
                 );
-                if let Some(selector_space_id) = selector.resolved() {
+                if let Some(selector_space_id) = selector.resolved_target() {
                     rule.effects.space_id = selector_space_id;
                 } else {
                     did_parse = false;
@@ -250,12 +258,14 @@ pub(crate) fn parse_rule(
                 let converted = unsafe {
                     libc::sscanf(
                         subject.as_ptr(),
-                        SCAN_ONE_FLOAT.as_ptr(),
+                        ONE_FLOAT_SCANF_FORMAT.as_ptr(),
                         &mut rule.effects.opacity as *mut libc::c_float,
                     )
                 };
-                if converted == 1 && in_range_ii(rule.effects.opacity, 0.0f32, 1.0f32) {
-                    rule.effects.flags |= RuleEffectsFlag::OPACITY.0;
+                if converted == 1
+                    && is_within_range_including_both_bounds(rule.effects.opacity, 0.0f32, 1.0f32)
+                {
+                    rule.effects.flags |= RuleEffectsFlag::OPACITY_IS_SET.0;
                 } else {
                     daemon_fail_with_invalid_value_for_key(response, &value, &key);
                     did_parse = false;
@@ -265,10 +275,10 @@ pub(crate) fn parse_rule(
                     unsupported_exclusion = Some(pair.key);
                 }
 
-                if value == ARGUMENT_COMMON_VAL_ON.as_bytes() {
-                    rule.effects.manage = RULE_PROP_ON;
-                } else if value == ARGUMENT_COMMON_VAL_OFF.as_bytes() {
-                    rule.effects.manage = RULE_PROP_OFF;
+                if value == ARGUMENT_COMMON_VALUE_ON.as_bytes() {
+                    rule.effects.manage = RULE_PROPERTY_ON;
+                } else if value == ARGUMENT_COMMON_VALUE_OFF.as_bytes() {
+                    rule.effects.manage = RULE_PROPERTY_OFF;
                 } else {
                     daemon_fail_with_invalid_value_for_key(response, &value, &key);
                     did_parse = false;
@@ -278,23 +288,23 @@ pub(crate) fn parse_rule(
                     unsupported_exclusion = Some(pair.key);
                 }
 
-                if value == ARGUMENT_COMMON_VAL_ON.as_bytes() {
-                    rule.effects.sticky = RULE_PROP_ON;
-                } else if value == ARGUMENT_COMMON_VAL_OFF.as_bytes() {
-                    rule.effects.sticky = RULE_PROP_OFF;
+                if value == ARGUMENT_COMMON_VALUE_ON.as_bytes() {
+                    rule.effects.sticky = RULE_PROPERTY_ON;
+                } else if value == ARGUMENT_COMMON_VALUE_OFF.as_bytes() {
+                    rule.effects.sticky = RULE_PROPERTY_OFF;
                 } else {
                     daemon_fail_with_invalid_value_for_key(response, &value, &key);
                     did_parse = false;
                 }
-            } else if key == ARGUMENT_RULE_KEY_MFF.as_bytes() {
+            } else if key == ARGUMENT_RULE_KEY_MOUSE_FOLLOWS_FOCUS.as_bytes() {
                 if pair.exclusion {
                     unsupported_exclusion = Some(pair.key);
                 }
 
-                if value == ARGUMENT_COMMON_VAL_ON.as_bytes() {
-                    rule.effects.mff = RULE_PROP_ON;
-                } else if value == ARGUMENT_COMMON_VAL_OFF.as_bytes() {
-                    rule.effects.mff = RULE_PROP_OFF;
+                if value == ARGUMENT_COMMON_VALUE_ON.as_bytes() {
+                    rule.effects.mff = RULE_PROPERTY_ON;
+                } else if value == ARGUMENT_COMMON_VALUE_OFF.as_bytes() {
+                    rule.effects.mff = RULE_PROPERTY_OFF;
                 } else {
                     daemon_fail_with_invalid_value_for_key(response, &value, &key);
                     did_parse = false;
@@ -306,35 +316,35 @@ pub(crate) fn parse_rule(
 
                 if value == ARGUMENT_WINDOW_LAYER_BELOW.as_bytes() {
                     rule.effects.layer = LAYER_BELOW;
-                    rule.effects.flags |= RuleEffectsFlag::LAYER.0;
+                    rule.effects.flags |= RuleEffectsFlag::LAYER_IS_SET.0;
                 } else if value == ARGUMENT_WINDOW_LAYER_NORMAL.as_bytes() {
                     rule.effects.layer = LAYER_NORMAL;
-                    rule.effects.flags |= RuleEffectsFlag::LAYER.0;
+                    rule.effects.flags |= RuleEffectsFlag::LAYER_IS_SET.0;
                 } else if value == ARGUMENT_WINDOW_LAYER_ABOVE.as_bytes() {
                     rule.effects.layer = LAYER_ABOVE;
-                    rule.effects.flags |= RuleEffectsFlag::LAYER.0;
+                    rule.effects.flags |= RuleEffectsFlag::LAYER_IS_SET.0;
                 } else if value == ARGUMENT_WINDOW_LAYER_AUTO.as_bytes() {
                     rule.effects.layer = LAYER_AUTO;
-                    rule.effects.flags |= RuleEffectsFlag::LAYER.0;
+                    rule.effects.flags |= RuleEffectsFlag::LAYER_IS_SET.0;
                 } else {
                     daemon_fail_with_invalid_value_for_key(response, &value, &key);
                     did_parse = false;
                 }
-            } else if key == ARGUMENT_RULE_KEY_FULLSCR.as_bytes() {
+            } else if key == ARGUMENT_RULE_KEY_NATIVE_FULLSCREEN.as_bytes() {
                 if pair.exclusion {
                     unsupported_exclusion = Some(pair.key);
                 }
 
-                if value == ARGUMENT_COMMON_VAL_ON.as_bytes() {
-                    rule.effects.fullscreen = RULE_PROP_ON;
-                } else if value == ARGUMENT_COMMON_VAL_OFF.as_bytes() {
-                    rule.effects.fullscreen = RULE_PROP_OFF;
+                if value == ARGUMENT_COMMON_VALUE_ON.as_bytes() {
+                    rule.effects.fullscreen = RULE_PROPERTY_ON;
+                } else if value == ARGUMENT_COMMON_VALUE_OFF.as_bytes() {
+                    rule.effects.fullscreen = RULE_PROPERTY_OFF;
                 } else {
                     daemon_fail_with_invalid_value_for_key(response, &value, &key);
                     did_parse = false;
                 }
             } else {
-                response.fail_pieces(&[
+                response.write_failure_pieces_unless_silent(&[
                     FailurePiece::Text("unknown key '"),
                     FailurePiece::Bytes(&key),
                     FailurePiece::Text("'\n"),
@@ -343,7 +353,7 @@ pub(crate) fn parse_rule(
             }
         }
 
-        token = message_cursor.get_token();
+        token = message_cursor.take_next_token();
     }
 
     if !has_filter {
@@ -355,9 +365,12 @@ pub(crate) fn parse_rule(
     }
 
     if let Some(unsupported_exclusion) = unsupported_exclusion {
-        response.fail_pieces(&[
+        response.write_failure_pieces_unless_silent(&[
             FailurePiece::Text("unsupported token '!' (exclusion) given for key '"),
-            FailurePiece::Bytes(c_string_at(message_cursor.bytes(), unsupported_exclusion)),
+            FailurePiece::Bytes(null_terminated_bytes_starting_at(
+                message_cursor.bytes(),
+                unsupported_exclusion,
+            )),
             FailurePiece::Text("'\n"),
         ]);
         did_parse = false;
@@ -366,7 +379,7 @@ pub(crate) fn parse_rule(
     did_parse
 }
 
-pub(crate) fn handle_domain_rule(
+pub(crate) fn run_rule_command(
     response: &mut Response,
     domain: Token,
     message_cursor: &mut MessageCursor,
@@ -377,14 +390,14 @@ pub(crate) fn handle_domain_rule(
     mouse_drag_state: &mut MouseDragState,
     mission_control_mode: &mut MissionControlMode,
 ) {
-    let command = message_cursor.get_token();
-    if token_equals(command, message_cursor.bytes(), COMMAND_RULE_ADD) {
+    let command = message_cursor.take_next_token();
+    if is_token_equal_to(command, message_cursor.bytes(), COMMAND_RULE_ADD) {
         let mut rule = Rule::default();
 
-        let mut token = message_cursor.get_token();
-        if token_equals(token, message_cursor.bytes(), ARGUMENT_RULE_ONE_SHOT) {
+        let mut token = message_cursor.take_next_token();
+        if is_token_equal_to(token, message_cursor.bytes(), ARGUMENT_RULE_ONE_SHOT) {
             rule.flags |= RuleFlag::ONE_SHOT.0;
-            token = message_cursor.get_token();
+            token = message_cursor.take_next_token();
         }
 
         if parse_rule(
@@ -396,12 +409,13 @@ pub(crate) fn handle_domain_rule(
             window_manager,
             space_manager,
         ) {
-            rule_add(rule, window_manager);
+            add_rule_replacing_any_with_the_same_label(rule, window_manager);
         }
-    } else if token_equals(command, message_cursor.bytes(), COMMAND_RULE_APPLY) {
-        let value = token_to_value(message_cursor.get_token(), message_cursor.bytes());
-        if let TokenType::Int(int_value) = value.type_of_value {
-            if !rule_reapply_by_index(
+    } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_RULE_APPLY) {
+        let value =
+            parse_token_into_typed_value(message_cursor.take_next_token(), message_cursor.bytes());
+        if let TokenValueType::Integer(int_value) = value.type_of_value {
+            if !reapply_rule_at_index_to_every_root_window(
                 int_value,
                 process_manager,
                 display_manager,
@@ -412,9 +426,9 @@ pub(crate) fn handle_domain_rule(
             ) {
                 daemon_fail!(response, "rule with index '{}' not found.\n", int_value);
             }
-        } else if let TokenType::String = value.type_of_value {
-            if !rule_reapply_by_label(
-                c_string_at(message_cursor.bytes(), value.token.start),
+        } else if let TokenValueType::String = value.type_of_value {
+            if !reapply_rule_with_label_to_every_root_window(
+                null_terminated_bytes_starting_at(message_cursor.bytes(), value.token.start),
                 process_manager,
                 display_manager,
                 window_manager,
@@ -432,7 +446,7 @@ pub(crate) fn handle_domain_rule(
                     window_manager,
                     space_manager,
                 ) {
-                    rule_apply(
+                    apply_rule_to_every_matching_root_window(
                         &rule,
                         process_manager,
                         display_manager,
@@ -443,8 +457,8 @@ pub(crate) fn handle_domain_rule(
                     );
                 }
             }
-        } else if let TokenType::Invalid = value.type_of_value {
-            rule_reapply_all(
+        } else if let TokenValueType::Invalid = value.type_of_value {
+            reapply_every_rule_except_one_shot_rules_to_every_root_window(
                 process_manager,
                 display_manager,
                 window_manager,
@@ -453,38 +467,42 @@ pub(crate) fn handle_domain_rule(
                 mission_control_mode,
             );
         } else {
-            response.fail_pieces(&[
+            response.write_failure_pieces_unless_silent(&[
                 FailurePiece::Text("value '"),
                 FailurePiece::Bytes(value.token.bytes(message_cursor.bytes())),
                 FailurePiece::Text("' is not a valid option for RULE_SEL\n"),
             ]);
         }
-    } else if token_equals(command, message_cursor.bytes(), COMMAND_RULE_REM) {
-        let value = token_to_value(message_cursor.get_token(), message_cursor.bytes());
-        if let TokenType::Int(int_value) = value.type_of_value {
-            if !rule_remove_by_index(int_value, window_manager) {
+    } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_RULE_REMOVE) {
+        let value =
+            parse_token_into_typed_value(message_cursor.take_next_token(), message_cursor.bytes());
+        if let TokenValueType::Integer(int_value) = value.type_of_value {
+            if !remove_rule_at_index(int_value, window_manager) {
                 daemon_fail!(response, "rule with index '{}' not found.\n", int_value);
             }
-        } else if let TokenType::String = value.type_of_value {
-            if !rule_remove_by_label(
-                c_string_at(message_cursor.bytes(), value.token.start),
+        } else if let TokenValueType::String = value.type_of_value {
+            if !remove_rule_with_label(
+                null_terminated_bytes_starting_at(message_cursor.bytes(), value.token.start),
                 window_manager,
             ) {
-                response.fail_pieces(&[
+                response.write_failure_pieces_unless_silent(&[
                     FailurePiece::Text("rule with label '"),
-                    FailurePiece::Bytes(c_string_at(message_cursor.bytes(), value.token.start)),
+                    FailurePiece::Bytes(null_terminated_bytes_starting_at(
+                        message_cursor.bytes(),
+                        value.token.start,
+                    )),
                     FailurePiece::Text("' not found.\n"),
                 ]);
             }
         } else {
-            response.fail_pieces(&[
+            response.write_failure_pieces_unless_silent(&[
                 FailurePiece::Text("value '"),
                 FailurePiece::Bytes(value.token.bytes(message_cursor.bytes())),
                 FailurePiece::Text("' is not a valid option for RULE_SEL\n"),
             ]);
         }
-    } else if token_equals(command, message_cursor.bytes(), COMMAND_RULE_LS) {
-        window_manager_query_window_rules(response, display_manager, window_manager);
+    } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_RULE_LIST) {
+        write_every_rule_as_json_array(response, display_manager, window_manager);
     } else {
         daemon_fail_with_unknown_command_for_domain(
             response,

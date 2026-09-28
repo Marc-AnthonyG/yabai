@@ -5,13 +5,13 @@ use std::sync::atomic::{AtomicBool, AtomicI32, AtomicPtr, Ordering};
 use crate::ffi::carbon_process::{
     CopyProcessName, GetProcessInformation, GetProcessPID, ProcessInfoRec, ProcessSerialNumber,
 };
-use crate::ffi::core_foundation::{CFString, cfstring_copy, take_create_rule_result};
+use crate::ffi::core_foundation::{CFString, cfstring_to_string, take_create_rule_result};
 use crate::notifications::workspace::{
-    WORKSPACE_CONTEXT, workspace_application_destroy_running_ns_application,
+    WORKSPACE_CONTEXT, release_running_application_removing_its_observations,
 };
-use crate::process::running_application::workspace_application_create_running_ns_application;
+use crate::process::running_application::copy_running_application_of_process;
 use crate::support::handles::ProcessId;
-use crate::support::strings::string_equals;
+use crate::support::strings::are_both_strings_present_and_equal;
 
 pub(crate) struct Process {
     pub(crate) process_serial_number: ProcessSerialNumber,
@@ -32,13 +32,15 @@ pub(crate) const PROCESS_NAME_BLACKLIST: [&str; 4] = [
     "qlmanage",
 ];
 
-pub(crate) fn process_pid_for_psn(process_serial_number: ProcessSerialNumber) -> ProcessId {
+pub(crate) fn query_process_id_of_process_serial_number(
+    process_serial_number: ProcessSerialNumber,
+) -> ProcessId {
     let mut process_id: libc::pid_t = 0;
     unsafe { GetProcessPID(&process_serial_number, &mut process_id) };
     ProcessId(process_id)
 }
 
-pub(crate) fn process_create(
+pub(crate) fn create_process_unless_it_is_ignored(
     process_serial_number: ProcessSerialNumber,
     process_id: ProcessId,
 ) -> Option<Arc<Process>> {
@@ -52,12 +54,12 @@ pub(crate) fn process_create(
     let Some(process_name_ref) = (unsafe { take_create_rule_result(process_name_ref) }) else {
         crate::debug!(
             "{}: could not retrieve process name! ignoring..\n",
-            "process_create"
+            "create_process_unless_it_is_ignored"
         );
         return None;
     };
 
-    let process_name = cfstring_copy(&process_name_ref);
+    let process_name = cfstring_to_string(&process_name_ref);
     drop(process_name_ref);
 
     let process_name = process_name?;
@@ -65,17 +67,17 @@ pub(crate) fn process_create(
     if { process_info.process_type } == 0x5850_4321 {
         crate::debug!(
             "{}: xpc service '{}' detected! ignoring..\n",
-            "process_create",
+            "create_process_unless_it_is_ignored",
             process_name
         );
         return None;
     }
 
     for blacklisted_process_name in PROCESS_NAME_BLACKLIST {
-        if string_equals(Some(&process_name), Some(blacklisted_process_name)) {
+        if are_both_strings_present_and_equal(Some(&process_name), Some(blacklisted_process_name)) {
             crate::debug!(
                 "{}: {} is blacklisted! ignoring..\n",
-                "process_create",
+                "create_process_unless_it_is_ignored",
                 process_name
             );
             return None;
@@ -91,14 +93,14 @@ pub(crate) fn process_create(
         terminated: AtomicBool::new(false),
     });
     process.ns_application.store(
-        workspace_application_create_running_ns_application(&process),
+        copy_running_application_of_process(&process),
         Ordering::Release,
     );
     Some(process)
 }
 
-pub(crate) fn process_destroy(process: Arc<Process>) {
-    workspace_application_destroy_running_ns_application(
+pub(crate) fn destroy_process_releasing_its_running_application(process: Arc<Process>) {
+    release_running_application_removing_its_observations(
         WORKSPACE_CONTEXT.get().unwrap(),
         &process,
     );

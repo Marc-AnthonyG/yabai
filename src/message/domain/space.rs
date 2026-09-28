@@ -1,46 +1,48 @@
 use crate::daemon_fail;
-use crate::display::identity::display_manager_active_display_id;
+use crate::display::identity::query_display_showing_the_active_menu_bar;
 use crate::display::manager::DisplayManager;
-use crate::display::spaces::display_space_id;
-use crate::layout::settings::ViewType;
+use crate::display::spaces::query_current_space_of_display;
+use crate::layout::settings::ViewLayout;
 use crate::layout::tree::WindowNodeSplit;
-use crate::message::argument_prefixes::parse_value_type;
-use crate::message::common_arguments::{ARGUMENT_COMMON_VAL_AXIS_X, ARGUMENT_COMMON_VAL_AXIS_Y};
+use crate::message::argument_prefixes::parse_absolute_or_relative_change_type;
+use crate::message::common_arguments::{
+    ARGUMENT_COMMON_VALUE_AXIS_X, ARGUMENT_COMMON_VALUE_AXIS_Y,
+};
 use crate::message::common_failures::{
     daemon_fail_with_unknown_command_for_domain,
     daemon_fail_with_unknown_value_given_to_command_for_domain,
 };
-use crate::message::labels::{LabelType, parse_label};
+use crate::message::labels::{LabelType, parse_label_refusing_numbers_and_reserved_words};
 use crate::message::selectors::{parse_display_selector, parse_space_selector};
-use crate::message::token::{MessageCursor, Token, token_equals};
+use crate::message::token::{MessageCursor, Token, is_token_equal_to};
 use crate::mouse::drag::MouseDragState;
 use crate::space::focus::{
-    space_manager_active_space, space_manager_focus_space, space_manager_switch_space,
-    space_manager_toggle_mission_control, space_manager_toggle_show_desktop,
+    focus_space_then_toggle_mission_control, focus_space_then_toggle_show_desktop,
+    focus_space_through_the_scripting_addition_or_dock_swipes,
+    query_current_space_of_the_focused_display, switch_to_space_bringing_it_to_the_current_display,
 };
 use crate::space::labels::{
-    space_manager_remove_label_for_space, space_manager_set_label_for_space,
+    remove_label_of_space, set_label_of_space_removing_it_from_any_other_space,
 };
-use crate::space::managed_space::space_is_user;
+use crate::space::managed_space::is_user_space;
 use crate::space::manager::SpaceManager;
 use crate::space::operations::{
-    SpaceOpError, space_manager_add_space, space_manager_destroy_space,
-    space_manager_move_space_to_display, space_manager_move_space_to_space,
-    space_manager_swap_space_with_space,
+    SpaceOperationOutcome, add_space_on_display_of_space,
+    destroy_user_space_unless_it_is_the_last_of_its_display, move_space_to_position_of_space,
+    send_space_to_display, swap_space_with_space,
 };
 use crate::space::tiling::{
-    space_manager_balance_space, space_manager_equalize_space, space_manager_mirror_space,
-    space_manager_rotate_space,
+    balance_split_ratios_in_view_of_space, mirror_view_of_space_along_axis,
+    reset_split_ratios_in_view_of_space_to_the_global_ratio, rotate_view_of_space_by_degrees,
 };
 use crate::space::view_settings::{
-    space_manager_set_gap_for_space, space_manager_set_layout_for_space,
-    space_manager_set_padding_for_space, space_manager_toggle_gap_for_space,
-    space_manager_toggle_padding_for_space,
+    set_layout_of_space_retiling_its_windows, set_padding_of_space, set_window_gap_of_space,
+    toggle_padding_of_space, toggle_window_gap_of_space,
 };
 use crate::state::mission_control_mode::MissionControlMode;
 use crate::support::handles::SpaceId;
 use crate::support::response::Response;
-use crate::support::strings::MAXLEN;
+use crate::support::strings::FIXED_STRING_BUFFER_LENGTH;
 use crate::window::manager::WindowManager;
 
 /* --------------------------------DOMAIN SPACE--------------------------------- */
@@ -66,16 +68,16 @@ pub(crate) const ARGUMENT_SPACE_ROTATE_180: &str = "180";
 pub(crate) const ARGUMENT_SPACE_ROTATE_270: &str = "270";
 pub(crate) const ARGUMENT_SPACE_PADDING: &std::ffi::CStr = c"%255[^:]:%d:%d:%d:%d";
 pub(crate) const ARGUMENT_SPACE_GAP: &std::ffi::CStr = c"%255[^:]:%d";
-pub(crate) const ARGUMENT_SPACE_TGL_PADDING: &str = "padding";
-pub(crate) const ARGUMENT_SPACE_TGL_GAP: &str = "gap";
-pub(crate) const ARGUMENT_SPACE_TGL_MC: &str = "mission-control";
-pub(crate) const ARGUMENT_SPACE_TGL_SD: &str = "show-desktop";
-pub(crate) const ARGUMENT_SPACE_LAYOUT_BSP: &str = "bsp";
+pub(crate) const ARGUMENT_SPACE_TOGGLE_PADDING: &str = "padding";
+pub(crate) const ARGUMENT_SPACE_TOGGLE_GAP: &str = "gap";
+pub(crate) const ARGUMENT_SPACE_TOGGLE_MISSION_CONTROL: &str = "mission-control";
+pub(crate) const ARGUMENT_SPACE_TOGGLE_SHOW_DESKTOP: &str = "show-desktop";
+pub(crate) const ARGUMENT_SPACE_LAYOUT_BINARY_SPACE_PARTITIONING: &str = "bsp";
 pub(crate) const ARGUMENT_SPACE_LAYOUT_STACK: &str = "stack";
-pub(crate) const ARGUMENT_SPACE_LAYOUT_FLT: &str = "float";
+pub(crate) const ARGUMENT_SPACE_LAYOUT_FLOAT: &str = "float";
 /* ----------------------------------------------------------------------------- */
 
-pub(crate) fn handle_domain_space(
+pub(crate) fn run_space_command(
     response: &mut Response,
     domain: Token,
     message_cursor: &mut MessageCursor,
@@ -86,7 +88,7 @@ pub(crate) fn handle_domain_space(
     mission_control_mode: &mut MissionControlMode,
 ) {
     let mut command;
-    let mut acting_space_id = space_manager_active_space(window_manager);
+    let mut acting_space_id = query_current_space_of_the_focused_display(window_manager);
     let selector = parse_space_selector(
         &mut Response::silent(),
         message_cursor,
@@ -95,9 +97,9 @@ pub(crate) fn handle_domain_space(
         space_manager,
     );
 
-    if selector.did_parse() {
-        acting_space_id = selector.resolved().unwrap_or(SpaceId(0));
-        command = message_cursor.get_token();
+    if selector.is_recognised_selector() {
+        acting_space_id = selector.resolved_target().unwrap_or(SpaceId(0));
+        command = message_cursor.take_next_token();
     } else {
         command = selector.token;
     }
@@ -107,8 +109,8 @@ pub(crate) fn handle_domain_space(
         return;
     }
 
-    while command.is_valid() {
-        if token_equals(command, message_cursor.bytes(), COMMAND_SPACE_FOCUS) {
+    while command.is_not_empty() {
+        if is_token_equal_to(command, message_cursor.bytes(), COMMAND_SPACE_FOCUS) {
             let selector = parse_space_selector(
                 response,
                 message_cursor,
@@ -116,29 +118,32 @@ pub(crate) fn handle_domain_space(
                 false,
                 space_manager,
             );
-            if let Some(selector_space_id) = selector.resolved() {
-                let result =
-                    space_manager_focus_space(selector_space_id, window_manager, mission_control_mode);
-                if result == SpaceOpError::SameSpace {
+            if let Some(selector_space_id) = selector.resolved_target() {
+                let result = focus_space_through_the_scripting_addition_or_dock_swipes(
+                    selector_space_id,
+                    window_manager,
+                    mission_control_mode,
+                );
+                if result == SpaceOperationOutcome::SameSpace {
                     daemon_fail!(response, "cannot focus an already focused space.\n");
-                } else if result == SpaceOpError::DisplayIsAnimating {
+                } else if result == SpaceOperationOutcome::DisplayIsAnimating {
                     daemon_fail!(
                         response,
                         "cannot focus space because the display is in the middle of an animation.\n"
                     );
-                } else if result == SpaceOpError::InMissionControl {
+                } else if result == SpaceOperationOutcome::MissionControlIsActive {
                     daemon_fail!(
                         response,
                         "cannot focus space because mission-control is active.\n"
                     );
-                } else if result == SpaceOpError::ScriptingAddition {
+                } else if result == SpaceOperationOutcome::ScriptingAdditionFailed {
                     daemon_fail!(
                         response,
                         "cannot focus space due to an error with the scripting-addition.\n"
                     );
                 }
             }
-        } else if token_equals(command, message_cursor.bytes(), COMMAND_SPACE_SWITCH) {
+        } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_SPACE_SWITCH) {
             let selector = parse_space_selector(
                 response,
                 message_cursor,
@@ -146,8 +151,8 @@ pub(crate) fn handle_domain_space(
                 false,
                 space_manager,
             );
-            if let Some(selector_space_id) = selector.resolved() {
-                let result = space_manager_switch_space(
+            if let Some(selector_space_id) = selector.resolved_target() {
+                let result = switch_to_space_bringing_it_to_the_current_display(
                     selector_space_id,
                     display_manager,
                     window_manager,
@@ -155,26 +160,26 @@ pub(crate) fn handle_domain_space(
                     mission_control_mode,
                     mouse_drag_state,
                 );
-                if result == SpaceOpError::SameSpace {
+                if result == SpaceOperationOutcome::SameSpace {
                     daemon_fail!(response, "cannot focus an already focused space.\n");
-                } else if result == SpaceOpError::DisplayIsAnimating {
+                } else if result == SpaceOperationOutcome::DisplayIsAnimating {
                     daemon_fail!(
                         response,
                         "cannot focus space because the display is in the middle of an animation.\n"
                     );
-                } else if result == SpaceOpError::InMissionControl {
+                } else if result == SpaceOperationOutcome::MissionControlIsActive {
                     daemon_fail!(
                         response,
                         "cannot focus space because mission-control is active.\n"
                     );
-                } else if result == SpaceOpError::ScriptingAddition {
+                } else if result == SpaceOperationOutcome::ScriptingAdditionFailed {
                     daemon_fail!(
                         response,
                         "cannot focus space due to an error with the scripting-addition.\n"
                     );
                 }
             }
-        } else if token_equals(command, message_cursor.bytes(), COMMAND_SPACE_MOVE) {
+        } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_SPACE_MOVE) {
             let selector = parse_space_selector(
                 response,
                 message_cursor,
@@ -182,38 +187,38 @@ pub(crate) fn handle_domain_space(
                 false,
                 space_manager,
             );
-            if let Some(selector_space_id) = selector.resolved() {
-                let result = space_manager_move_space_to_space(
+            if let Some(selector_space_id) = selector.resolved_target() {
+                let result = move_space_to_position_of_space(
                     acting_space_id,
                     selector_space_id,
                     window_manager,
                     mission_control_mode,
                 );
-                if result == SpaceOpError::SameSpace {
+                if result == SpaceOperationOutcome::SameSpace {
                     daemon_fail!(response, "cannot move space to itself.\n");
-                } else if result == SpaceOpError::SameDisplay {
+                } else if result == SpaceOperationOutcome::NotOnTheSameDisplay {
                     daemon_fail!(
                         response,
                         "cannot move space across display boundaries. use --display instead.\n"
                     );
-                } else if result == SpaceOpError::DisplayIsAnimating {
+                } else if result == SpaceOperationOutcome::DisplayIsAnimating {
                     daemon_fail!(
                         response,
                         "cannot move space because the display is in the middle of an animation.\n"
                     );
-                } else if result == SpaceOpError::InMissionControl {
+                } else if result == SpaceOperationOutcome::MissionControlIsActive {
                     daemon_fail!(
                         response,
                         "cannot move space because mission-control is active.\n"
                     );
-                } else if result == SpaceOpError::ScriptingAddition {
+                } else if result == SpaceOperationOutcome::ScriptingAdditionFailed {
                     daemon_fail!(
                         response,
                         "cannot move space due to an error with the scripting-addition.\n"
                     );
                 }
             }
-        } else if token_equals(command, message_cursor.bytes(), COMMAND_SPACE_SWAP) {
+        } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_SPACE_SWAP) {
             let selector = parse_space_selector(
                 response,
                 message_cursor,
@@ -221,8 +226,8 @@ pub(crate) fn handle_domain_space(
                 false,
                 space_manager,
             );
-            if let Some(selector_space_id) = selector.resolved() {
-                let result = space_manager_swap_space_with_space(
+            if let Some(selector_space_id) = selector.resolved_target() {
+                let result = swap_space_with_space(
                     acting_space_id,
                     selector_space_id,
                     display_manager,
@@ -231,35 +236,35 @@ pub(crate) fn handle_domain_space(
                     mission_control_mode,
                     mouse_drag_state,
                 );
-                if result == SpaceOpError::SameSpace {
+                if result == SpaceOperationOutcome::SameSpace {
                     daemon_fail!(response, "cannot swap space with itself.\n");
-                } else if result == SpaceOpError::DisplayIsAnimating {
+                } else if result == SpaceOperationOutcome::DisplayIsAnimating {
                     daemon_fail!(
                         response,
                         "cannot swap space because the display is in the middle of an animation.\n"
                     );
-                } else if result == SpaceOpError::InMissionControl {
+                } else if result == SpaceOperationOutcome::MissionControlIsActive {
                     daemon_fail!(
                         response,
                         "cannot swap space because mission-control is active.\n"
                     );
-                } else if result == SpaceOpError::ScriptingAddition {
+                } else if result == SpaceOperationOutcome::ScriptingAdditionFailed {
                     daemon_fail!(
                         response,
                         "cannot swap space due to an error with the scripting-addition.\n"
                     );
                 }
             }
-        } else if token_equals(command, message_cursor.bytes(), COMMAND_SPACE_DISPLAY) {
+        } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_SPACE_DISPLAY) {
             let selector = parse_display_selector(
                 response,
                 message_cursor,
-                display_manager_active_display_id(),
+                query_display_showing_the_active_menu_bar(),
                 false,
                 display_manager,
             );
-            if let Some(selector_display_id) = selector.resolved() {
-                let result = space_manager_move_space_to_display(
+            if let Some(selector_display_id) = selector.resolved_target() {
+                let result = send_space_to_display(
                     space_manager,
                     acting_space_id,
                     selector_display_id,
@@ -267,77 +272,77 @@ pub(crate) fn handle_domain_space(
                     window_manager,
                     mission_control_mode,
                 );
-                if result == SpaceOpError::MissingSrc {
+                if result == SpaceOperationOutcome::MissingSource {
                     daemon_fail!(response, "could not locate the space to act on.\n");
-                } else if result == SpaceOpError::MissingDst {
+                } else if result == SpaceOperationOutcome::MissingDestination {
                     daemon_fail!(
                         response,
                         "could not locate the active space of the given display.\n"
                     );
-                } else if result == SpaceOpError::InvalidSrc {
+                } else if result == SpaceOperationOutcome::InvalidSource {
                     daemon_fail!(
                         response,
                         "acting space is the last user-space on the source display and cannot be moved.\n"
                     );
-                } else if result == SpaceOpError::InvalidDst {
+                } else if result == SpaceOperationOutcome::InvalidDestination {
                     daemon_fail!(
                         response,
                         "acting space is already located on the given display.\n"
                     );
-                } else if result == SpaceOpError::DisplayIsAnimating {
+                } else if result == SpaceOperationOutcome::DisplayIsAnimating {
                     daemon_fail!(
                         response,
                         "cannot send space to display because it is in the middle of an animation.\n"
                     );
-                } else if result == SpaceOpError::InMissionControl {
+                } else if result == SpaceOperationOutcome::MissionControlIsActive {
                     daemon_fail!(
                         response,
                         "cannot send space to display because mission-control is active.\n"
                     );
-                } else if result == SpaceOpError::ScriptingAddition {
+                } else if result == SpaceOperationOutcome::ScriptingAdditionFailed {
                     daemon_fail!(
                         response,
                         "cannot send space to display due to an error with the scripting-addition.\n"
                     );
                 }
             }
-        } else if token_equals(command, message_cursor.bytes(), COMMAND_SPACE_CREATE) {
+        } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_SPACE_CREATE) {
             let selector = parse_display_selector(
                 response,
                 message_cursor,
-                display_manager_active_display_id(),
+                query_display_showing_the_active_menu_bar(),
                 true,
                 display_manager,
             );
 
-            if selector.token.is_valid() {
-                if let Some(selector_display_id) = selector.resolved() {
-                    acting_space_id = display_space_id(selector_display_id);
+            if selector.token.is_not_empty() {
+                if let Some(selector_display_id) = selector.resolved_target() {
+                    acting_space_id = query_current_space_of_display(selector_display_id);
                 } else {
                     return;
                 }
             }
 
-            let result = space_manager_add_space(acting_space_id, mission_control_mode);
-            if result == SpaceOpError::MissingSrc {
+            let result = add_space_on_display_of_space(acting_space_id, mission_control_mode);
+            if result == SpaceOperationOutcome::MissingSource {
                 daemon_fail!(response, "could not locate the space to act on.\n");
-            } else if result == SpaceOpError::DisplayIsAnimating {
+            } else if result == SpaceOperationOutcome::DisplayIsAnimating {
                 daemon_fail!(
                     response,
                     "cannot create space because the display is in the middle of an animation.\n"
                 );
-            } else if result == SpaceOpError::InMissionControl {
+            } else if result == SpaceOperationOutcome::MissionControlIsActive {
                 daemon_fail!(
                     response,
                     "cannot create space because mission-control is active.\n"
                 );
-            } else if result == SpaceOpError::ScriptingAddition {
+            } else if result == SpaceOperationOutcome::ScriptingAdditionFailed {
                 daemon_fail!(
                     response,
                     "cannot create space due to an error with the scripting-addition.\n"
                 );
             }
-        } else if token_equals(command, message_cursor.bytes(), COMMAND_SPACE_DESTROY) {
+        } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_SPACE_DESTROY) {
             let selector = parse_space_selector(
                 response,
                 message_cursor,
@@ -346,15 +351,15 @@ pub(crate) fn handle_domain_space(
                 space_manager,
             );
 
-            if selector.token.is_valid() {
-                if let Some(selector_space_id) = selector.resolved() {
+            if selector.token.is_not_empty() {
+                if let Some(selector_space_id) = selector.resolved_target() {
                     acting_space_id = selector_space_id;
                 } else {
                     return;
                 }
             }
 
-            let result = space_manager_destroy_space(
+            let result = destroy_user_space_unless_it_is_the_last_of_its_display(
                 acting_space_id,
                 display_manager,
                 window_manager,
@@ -362,58 +367,60 @@ pub(crate) fn handle_domain_space(
                 mouse_drag_state,
                 mission_control_mode,
             );
-            if result == SpaceOpError::MissingSrc {
+            if result == SpaceOperationOutcome::MissingSource {
                 daemon_fail!(response, "could not locate the space to act on.\n");
-            } else if result == SpaceOpError::InvalidSrc {
+            } else if result == SpaceOperationOutcome::InvalidSource {
                 daemon_fail!(
                     response,
                     "acting space is the last user-space on the source display and cannot be destroyed.\n"
                 );
-            } else if result == SpaceOpError::InvalidType {
+            } else if result == SpaceOperationOutcome::NotAUserSpace {
                 daemon_fail!(response, "cannot destroy a macOS fullscreen space.\n");
-            } else if result == SpaceOpError::DisplayIsAnimating {
+            } else if result == SpaceOperationOutcome::DisplayIsAnimating {
                 daemon_fail!(
                     response,
                     "cannot destroy space because the display is in the middle of an animation.\n"
                 );
-            } else if result == SpaceOpError::InMissionControl {
+            } else if result == SpaceOperationOutcome::MissionControlIsActive {
                 daemon_fail!(
                     response,
                     "cannot destroy space because mission-control is active.\n"
                 );
-            } else if result == SpaceOpError::ScriptingAddition {
+            } else if result == SpaceOperationOutcome::ScriptingAdditionFailed {
                 daemon_fail!(
                     response,
                     "cannot destroy space due to an error with the scripting-addition.\n"
                 );
             }
-        } else if token_equals(command, message_cursor.bytes(), COMMAND_SPACE_EQUALIZE) {
-            let value = message_cursor.get_token();
-            if !value.is_valid() {
-                if !space_manager_equalize_space(
+        } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_SPACE_EQUALIZE) {
+            let value = message_cursor.take_next_token();
+            if !value.is_not_empty() {
+                if !reset_split_ratios_in_view_of_space_to_the_global_ratio(
                     space_manager,
                     acting_space_id,
-                    WindowNodeSplit::X as u32 | WindowNodeSplit::Y as u32,
+                    WindowNodeSplit::Horizontal as u32 | WindowNodeSplit::Vertical as u32,
                     display_manager,
                     window_manager,
                 ) {
                     daemon_fail!(response, "cannot equalize a non-managed space.\n");
                 }
-            } else if token_equals(value, message_cursor.bytes(), ARGUMENT_COMMON_VAL_AXIS_X) {
-                if !space_manager_equalize_space(
+            } else if is_token_equal_to(value, message_cursor.bytes(), ARGUMENT_COMMON_VALUE_AXIS_X)
+            {
+                if !reset_split_ratios_in_view_of_space_to_the_global_ratio(
                     space_manager,
                     acting_space_id,
-                    WindowNodeSplit::X as u32,
+                    WindowNodeSplit::Horizontal as u32,
                     display_manager,
                     window_manager,
                 ) {
                     daemon_fail!(response, "cannot equalize a non-managed space.\n");
                 }
-            } else if token_equals(value, message_cursor.bytes(), ARGUMENT_COMMON_VAL_AXIS_Y) {
-                if !space_manager_equalize_space(
+            } else if is_token_equal_to(value, message_cursor.bytes(), ARGUMENT_COMMON_VALUE_AXIS_Y)
+            {
+                if !reset_split_ratios_in_view_of_space_to_the_global_ratio(
                     space_manager,
                     acting_space_id,
-                    WindowNodeSplit::Y as u32,
+                    WindowNodeSplit::Vertical as u32,
                     display_manager,
                     window_manager,
                 ) {
@@ -428,33 +435,35 @@ pub(crate) fn handle_domain_space(
                     domain,
                 );
             }
-        } else if token_equals(command, message_cursor.bytes(), COMMAND_SPACE_BALANCE) {
-            let value = message_cursor.get_token();
-            if !value.is_valid() {
-                if !space_manager_balance_space(
+        } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_SPACE_BALANCE) {
+            let value = message_cursor.take_next_token();
+            if !value.is_not_empty() {
+                if !balance_split_ratios_in_view_of_space(
                     space_manager,
                     acting_space_id,
-                    WindowNodeSplit::X as u32 | WindowNodeSplit::Y as u32,
+                    WindowNodeSplit::Horizontal as u32 | WindowNodeSplit::Vertical as u32,
                     display_manager,
                     window_manager,
                 ) {
                     daemon_fail!(response, "cannot balance a non-managed space.\n");
                 }
-            } else if token_equals(value, message_cursor.bytes(), ARGUMENT_COMMON_VAL_AXIS_X) {
-                if !space_manager_balance_space(
+            } else if is_token_equal_to(value, message_cursor.bytes(), ARGUMENT_COMMON_VALUE_AXIS_X)
+            {
+                if !balance_split_ratios_in_view_of_space(
                     space_manager,
                     acting_space_id,
-                    WindowNodeSplit::X as u32,
+                    WindowNodeSplit::Horizontal as u32,
                     display_manager,
                     window_manager,
                 ) {
                     daemon_fail!(response, "cannot balance a non-managed space.\n");
                 }
-            } else if token_equals(value, message_cursor.bytes(), ARGUMENT_COMMON_VAL_AXIS_Y) {
-                if !space_manager_balance_space(
+            } else if is_token_equal_to(value, message_cursor.bytes(), ARGUMENT_COMMON_VALUE_AXIS_Y)
+            {
+                if !balance_split_ratios_in_view_of_space(
                     space_manager,
                     acting_space_id,
-                    WindowNodeSplit::Y as u32,
+                    WindowNodeSplit::Vertical as u32,
                     display_manager,
                     window_manager,
                 ) {
@@ -469,23 +478,24 @@ pub(crate) fn handle_domain_space(
                     domain,
                 );
             }
-        } else if token_equals(command, message_cursor.bytes(), COMMAND_SPACE_MIRROR) {
-            let value = message_cursor.get_token();
-            if token_equals(value, message_cursor.bytes(), ARGUMENT_COMMON_VAL_AXIS_X) {
-                if !space_manager_mirror_space(
+        } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_SPACE_MIRROR) {
+            let value = message_cursor.take_next_token();
+            if is_token_equal_to(value, message_cursor.bytes(), ARGUMENT_COMMON_VALUE_AXIS_X) {
+                if !mirror_view_of_space_along_axis(
                     space_manager,
                     acting_space_id,
-                    WindowNodeSplit::X,
+                    WindowNodeSplit::Horizontal,
                     display_manager,
                     window_manager,
                 ) {
                     daemon_fail!(response, "cannot mirror a non-managed space.\n");
                 }
-            } else if token_equals(value, message_cursor.bytes(), ARGUMENT_COMMON_VAL_AXIS_Y) {
-                if !space_manager_mirror_space(
+            } else if is_token_equal_to(value, message_cursor.bytes(), ARGUMENT_COMMON_VALUE_AXIS_Y)
+            {
+                if !mirror_view_of_space_along_axis(
                     space_manager,
                     acting_space_id,
-                    WindowNodeSplit::Y,
+                    WindowNodeSplit::Vertical,
                     display_manager,
                     window_manager,
                 ) {
@@ -500,10 +510,10 @@ pub(crate) fn handle_domain_space(
                     domain,
                 );
             }
-        } else if token_equals(command, message_cursor.bytes(), COMMAND_SPACE_ROTATE) {
-            let value = message_cursor.get_token();
-            if token_equals(value, message_cursor.bytes(), ARGUMENT_SPACE_ROTATE_90) {
-                if !space_manager_rotate_space(
+        } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_SPACE_ROTATE) {
+            let value = message_cursor.take_next_token();
+            if is_token_equal_to(value, message_cursor.bytes(), ARGUMENT_SPACE_ROTATE_90) {
+                if !rotate_view_of_space_by_degrees(
                     space_manager,
                     acting_space_id,
                     90,
@@ -512,8 +522,8 @@ pub(crate) fn handle_domain_space(
                 ) {
                     daemon_fail!(response, "cannot rotate a non-managed space.\n");
                 }
-            } else if token_equals(value, message_cursor.bytes(), ARGUMENT_SPACE_ROTATE_180) {
-                if !space_manager_rotate_space(
+            } else if is_token_equal_to(value, message_cursor.bytes(), ARGUMENT_SPACE_ROTATE_180) {
+                if !rotate_view_of_space_by_degrees(
                     space_manager,
                     acting_space_id,
                     180,
@@ -522,8 +532,8 @@ pub(crate) fn handle_domain_space(
                 ) {
                     daemon_fail!(response, "cannot rotate a non-managed space.\n");
                 }
-            } else if token_equals(value, message_cursor.bytes(), ARGUMENT_SPACE_ROTATE_270) {
-                if !space_manager_rotate_space(
+            } else if is_token_equal_to(value, message_cursor.bytes(), ARGUMENT_SPACE_ROTATE_270) {
+                if !rotate_view_of_space_by_degrees(
                     space_manager,
                     acting_space_id,
                     270,
@@ -541,13 +551,13 @@ pub(crate) fn handle_domain_space(
                     domain,
                 );
             }
-        } else if token_equals(command, message_cursor.bytes(), COMMAND_SPACE_PADDING) {
+        } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_SPACE_PADDING) {
             let mut top: libc::c_int = 0;
             let mut bottom: libc::c_int = 0;
             let mut left: libc::c_int = 0;
             let mut right: libc::c_int = 0;
-            let mut type_of_change = [0 as libc::c_char; MAXLEN];
-            let value = message_cursor.get_token();
+            let mut type_of_change = [0 as libc::c_char; FIXED_STRING_BUFFER_LENGTH];
+            let value = message_cursor.take_next_token();
             let subject = std::ffi::CString::new(value.bytes(message_cursor.bytes()))
                 .unwrap_or_default();
             let converted = unsafe {
@@ -562,10 +572,10 @@ pub(crate) fn handle_domain_space(
                 )
             };
             if converted == 5 {
-                if !space_manager_set_padding_for_space(
+                if !set_padding_of_space(
                     space_manager,
                     acting_space_id,
-                    parse_value_type(&type_of_change) as i32,
+                    parse_absolute_or_relative_change_type(&type_of_change) as i32,
                     top,
                     bottom,
                     left,
@@ -584,10 +594,10 @@ pub(crate) fn handle_domain_space(
                     domain,
                 );
             }
-        } else if token_equals(command, message_cursor.bytes(), COMMAND_SPACE_GAP) {
+        } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_SPACE_GAP) {
             let mut gap: libc::c_int = 0;
-            let mut type_of_change = [0 as libc::c_char; MAXLEN];
-            let value = message_cursor.get_token();
+            let mut type_of_change = [0 as libc::c_char; FIXED_STRING_BUFFER_LENGTH];
+            let value = message_cursor.take_next_token();
             let subject = std::ffi::CString::new(value.bytes(message_cursor.bytes()))
                 .unwrap_or_default();
             let converted = unsafe {
@@ -599,10 +609,10 @@ pub(crate) fn handle_domain_space(
                 )
             };
             if converted == 2 {
-                if !space_manager_set_gap_for_space(
+                if !set_window_gap_of_space(
                     space_manager,
                     acting_space_id,
-                    parse_value_type(&type_of_change) as i32,
+                    parse_absolute_or_relative_change_type(&type_of_change) as i32,
                     gap,
                     display_manager,
                     window_manager,
@@ -618,10 +628,10 @@ pub(crate) fn handle_domain_space(
                     domain,
                 );
             }
-        } else if token_equals(command, message_cursor.bytes(), COMMAND_SPACE_TOGGLE) {
-            let value = message_cursor.get_token();
-            if token_equals(value, message_cursor.bytes(), ARGUMENT_SPACE_TGL_PADDING) {
-                if !space_manager_toggle_padding_for_space(
+        } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_SPACE_TOGGLE) {
+            let value = message_cursor.take_next_token();
+            if is_token_equal_to(value, message_cursor.bytes(), ARGUMENT_SPACE_TOGGLE_PADDING) {
+                if !toggle_padding_of_space(
                     space_manager,
                     acting_space_id,
                     display_manager,
@@ -629,8 +639,8 @@ pub(crate) fn handle_domain_space(
                 ) {
                     daemon_fail!(response, "cannot toggle padding for a non-managed space.\n");
                 }
-            } else if token_equals(value, message_cursor.bytes(), ARGUMENT_SPACE_TGL_GAP) {
-                if !space_manager_toggle_gap_for_space(
+            } else if is_token_equal_to(value, message_cursor.bytes(), ARGUMENT_SPACE_TOGGLE_GAP) {
+                if !toggle_window_gap_of_space(
                     space_manager,
                     acting_space_id,
                     display_manager,
@@ -638,14 +648,22 @@ pub(crate) fn handle_domain_space(
                 ) {
                     daemon_fail!(response, "cannot toggle gap for a non-managed space.\n");
                 }
-            } else if token_equals(value, message_cursor.bytes(), ARGUMENT_SPACE_TGL_MC) {
-                space_manager_toggle_mission_control(
+            } else if is_token_equal_to(
+                value,
+                message_cursor.bytes(),
+                ARGUMENT_SPACE_TOGGLE_MISSION_CONTROL,
+            ) {
+                focus_space_then_toggle_mission_control(
                     acting_space_id,
                     window_manager,
                     mission_control_mode,
                 );
-            } else if token_equals(value, message_cursor.bytes(), ARGUMENT_SPACE_TGL_SD) {
-                space_manager_toggle_show_desktop(
+            } else if is_token_equal_to(
+                value,
+                message_cursor.bytes(),
+                ARGUMENT_SPACE_TOGGLE_SHOW_DESKTOP,
+            ) {
+                focus_space_then_toggle_show_desktop(
                     acting_space_id,
                     window_manager,
                     mission_control_mode,
@@ -659,40 +677,52 @@ pub(crate) fn handle_domain_space(
                     domain,
                 );
             }
-        } else if token_equals(command, message_cursor.bytes(), COMMAND_SPACE_LAYOUT) {
-            let value = message_cursor.get_token();
-            if token_equals(value, message_cursor.bytes(), ARGUMENT_SPACE_LAYOUT_BSP) {
-                if space_is_user(acting_space_id) {
-                    space_manager_set_layout_for_space(
+        } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_SPACE_LAYOUT) {
+            let value = message_cursor.take_next_token();
+            if is_token_equal_to(
+                value,
+                message_cursor.bytes(),
+                ARGUMENT_SPACE_LAYOUT_BINARY_SPACE_PARTITIONING,
+            ) {
+                if is_user_space(acting_space_id) {
+                    set_layout_of_space_retiling_its_windows(
                         space_manager,
                         acting_space_id,
-                        ViewType::Bsp,
+                        ViewLayout::BinarySpacePartitioning,
                         display_manager,
                         window_manager,
                         mouse_drag_state,
                     );
                 } else {
-                    daemon_fail!(response, "cannot set layout for a macOS fullscreen space!\n");
+                    daemon_fail!(
+                        response,
+                        "cannot set layout for a macOS fullscreen space!\n"
+                    );
                 }
-            } else if token_equals(value, message_cursor.bytes(), ARGUMENT_SPACE_LAYOUT_STACK) {
-                if space_is_user(acting_space_id) {
-                    space_manager_set_layout_for_space(
+            } else if is_token_equal_to(value, message_cursor.bytes(), ARGUMENT_SPACE_LAYOUT_STACK)
+            {
+                if is_user_space(acting_space_id) {
+                    set_layout_of_space_retiling_its_windows(
                         space_manager,
                         acting_space_id,
-                        ViewType::Stack,
+                        ViewLayout::Stack,
                         display_manager,
                         window_manager,
                         mouse_drag_state,
                     );
                 } else {
-                    daemon_fail!(response, "cannot set layout for a macOS fullscreen space!\n");
+                    daemon_fail!(
+                        response,
+                        "cannot set layout for a macOS fullscreen space!\n"
+                    );
                 }
-            } else if token_equals(value, message_cursor.bytes(), ARGUMENT_SPACE_LAYOUT_FLT) {
-                if space_is_user(acting_space_id) {
-                    space_manager_set_layout_for_space(
+            } else if is_token_equal_to(value, message_cursor.bytes(), ARGUMENT_SPACE_LAYOUT_FLOAT)
+            {
+                if is_user_space(acting_space_id) {
+                    set_layout_of_space_retiling_its_windows(
                         space_manager,
                         acting_space_id,
-                        ViewType::Float,
+                        ViewLayout::Float,
                         display_manager,
                         window_manager,
                         mouse_drag_state,
@@ -709,10 +739,10 @@ pub(crate) fn handle_domain_space(
                     domain,
                 );
             }
-        } else if token_equals(command, message_cursor.bytes(), COMMAND_SPACE_LABEL) {
+        } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_SPACE_LABEL) {
             let mut label = None;
-            let token = message_cursor.get_token();
-            if parse_label(
+            let token = message_cursor.take_next_token();
+            if parse_label_refusing_numbers_and_reserved_words(
                 response,
                 message_cursor.bytes(),
                 token,
@@ -720,9 +750,16 @@ pub(crate) fn handle_domain_space(
                 &mut label,
             ) {
                 if let Some(label) = label {
-                    space_manager_set_label_for_space(space_manager, acting_space_id, label);
-                } else if !space_manager_remove_label_for_space(space_manager, acting_space_id) {
-                    daemon_fail!(response, "the selected space was not associated with a label!\n");
+                    set_label_of_space_removing_it_from_any_other_space(
+                        space_manager,
+                        acting_space_id,
+                        label,
+                    );
+                } else if !remove_label_of_space(space_manager, acting_space_id) {
+                    daemon_fail!(
+                        response,
+                        "the selected space was not associated with a label!\n"
+                    );
                 }
             }
         } else {
@@ -734,6 +771,6 @@ pub(crate) fn handle_domain_space(
             );
         }
 
-        command = message_cursor.get_token();
+        command = message_cursor.take_next_token();
     }
 }

@@ -3,8 +3,8 @@
 use core::ptr::NonNull;
 
 use crate::ffi::core_foundation::{
-    CFRetained, CFType, CGPoint, CGRect, SendCFRetained, cfarray_borrow_value_at_index,
-    sls_window_disable_shadow, take_create_rule_result,
+    CFRetained, CFRetainedAssumedSendAndSync, CFType, CGPoint, CGRect,
+    cfarray_borrow_value_at_index, disable_window_shadow_through_skylight, take_create_rule_result,
 };
 use crate::ffi::core_graphics::{
     CGContext, CGContextClearRect, CGContextDrawImage, CGContextFlush, CGImage,
@@ -16,8 +16,10 @@ use crate::ffi::skylight::{
     SLSSetWindowOpacity, SLSSetWindowResolution, SLSSetWindowSubLevel, SLWindowContextCreate,
 };
 use crate::support::handles::WindowId;
-use crate::support::image::cgimage_restore_alpha;
-use crate::window::model::{window_level, window_sub_level};
+use crate::support::image::copy_image_undoing_premultiplied_alpha_and_making_it_opaque;
+use crate::window::model::{
+    query_window_level_from_window_server, query_window_sub_level_from_window_server,
+};
 use crate::window::proxy_pairing::WindowProxyPairing;
 
 pub(crate) struct WindowProxy {
@@ -26,7 +28,7 @@ pub(crate) struct WindowProxy {
     pub(crate) frame: CGRect,
     pub(crate) level: i32,
     pub(crate) sub_level: i32,
-    pub(crate) context: Option<SendCFRetained<CGContext>>,
+    pub(crate) context: Option<CFRetainedAssumedSendAndSync<CGContext>>,
     pub(crate) image: Option<CFRetained<CGImage>>,
 }
 
@@ -39,7 +41,7 @@ impl WindowProxy {
     }
 }
 
-pub(crate) fn window_manager_create_window_proxy(
+pub(crate) fn create_window_proxy_showing_its_captured_image(
     animation_connection: i32,
     alpha: f32,
     proxy: &mut WindowProxy,
@@ -68,7 +70,7 @@ pub(crate) fn window_manager_create_window_proxy(
             core::ptr::null_mut(),
         )
     };
-    sls_window_disable_shadow(proxy.id);
+    disable_window_shadow_through_skylight(proxy.id);
     unsafe {
         SLSSetWindowOpacity(animation_connection, proxy.id, false);
         SLSSetWindowResolution(animation_connection, proxy.id, 2.0f32 as f64);
@@ -88,12 +90,12 @@ pub(crate) fn window_manager_create_window_proxy(
     CGContextClearRect(context.as_deref(), frame);
     CGContextDrawImage(context.as_deref(), frame, Some(image));
     CGContextFlush(context.as_deref());
-    proxy.context = context.map(SendCFRetained);
+    proxy.context = context.map(CFRetainedAssumedSendAndSync);
     drop(unsafe { take_create_rule_result(frame_region) });
     drop(unsafe { take_create_rule_result(empty_region) });
 }
 
-pub(crate) fn window_manager_destroy_window_proxy(animation_connection: i32, proxy: WindowProxy) {
+pub(crate) fn destroy_window_proxy(animation_connection: i32, proxy: WindowProxy) {
     let mut proxy = proxy;
 
     if let Some(image) = proxy.image.take() {
@@ -110,7 +112,7 @@ pub(crate) fn window_manager_destroy_window_proxy(animation_connection: i32, pro
     }
 }
 
-pub(crate) fn window_manager_build_window_proxy_thread_proc(
+pub(crate) fn build_window_proxy_from_a_capture_of_the_window(
     animation_connection: i32,
     window_id: WindowId,
 ) -> Option<WindowProxy> {
@@ -120,8 +122,8 @@ pub(crate) fn window_manager_build_window_proxy_thread_proc(
         real_window_id: window_id,
         id: 0,
         frame: CGRect::default(),
-        level: window_level(window_id),
-        sub_level: window_sub_level(window_id),
+        level: query_window_level_from_window_server(window_id),
+        sub_level: query_window_sub_level_from_window_server(window_id),
         context: None,
         image: None,
     };
@@ -142,7 +144,7 @@ pub(crate) fn window_manager_build_window_proxy_thread_proc(
                 if alpha == 1.0f32 {
                     Some(unsafe { CFRetained::retain(NonNull::from(image)) })
                 } else {
-                    cgimage_restore_alpha(image)
+                    copy_image_undoing_premultiplied_alpha_and_making_it_opaque(image)
                 }
             }
             None => None,
@@ -152,9 +154,9 @@ pub(crate) fn window_manager_build_window_proxy_thread_proc(
         proxy.image = None;
     }
 
-    window_manager_create_window_proxy(animation_connection, alpha, &mut proxy);
+    create_window_proxy_showing_its_captured_image(animation_connection, alpha, &mut proxy);
     if proxy.id == 0 {
-        window_manager_destroy_window_proxy(animation_connection, proxy);
+        destroy_window_proxy(animation_connection, proxy);
         return None;
     }
     Some(proxy)

@@ -7,7 +7,7 @@ pub struct RgbaColor {
     pub alpha: f32,
 }
 
-pub fn rgba_color_from_hex(color: u32) -> RgbaColor {
+pub fn rgba_color_from_packed_argb(color: u32) -> RgbaColor {
     RgbaColor {
         packed: color,
         red: ((color >> 0x10) & 0xff) as f32 / 255.0,
@@ -19,10 +19,10 @@ pub fn rgba_color_from_hex(color: u32) -> RgbaColor {
 
 #[cfg(test)]
 mod tests {
-    use super::rgba_color_from_hex;
+    use super::rgba_color_from_packed_argb;
 
     fn packed_and_channel_bits_of(color: u32) -> (u32, [u32; 4]) {
-        let rgba_color = rgba_color_from_hex(color);
+        let rgba_color = rgba_color_from_packed_argb(color);
         (
             rgba_color.packed,
             [
@@ -35,7 +35,7 @@ mod tests {
     }
 
     #[test]
-    fn rgba_color_from_hex_reads_alpha_from_the_top_byte_then_red_green_and_blue() {
+    fn rgba_color_from_packed_argb_reads_alpha_from_the_top_byte_then_red_green_and_blue() {
         let expected_channel_bits = [
             (0xffffffff, [0x3f800000, 0x3f800000, 0x3f800000, 0x3f800000]),
             (0x00000000, [0x00000000, 0x00000000, 0x00000000, 0x00000000]),
@@ -53,7 +53,7 @@ mod tests {
     }
 
     #[test]
-    fn rgba_color_from_hex_divides_each_channel_by_255_in_f32_as_the_c_does() {
+    fn rgba_color_from_packed_argb_divides_each_channel_by_255_in_f32_as_the_c_does() {
         let expected_channel_bits = [
             (0xff0f1e2d, [0x3d70f0f1, 0x3df0f0f1, 0x3e34b4b5, 0x3f800000]),
             (0x80abcdef, [0x3f2babac, 0x3f4dcdce, 0x3f6feff0, 0x3f008081]),

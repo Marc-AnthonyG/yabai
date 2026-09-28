@@ -1,13 +1,15 @@
 use core::ffi::c_char;
 
-use crate::support::filesystem::{file_can_execute, file_exists};
+use crate::support::filesystem::{
+    can_owner_execute_file, is_existing_file_that_is_not_a_directory,
+};
 
-pub fn get_config_file(filename: &str) -> Option<String> {
+pub fn find_config_file_in_xdg_or_home_directories(filename: &str) -> Option<String> {
     if let Some(xdg_home) = std::env::var_os("XDG_CONFIG_HOME")
         && !xdg_home.is_empty()
     {
         let buffer = format!("{}/yabai/{}", xdg_home.to_string_lossy(), filename);
-        if file_exists(&buffer) {
+        if is_existing_file_that_is_not_a_directory(&buffer) {
             return Some(buffer);
         }
     }
@@ -15,17 +17,17 @@ pub fn get_config_file(filename: &str) -> Option<String> {
     let home = std::env::var_os("HOME")?;
 
     let buffer = format!("{}/.config/yabai/{}", home.to_string_lossy(), filename);
-    if file_exists(&buffer) {
+    if is_existing_file_that_is_not_a_directory(&buffer) {
         return Some(buffer);
     }
 
     let buffer = format!("{}/.{}", home.to_string_lossy(), filename);
-    file_exists(&buffer).then_some(buffer)
+    is_existing_file_that_is_not_a_directory(&buffer).then_some(buffer)
 }
 
-pub fn exec_config_file(config_file: String) {
+pub fn run_config_file_in_a_forked_shell(config_file: String) {
     let config_file = if config_file.is_empty() {
-        match get_config_file("yabairc") {
+        match find_config_file_in_xdg_or_home_directories("yabairc") {
             Some(config_file) => config_file,
             None => {
                 crate::warn!("yabai: could not locate config file..\n");
@@ -37,7 +39,7 @@ pub fn exec_config_file(config_file: String) {
         config_file
     };
 
-    if !file_exists(&config_file) {
+    if !is_existing_file_that_is_not_a_directory(&config_file) {
         crate::warn!(
             "yabai: configuration file '{}' does not exist..\n",
             config_file
@@ -47,7 +49,7 @@ pub fn exec_config_file(config_file: String) {
     }
 
     let config_file_argument = std::ffi::CString::new(config_file.as_str()).unwrap();
-    let exec: [*const c_char; 5] = if file_can_execute(&config_file) {
+    let exec: [*const c_char; 5] = if can_owner_execute_file(&config_file) {
         [
             c"/usr/bin/env".as_ptr(),
             c"sh".as_ptr(),

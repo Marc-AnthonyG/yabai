@@ -1,30 +1,32 @@
-use crate::scripting_addition::client::scripting_addition_set_shadow;
+use crate::scripting_addition::client::set_window_shadow_through_scripting_addition;
 use crate::support::handles::WindowId;
 use crate::window::manager::{
-    PurifyMode, WindowManager, window_manager_find_managed_window,
-    window_manager_is_window_eligible,
+    ShadowRemovalMode, WindowManager, is_window_eligible_for_management, space_managing_window,
 };
-use crate::window::model::{WindowFlag, window_check_flag, window_clear_flag, window_set_flag};
+use crate::window::model::{WindowFlag, clear_window_flag, is_window_flag_set, set_window_flag};
 
-pub(crate) fn window_manager_set_purify_mode(window_manager: &mut WindowManager, mode: PurifyMode) {
-    window_manager.purify_mode = mode;
+pub(crate) fn set_shadow_removal_mode_for_every_eligible_window(
+    window_manager: &mut WindowManager,
+    mode: ShadowRemovalMode,
+) {
+    window_manager.shadow_removal_mode = mode;
     for window_id in window_manager.window.keys_in_bucket_order() {
-        if window_manager_is_window_eligible(window_id, window_manager) {
-            window_manager_purify_window(window_manager, window_id);
+        if is_window_eligible_for_management(window_id, window_manager) {
+            apply_shadow_removal_mode_to_window(window_manager, window_id);
         }
     }
 }
 
-pub(crate) fn window_manager_purify_window(
+pub(crate) fn apply_shadow_removal_mode_to_window(
     window_manager: &mut WindowManager,
     window_id: WindowId,
 ) {
     let value: i32;
 
-    if window_manager.purify_mode == PurifyMode::Disabled {
+    if window_manager.shadow_removal_mode == ShadowRemovalMode::Never {
         value = 1;
-    } else if window_manager.purify_mode == PurifyMode::Managed {
-        value = if window_manager_find_managed_window(window_manager, window_id).is_some() {
+    } else if window_manager.shadow_removal_mode == ShadowRemovalMode::FromManagedWindows {
+        value = if space_managing_window(window_manager, window_id).is_some() {
             0
         } else {
             1
@@ -35,35 +37,32 @@ pub(crate) fn window_manager_purify_window(
         value = 0;
     }
 
-    if scripting_addition_set_shadow(window_id, value != 0) {
+    if set_window_shadow_through_scripting_addition(window_id, value != 0) {
         let Some(window) = window_manager.window.find_mut(&window_id) else {
             return;
         };
         if value != 0 {
-            window_set_flag(window, WindowFlag::SHADOW);
+            set_window_flag(window, WindowFlag::HAS_SHADOW);
         } else {
-            window_clear_flag(window, WindowFlag::SHADOW);
+            clear_window_flag(window, WindowFlag::HAS_SHADOW);
         }
     }
 }
 
-pub(crate) fn window_manager_toggle_window_shadow(
-    window_id: WindowId,
-    window_manager: &mut WindowManager,
-) {
+pub(crate) fn toggle_window_shadow(window_id: WindowId, window_manager: &mut WindowManager) {
     let Some(window) = window_manager.window.find(&window_id) else {
         return;
     };
 
-    let shadow = !window_check_flag(window, WindowFlag::SHADOW);
-    if scripting_addition_set_shadow(window_id, shadow) {
+    let shadow = !is_window_flag_set(window, WindowFlag::HAS_SHADOW);
+    if set_window_shadow_through_scripting_addition(window_id, shadow) {
         let Some(window) = window_manager.window.find_mut(&window_id) else {
             return;
         };
         if shadow {
-            window_set_flag(window, WindowFlag::SHADOW);
+            set_window_flag(window, WindowFlag::HAS_SHADOW);
         } else {
-            window_clear_flag(window, WindowFlag::SHADOW);
+            clear_window_flag(window, WindowFlag::HAS_SHADOW);
         }
     }
 }

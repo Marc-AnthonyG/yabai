@@ -15,4 +15,4 @@ pub mod macho;
 pub mod libsystem;
 pub mod dispatch;
 
-pub type CFStringOwned = core_foundation::SendCFRetained<core_foundation::CFString>;
+pub type CFStringOwned = core_foundation::CFRetainedAssumedSendAndSync<core_foundation::CFString>;

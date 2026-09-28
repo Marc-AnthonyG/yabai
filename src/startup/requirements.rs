@@ -1,14 +1,14 @@
-use crate::ffi::accessibility::ax_privilege;
+use crate::ffi::accessibility::query_accessibility_trust_prompting_the_user_if_untrusted;
 use crate::ffi::skylight::{SLSGetSpaceManagementMode, SLSMainConnectionID};
 use crate::require;
-use crate::support::privilege::is_root;
+use crate::support::privilege::is_running_as_root;
 
 pub(crate) fn exit_unless_the_system_meets_the_daemon_requirements() {
-    if is_root() {
+    if is_running_as_root() {
         require!("yabai: running as root is not allowed! abort..\n");
     }
 
-    if !ax_privilege() {
+    if !query_accessibility_trust_prompting_the_user_if_untrusted() {
         require!("yabai: could not access accessibility features! abort..\n");
     }
 

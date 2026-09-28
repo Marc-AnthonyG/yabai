@@ -18,9 +18,9 @@ pub use objc2_application_services::{
 };
 
 use crate::ffi::core_foundation::{
-    CFDictionaryCreate, CFIndex, SendCFRetained, as_cftype, cfboolean_get_value, kCFBooleanFalse,
-    kCFBooleanTrue, kCFCopyStringDictionaryKeyCallBacks, kCFTypeDictionaryValueCallBacks,
-    take_create_rule_result,
+    CFDictionaryCreate, CFIndex, CFRetainedAssumedSendAndSync, as_cftype, cfboolean_get_value,
+    kCFBooleanFalse, kCFBooleanTrue, kCFCopyStringDictionaryKeyCallBacks,
+    kCFTypeDictionaryValueCallBacks, take_create_rule_result,
 };
 
 pub type AXUIElementRef = *const AXUIElement;
@@ -34,20 +34,23 @@ unsafe extern "C" {
     pub fn _AXUIElementCreateWithRemoteToken(data: *const CFData) -> *mut AXUIElement;
 }
 
-macro_rules! ax_string_constants {
+macro_rules! define_cached_accessibility_cfstring_constants {
     ($($constant_name:ident => $string_value:literal,)*) => {
         $(
             pub fn $constant_name() -> &'static CFString {
-                static CACHED: OnceLock<SendCFRetained<CFString>> = OnceLock::new();
-                CACHED
-                    .get_or_init(|| SendCFRetained(CFString::from_static_str($string_value)))
+                static CACHED_ACCESSIBILITY_CFSTRING: OnceLock<CFRetainedAssumedSendAndSync<CFString>> =
+                    OnceLock::new();
+                CACHED_ACCESSIBILITY_CFSTRING
+                    .get_or_init(|| {
+                        CFRetainedAssumedSendAndSync(CFString::from_static_str($string_value))
+                    })
                     .as_ref()
             }
         )*
     };
 }
 
-ax_string_constants! {
+define_cached_accessibility_cfstring_constants! {
     kAXWindowsAttribute                 => "AXWindows",
     kAXFocusedWindowAttribute           => "AXFocusedWindow",
     kAXWindowAttribute                  => "AXWindow",
@@ -86,7 +89,7 @@ ax_string_constants! {
     kAXExposeExit                       => "AXExposeExit",
 }
 
-pub fn ax_error_str(error: AXError) -> &'static str {
+pub fn accessibility_error_constant_name(error: AXError) -> &'static str {
     match error {
         AXError::Success => "kAXErrorSuccess",
         AXError::Failure => "kAXErrorFailure",
@@ -108,7 +111,7 @@ pub fn ax_error_str(error: AXError) -> &'static str {
     }
 }
 
-pub fn ax_privilege() -> bool {
+pub fn query_accessibility_trust_prompting_the_user_if_untrusted() -> bool {
     let mut keys: [*const c_void; 1] =
         [(unsafe { kAXTrustedCheckOptionPrompt } as *const CFString).cast::<c_void>()];
     let mut values: [*const c_void; 1] =
@@ -127,17 +130,19 @@ pub fn ax_privilege() -> bool {
     unsafe { AXIsProcessTrustedWithOptions(Some(&options)) }
 }
 
-pub fn ax_window_id(reference: &AXUIElement) -> u32 {
+pub fn read_window_id_of_accessibility_element(reference: &AXUIElement) -> u32 {
     let mut window_id: u32 = 0;
     unsafe { _AXUIElementGetWindow(reference, &mut window_id) };
     window_id
 }
 
-pub unsafe fn ax_window_pid(reference: AXUIElementRef) -> libc::pid_t {
+pub unsafe fn read_process_id_from_accessibility_element_memory(
+    reference: AXUIElementRef,
+) -> libc::pid_t {
     unsafe { *(reference.cast::<u8>().add(0x10).cast::<libc::pid_t>()) }
 }
 
-pub fn ax_enhanced_userinterface(reference: &AXUIElement) -> bool {
+pub fn read_whether_enhanced_user_interface_is_enabled(reference: &AXUIElement) -> bool {
     let mut result = false;
     let mut value: *const CFType = core::ptr::null();
 
@@ -182,7 +187,7 @@ pub fn with_enhanced_user_interface_disabled<Result>(
     application_reference: &AXUIElement,
     body: impl FnOnce() -> Result,
 ) -> Result {
-    let was_enabled = ax_enhanced_userinterface(application_reference);
+    let was_enabled = read_whether_enhanced_user_interface_is_enabled(application_reference);
 
     if was_enabled {
         unsafe {

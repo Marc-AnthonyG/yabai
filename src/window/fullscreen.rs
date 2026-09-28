@@ -2,43 +2,50 @@
 
 use std::time::{Duration, Instant};
 
-use crate::display::bounds::display_bounds_constrained;
+use crate::display::bounds::query_bounds_of_display_left_for_windows;
 use crate::display::manager::DisplayManager;
-use crate::display::spaces::{display_manager_display_is_animating, display_space_id};
+use crate::display::spaces::{
+    is_display_animating_a_space_transition, query_current_space_of_display,
+};
 use crate::ffi::accessibility::{AXUIElementSetAttributeValue, kAXFullscreenAttribute};
 use crate::ffi::core_foundation::{as_cftype, kCFBooleanFalse, kCFBooleanTrue};
-use crate::layout::settings::{ViewFlag, ViewType};
-use crate::layout::tree::{view_find_window_node, window_node_flush};
-use crate::scripting_addition::client::scripting_addition_scale_window;
-use crate::space::focus::space_manager_active_space_of_the_display_holding_window;
-use crate::space::managed_space::{space_is_user, space_is_visible};
-use crate::space::manager::{SpaceManager, space_manager_find_view};
+use crate::layout::settings::{ViewFlag, ViewLayout};
+use crate::layout::tree::{leaf_holding_window, move_windows_below_node_into_their_areas};
+use crate::scripting_addition::client::scale_window_through_scripting_addition;
+use crate::space::focus::query_current_space_of_display_holding_window_or_else_of_the_active_menu_bar_display;
+use crate::space::managed_space::{is_space_visible_on_its_display, is_user_space};
+use crate::space::manager::{SpaceManager, find_or_create_view_for_space};
 use crate::support::handles::{ROOT_NODE_ID, WindowId};
 use crate::support::macos_version::{
-    workspace_is_macos_monterey, workspace_is_macos_sequoia, workspace_is_macos_sonoma,
-    workspace_is_macos_tahoe, workspace_is_macos_ventura,
+    is_running_on_macos_monterey, is_running_on_macos_sequoia, is_running_on_macos_sonoma,
+    is_running_on_macos_tahoe, is_running_on_macos_ventura,
 };
-use crate::window::animation::{WindowCapture, window_manager_animate_window};
-use crate::window::focus::window_manager_focus_window_with_raise_resolving_its_application;
-use crate::window::manager::{WindowManager, window_manager_find_managed_window};
+use crate::window::animation::{
+    WindowWithTargetFrame, move_window_to_its_target_frame_animating_if_enabled,
+};
+use crate::window::focus::focus_and_raise_tracked_window;
+use crate::window::manager::{WindowManager, space_managing_window};
 use crate::window::model::{
-    WindowFlag, window_check_flag, window_clear_flag, window_display_id, window_is_fullscreen,
-    window_set_flag, window_space,
+    WindowFlag, clear_window_flag, is_window_flag_set,
+    is_window_in_native_fullscreen_according_to_accessibility, query_display_holding_window,
+    query_space_holding_window, set_window_flag,
 };
 
 const LONGEST_WAIT_FOR_A_SPACE_TRANSITION_BEFORE_GIVING_UP: Duration = Duration::from_secs(2);
 
-pub(crate) fn window_manager_wait_for_native_fullscreen_transition(window_id: WindowId) {
-    if workspace_is_macos_monterey()
-        || workspace_is_macos_ventura()
-        || workspace_is_macos_sonoma()
-        || workspace_is_macos_sequoia()
-        || workspace_is_macos_tahoe()
+pub(crate) fn wait_until_native_fullscreen_transition_finishes(window_id: WindowId) {
+    if is_running_on_macos_monterey()
+        || is_running_on_macos_ventura()
+        || is_running_on_macos_sonoma()
+        || is_running_on_macos_sequoia()
+        || is_running_on_macos_tahoe()
     {
         let deadline = Instant::now() + LONGEST_WAIT_FOR_A_SPACE_TRANSITION_BEFORE_GIVING_UP;
-        while !space_is_user(space_manager_active_space_of_the_display_holding_window(
-            window_id,
-        )) && Instant::now() < deadline
+        while !is_user_space(
+            query_current_space_of_display_holding_window_or_else_of_the_active_menu_bar_display(
+                window_id,
+            ),
+        ) && Instant::now() < deadline
         {
             //
             // NOTE(asmvik): Window has exited native-fullscreen mode.
@@ -51,7 +58,7 @@ pub(crate) fn window_manager_wait_for_native_fullscreen_transition(window_id: Wi
             unsafe { libc::usleep(100000) };
         }
     } else {
-        let display_id = window_display_id(window_id);
+        let display_id = query_display_holding_window(window_id);
 
         loop {
             //
@@ -62,18 +69,18 @@ pub(crate) fn window_manager_wait_for_native_fullscreen_transition(window_id: Wi
 
             unsafe { libc::usleep(100000) };
 
-            if !display_manager_display_is_animating(display_id) {
+            if !is_display_animating_a_space_transition(display_id) {
                 break;
             }
         }
     }
 }
 
-pub(crate) fn window_manager_toggle_window_native_fullscreen(
+pub(crate) fn toggle_window_native_fullscreen(
     window_id: WindowId,
     window_manager: &mut WindowManager,
 ) {
-    let space_id = window_space(window_id).0 as u32;
+    let space_id = query_space_holding_window(window_id).0 as u32;
 
     //
     // NOTE(asmvik): The window must become the focused window
@@ -81,16 +88,20 @@ pub(crate) fn window_manager_toggle_window_native_fullscreen(
     // window and spin lock until a potential space animation has finished.
     //
 
-    window_manager_focus_window_with_raise_resolving_its_application(window_manager, window_id);
+    focus_and_raise_tracked_window(window_manager, window_id);
     let deadline = Instant::now() + LONGEST_WAIT_FOR_A_SPACE_TRANSITION_BEFORE_GIVING_UP;
-    while space_id as u64 != space_manager_active_space_of_the_display_holding_window(window_id).0
+    while space_id as u64
+        != query_current_space_of_display_holding_window_or_else_of_the_active_menu_bar_display(
+            window_id,
+        )
+        .0
         && Instant::now() < deadline
     {
         unsafe { libc::usleep(100000) };
     }
 
     if let Some(window) = window_manager.window.find(&window_id) {
-        if !window_is_fullscreen(window) {
+        if !is_window_in_native_fullscreen_according_to_accessibility(window) {
             unsafe {
                 AXUIElementSetAttributeValue(
                     &*window.element_ref,
@@ -114,27 +125,27 @@ pub(crate) fn window_manager_toggle_window_native_fullscreen(
     // now spin lock until the post-exit space animation has finished.
     //
 
-    window_manager_wait_for_native_fullscreen_transition(window_id);
+    wait_until_native_fullscreen_transition_finishes(window_id);
 }
 
-pub(crate) fn window_manager_toggle_window_zoom_parent(
+pub(crate) fn toggle_managed_window_zoom_parent(
     window_manager: &mut WindowManager,
     window_id: WindowId,
     space_manager: &mut SpaceManager,
 ) {
-    let view = window_manager_find_managed_window(window_manager, window_id);
+    let view = space_managing_window(window_manager, window_id);
     let Some(space_id) = view else {
         return;
     };
     if space_manager
         .view
         .find(&space_id)
-        .is_none_or(|view| view.layout != ViewType::Bsp)
+        .is_none_or(|view| view.layout != ViewLayout::BinarySpacePartitioning)
     {
         return;
     }
 
-    let node = view_find_window_node(space_manager, space_id, window_id);
+    let node = leaf_holding_window(space_manager, space_id, window_id);
     debug_assert!(node.is_some());
     let Some(node_id) = node else {
         return;
@@ -159,10 +170,15 @@ pub(crate) fn window_manager_toggle_window_zoom_parent(
         {
             node.zoom = None;
         }
-        if space_is_visible(space_id) {
-            window_node_flush(space_id, node_id, window_manager, space_manager);
+        if is_space_visible_on_its_display(space_id) {
+            move_windows_below_node_into_their_areas(
+                space_id,
+                node_id,
+                window_manager,
+                space_manager,
+            );
         } else if let Some(view) = space_manager.view.find_mut(&space_id) {
-            view.set_flag(ViewFlag::IS_DIRTY);
+            view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     } else {
         if let Some(view) = space_manager.view.find_mut(&space_id)
@@ -170,32 +186,37 @@ pub(crate) fn window_manager_toggle_window_zoom_parent(
         {
             node.zoom = node_parent;
         }
-        if space_is_visible(space_id) {
-            window_node_flush(space_id, node_id, window_manager, space_manager);
+        if is_space_visible_on_its_display(space_id) {
+            move_windows_below_node_into_their_areas(
+                space_id,
+                node_id,
+                window_manager,
+                space_manager,
+            );
         } else if let Some(view) = space_manager.view.find_mut(&space_id) {
-            view.set_flag(ViewFlag::IS_DIRTY);
+            view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     }
 }
 
-pub(crate) fn window_manager_toggle_window_zoom_fullscreen(
+pub(crate) fn toggle_managed_window_zoom_fullscreen(
     window_manager: &mut WindowManager,
     window_id: WindowId,
     space_manager: &mut SpaceManager,
 ) {
-    let view = window_manager_find_managed_window(window_manager, window_id);
+    let view = space_managing_window(window_manager, window_id);
     let Some(space_id) = view else {
         return;
     };
     if space_manager
         .view
         .find(&space_id)
-        .is_none_or(|view| view.layout != ViewType::Bsp)
+        .is_none_or(|view| view.layout != ViewLayout::BinarySpacePartitioning)
     {
         return;
     }
 
-    let node = view_find_window_node(space_manager, space_id, window_id);
+    let node = leaf_holding_window(space_manager, space_id, window_id);
     debug_assert!(node.is_some());
     let Some(node_id) = node else {
         return;
@@ -220,10 +241,15 @@ pub(crate) fn window_manager_toggle_window_zoom_fullscreen(
         {
             node.zoom = None;
         }
-        if space_is_visible(space_id) {
-            window_node_flush(space_id, node_id, window_manager, space_manager);
+        if is_space_visible_on_its_display(space_id) {
+            move_windows_below_node_into_their_areas(
+                space_id,
+                node_id,
+                window_manager,
+                space_manager,
+            );
         } else if let Some(view) = space_manager.view.find_mut(&space_id) {
-            view.set_flag(ViewFlag::IS_DIRTY);
+            view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     } else {
         if let Some(view) = space_manager.view.find_mut(&space_id)
@@ -231,20 +257,25 @@ pub(crate) fn window_manager_toggle_window_zoom_fullscreen(
         {
             node.zoom = Some(ROOT_NODE_ID);
         }
-        if space_is_visible(space_id) {
-            window_node_flush(space_id, node_id, window_manager, space_manager);
+        if is_space_visible_on_its_display(space_id) {
+            move_windows_below_node_into_their_areas(
+                space_id,
+                node_id,
+                window_manager,
+                space_manager,
+            );
         } else if let Some(view) = space_manager.view.find_mut(&space_id) {
-            view.set_flag(ViewFlag::IS_DIRTY);
+            view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     }
 }
 
-pub(crate) fn window_manager_toggle_window_windowed_fullscreen(
+pub(crate) fn toggle_window_windowed_fullscreen(
     window_id: WindowId,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
 ) {
-    let display_id = window_display_id(window_id);
+    let display_id = query_display_holding_window(window_id);
     if display_id.0 == 0 {
         return;
     }
@@ -253,11 +284,11 @@ pub(crate) fn window_manager_toggle_window_windowed_fullscreen(
         return;
     };
 
-    if window_check_flag(window, WindowFlag::WINDOWED) {
-        window_clear_flag(window, WindowFlag::WINDOWED);
+    if is_window_flag_set(window, WindowFlag::IN_WINDOWED_FULLSCREEN) {
+        clear_window_flag(window, WindowFlag::IN_WINDOWED_FULLSCREEN);
         let windowed_frame = window.windowed_frame;
-        window_manager_animate_window(
-            WindowCapture {
+        move_window_to_its_target_frame_animating_if_enabled(
+            WindowWithTargetFrame {
                 window_id,
                 x: windowed_frame.origin.x as f32,
                 y: windowed_frame.origin.y as f32,
@@ -267,11 +298,11 @@ pub(crate) fn window_manager_toggle_window_windowed_fullscreen(
             window_manager,
         );
     } else {
-        window_set_flag(window, WindowFlag::WINDOWED);
+        set_window_flag(window, WindowFlag::IN_WINDOWED_FULLSCREEN);
         window.windowed_frame = window.frame;
-        let bounds = display_bounds_constrained(display_id, true, display_manager);
-        window_manager_animate_window(
-            WindowCapture {
+        let bounds = query_bounds_of_display_left_for_windows(display_id, true, display_manager);
+        move_window_to_its_target_frame_animating_if_enabled(
+            WindowWithTargetFrame {
                 window_id,
                 x: bounds.origin.x as f32,
                 y: bounds.origin.y as f32,
@@ -283,24 +314,24 @@ pub(crate) fn window_manager_toggle_window_windowed_fullscreen(
     }
 }
 
-pub(crate) fn window_manager_toggle_window_pip(
+pub(crate) fn toggle_window_picture_in_picture(
     space_manager: &mut SpaceManager,
     window_id: WindowId,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
 ) {
-    let display_id = window_display_id(window_id);
+    let display_id = query_display_holding_window(window_id);
     if display_id.0 == 0 {
         return;
     }
 
-    let space_id = display_space_id(display_id);
+    let space_id = query_current_space_of_display(display_id);
     let display_view =
-        space_manager_find_view(space_manager, space_id, display_manager, window_manager);
+        find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
 
-    let mut bounds = display_bounds_constrained(display_id, false, display_manager);
+    let mut bounds = query_bounds_of_display_left_for_windows(display_id, false, display_manager);
     if let Some(view) = space_manager.view.find(&display_view)
-        && view.check_flag(ViewFlag::ENABLE_PADDING)
+        && view.has_flag(ViewFlag::PADDING_IS_ENABLED)
     {
         bounds.origin.x += view.left_padding as f64;
         bounds.size.width -= (view.left_padding + view.right_padding) as f64;
@@ -308,7 +339,7 @@ pub(crate) fn window_manager_toggle_window_pip(
         bounds.size.height -= (view.top_padding + view.bottom_padding) as f64;
     }
 
-    scripting_addition_scale_window(
+    scale_window_through_scripting_addition(
         window_id,
         bounds.origin.x as f32,
         bounds.origin.y as f32,

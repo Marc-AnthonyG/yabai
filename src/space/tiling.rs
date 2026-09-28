@@ -1,21 +1,26 @@
 use crate::display::manager::DisplayManager;
-use crate::layout::settings::{ViewFlag, ViewType};
+use crate::layout::settings::{ViewFlag, ViewLayout};
 use crate::layout::tree::{
-    WindowNodeSplit, view_add_window_node_with_insertion_point, view_find_window_node,
-    view_remove_window_node, window_node_balance, window_node_equalize, window_node_flush,
-    window_node_is_intermediate, window_node_mirror, window_node_rotate, window_node_update,
+    WindowNodeSplit, add_window_to_view_tree_preferring_insertion_point,
+    balance_split_ratios_below_node_giving_each_leaf_an_equal_share, is_node_below_the_root,
+    leaf_holding_window, mirror_node_subtree_along_axis, move_windows_below_node_into_their_areas,
+    recompute_areas_below_node_redrawing_insert_feedback, remove_window_from_view_tree,
+    reset_split_ratios_below_node_to_the_global_ratio, rotate_node_subtree_by_degrees,
 };
-use crate::layout::view::{view_flush, view_update};
+use crate::layout::view::{
+    move_view_windows_into_their_areas_or_defer_until_space_is_visible,
+    recompute_view_areas_from_display_bounds_and_padding,
+};
 use crate::mouse::drag::MouseDragState;
-use crate::space::managed_space::space_is_visible;
-use crate::space::manager::{SpaceManager, space_manager_find_view};
+use crate::space::managed_space::is_space_visible_on_its_display;
+use crate::space::manager::{SpaceManager, find_or_create_view_for_space};
 use crate::support::handles::{ROOT_NODE_ID, SpaceId, WindowId};
 use crate::support::layer::{LAYER_BELOW, LAYER_NORMAL};
-use crate::window::layer::window_manager_adjust_layer;
+use crate::window::layer::set_window_layer_unless_explicitly_set;
 use crate::window::manager::WindowManager;
-use crate::window::model::window_space;
+use crate::window::model::query_space_holding_window;
 
-pub(crate) fn space_manager_untile_window(
+pub(crate) fn untile_window_from_view_of_space(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     window_id: WindowId,
@@ -26,12 +31,12 @@ pub(crate) fn space_manager_untile_window(
     let Some(view) = space_manager.view.find(&space_id) else {
         return;
     };
-    if view.layout == ViewType::Float {
+    if view.layout == ViewLayout::Float {
         return;
     }
 
-    window_manager_adjust_layer(window_id, LAYER_NORMAL, window_manager);
-    let Some(node_id) = view_remove_window_node(
+    set_window_layer_unless_explicitly_set(window_id, LAYER_NORMAL, window_manager);
+    let Some(node_id) = remove_window_from_view_tree(
         space_manager,
         space_id,
         window_id,
@@ -42,14 +47,14 @@ pub(crate) fn space_manager_untile_window(
         return;
     };
 
-    if space_is_visible(space_id) {
-        window_node_flush(space_id, node_id, window_manager, space_manager);
+    if is_space_visible_on_its_display(space_id) {
+        move_windows_below_node_into_their_areas(space_id, node_id, window_manager, space_manager);
     } else if let Some(view) = space_manager.view.find_mut(&space_id) {
-        view.set_flag(ViewFlag::IS_DIRTY);
+        view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
     }
 }
 
-pub(crate) fn space_manager_rotate_space(
+pub(crate) fn rotate_view_of_space_by_degrees(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     degrees: i32,
@@ -57,22 +62,31 @@ pub(crate) fn space_manager_rotate_space(
     window_manager: &mut WindowManager,
 ) -> bool {
     let space_id =
-        space_manager_find_view(space_manager, space_id, display_manager, window_manager);
+        find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
     let Some(view) = space_manager.view.find(&space_id) else {
         return false;
     };
-    if view.layout != ViewType::Bsp {
+    if view.layout != ViewLayout::BinarySpacePartitioning {
         return false;
     }
 
-    window_node_rotate(space_id, ROOT_NODE_ID, degrees, space_manager);
-    view_update(space_manager, space_id, display_manager, window_manager);
-    view_flush(space_manager, space_id, window_manager);
+    rotate_node_subtree_by_degrees(space_id, ROOT_NODE_ID, degrees, space_manager);
+    recompute_view_areas_from_display_bounds_and_padding(
+        space_manager,
+        space_id,
+        display_manager,
+        window_manager,
+    );
+    move_view_windows_into_their_areas_or_defer_until_space_is_visible(
+        space_manager,
+        space_id,
+        window_manager,
+    );
 
     true
 }
 
-pub(crate) fn space_manager_mirror_space(
+pub(crate) fn mirror_view_of_space_along_axis(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     axis: WindowNodeSplit,
@@ -80,22 +94,31 @@ pub(crate) fn space_manager_mirror_space(
     window_manager: &mut WindowManager,
 ) -> bool {
     let space_id =
-        space_manager_find_view(space_manager, space_id, display_manager, window_manager);
+        find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
     let Some(view) = space_manager.view.find(&space_id) else {
         return false;
     };
-    if view.layout != ViewType::Bsp {
+    if view.layout != ViewLayout::BinarySpacePartitioning {
         return false;
     }
 
-    window_node_mirror(space_id, ROOT_NODE_ID, axis, space_manager);
-    view_update(space_manager, space_id, display_manager, window_manager);
-    view_flush(space_manager, space_id, window_manager);
+    mirror_node_subtree_along_axis(space_id, ROOT_NODE_ID, axis, space_manager);
+    recompute_view_areas_from_display_bounds_and_padding(
+        space_manager,
+        space_id,
+        display_manager,
+        window_manager,
+    );
+    move_view_windows_into_their_areas_or_defer_until_space_is_visible(
+        space_manager,
+        space_id,
+        window_manager,
+    );
 
     true
 }
 
-pub(crate) fn space_manager_equalize_space(
+pub(crate) fn reset_split_ratios_in_view_of_space_to_the_global_ratio(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     axis_flag: u32,
@@ -103,22 +126,36 @@ pub(crate) fn space_manager_equalize_space(
     window_manager: &mut WindowManager,
 ) -> bool {
     let space_id =
-        space_manager_find_view(space_manager, space_id, display_manager, window_manager);
+        find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
     let Some(view) = space_manager.view.find(&space_id) else {
         return false;
     };
-    if view.layout != ViewType::Bsp {
+    if view.layout != ViewLayout::BinarySpacePartitioning {
         return false;
     }
 
-    window_node_equalize(space_id, ROOT_NODE_ID, axis_flag, space_manager);
-    view_update(space_manager, space_id, display_manager, window_manager);
-    view_flush(space_manager, space_id, window_manager);
+    reset_split_ratios_below_node_to_the_global_ratio(
+        space_id,
+        ROOT_NODE_ID,
+        axis_flag,
+        space_manager,
+    );
+    recompute_view_areas_from_display_bounds_and_padding(
+        space_manager,
+        space_id,
+        display_manager,
+        window_manager,
+    );
+    move_view_windows_into_their_areas_or_defer_until_space_is_visible(
+        space_manager,
+        space_id,
+        window_manager,
+    );
 
     true
 }
 
-pub(crate) fn space_manager_balance_space(
+pub(crate) fn balance_split_ratios_in_view_of_space(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     axis_flag: u32,
@@ -126,22 +163,36 @@ pub(crate) fn space_manager_balance_space(
     window_manager: &mut WindowManager,
 ) -> bool {
     let space_id =
-        space_manager_find_view(space_manager, space_id, display_manager, window_manager);
+        find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
     let Some(view) = space_manager.view.find(&space_id) else {
         return false;
     };
-    if view.layout != ViewType::Bsp {
+    if view.layout != ViewLayout::BinarySpacePartitioning {
         return false;
     }
 
-    window_node_balance(space_id, ROOT_NODE_ID, axis_flag, space_manager);
-    view_update(space_manager, space_id, display_manager, window_manager);
-    view_flush(space_manager, space_id, window_manager);
+    balance_split_ratios_below_node_giving_each_leaf_an_equal_share(
+        space_id,
+        ROOT_NODE_ID,
+        axis_flag,
+        space_manager,
+    );
+    recompute_view_areas_from_display_bounds_and_padding(
+        space_manager,
+        space_id,
+        display_manager,
+        window_manager,
+    );
+    move_view_windows_into_their_areas_or_defer_until_space_is_visible(
+        space_manager,
+        space_id,
+        window_manager,
+    );
 
     true
 }
 
-pub(crate) fn space_manager_tile_window_on_space_with_insertion_point(
+pub(crate) fn tile_window_on_space_preferring_insertion_point(
     space_manager: &mut SpaceManager,
     window_id: WindowId,
     space_id: SpaceId,
@@ -150,16 +201,16 @@ pub(crate) fn space_manager_tile_window_on_space_with_insertion_point(
     window_manager: &mut WindowManager,
 ) -> SpaceId {
     let space_id =
-        space_manager_find_view(space_manager, space_id, display_manager, window_manager);
+        find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
     let Some(view) = space_manager.view.find(&space_id) else {
         return space_id;
     };
-    if view.layout == ViewType::Float {
+    if view.layout == ViewLayout::Float {
         return space_id;
     }
 
-    window_manager_adjust_layer(window_id, LAYER_BELOW, window_manager);
-    let node_id = view_add_window_node_with_insertion_point(
+    set_window_layer_unless_explicitly_set(window_id, LAYER_BELOW, window_manager);
+    let node_id = add_window_to_view_tree_preferring_insertion_point(
         space_manager,
         space_id,
         window_id,
@@ -169,25 +220,30 @@ pub(crate) fn space_manager_tile_window_on_space_with_insertion_point(
     );
     debug_assert!(node_id.is_some());
 
-    if space_is_visible(space_id) {
+    if is_space_visible_on_its_display(space_id) {
         if let Some(node_id) = node_id {
-            window_node_flush(space_id, node_id, window_manager, space_manager);
+            move_windows_below_node_into_their_areas(
+                space_id,
+                node_id,
+                window_manager,
+                space_manager,
+            );
         }
     } else if let Some(view) = space_manager.view.find_mut(&space_id) {
-        view.set_flag(ViewFlag::IS_DIRTY);
+        view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
     }
 
     space_id
 }
 
-pub(crate) fn space_manager_tile_window_on_space(
+pub(crate) fn tile_window_on_space(
     space_manager: &mut SpaceManager,
     window_id: WindowId,
     space_id: SpaceId,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
 ) -> SpaceId {
-    space_manager_tile_window_on_space_with_insertion_point(
+    tile_window_on_space_preferring_insertion_point(
         space_manager,
         window_id,
         space_id,
@@ -197,28 +253,28 @@ pub(crate) fn space_manager_tile_window_on_space(
     )
 }
 
-pub(crate) fn space_manager_toggle_window_split(
+pub(crate) fn toggle_split_direction_of_the_parent_of_window_leaf(
     space_manager: &mut SpaceManager,
     window_id: WindowId,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
 ) {
-    let space_id = space_manager_find_view(
+    let space_id = find_or_create_view_for_space(
         space_manager,
-        window_space(window_id),
+        query_space_holding_window(window_id),
         display_manager,
         window_manager,
     );
     let Some(view) = space_manager.view.find(&space_id) else {
         return;
     };
-    if view.layout != ViewType::Bsp {
+    if view.layout != ViewLayout::BinarySpacePartitioning {
         return;
     }
 
-    let node_id = view_find_window_node(space_manager, space_id, window_id);
+    let node_id = leaf_holding_window(space_manager, space_id, window_id);
     if let Some(node_id) = node_id
-        && window_node_is_intermediate(space_id, node_id, space_manager)
+        && is_node_below_the_root(space_id, node_id, space_manager)
     {
         let Some(view) = space_manager.view.find_mut(&space_id) else {
             return;
@@ -227,23 +283,47 @@ pub(crate) fn space_manager_toggle_window_split(
             return;
         };
         let parent_split = view.node(parent_node_id).split;
-        view.node_mut(parent_node_id).split = if parent_split == WindowNodeSplit::Y {
-            WindowNodeSplit::X
+        view.node_mut(parent_node_id).split = if parent_split == WindowNodeSplit::Vertical {
+            WindowNodeSplit::Horizontal
         } else {
-            WindowNodeSplit::Y
+            WindowNodeSplit::Vertical
         };
 
         let auto_balance = view.auto_balance;
         if auto_balance != WindowNodeSplit::None as u32 {
-            window_node_balance(space_id, ROOT_NODE_ID, auto_balance, space_manager);
-            view_update(space_manager, space_id, display_manager, window_manager);
-            view_flush(space_manager, space_id, window_manager);
+            balance_split_ratios_below_node_giving_each_leaf_an_equal_share(
+                space_id,
+                ROOT_NODE_ID,
+                auto_balance,
+                space_manager,
+            );
+            recompute_view_areas_from_display_bounds_and_padding(
+                space_manager,
+                space_id,
+                display_manager,
+                window_manager,
+            );
+            move_view_windows_into_their_areas_or_defer_until_space_is_visible(
+                space_manager,
+                space_id,
+                window_manager,
+            );
         } else {
-            window_node_update(space_manager, space_id, parent_node_id, window_manager);
-            if space_is_visible(space_id) {
-                window_node_flush(space_id, parent_node_id, window_manager, space_manager);
+            recompute_areas_below_node_redrawing_insert_feedback(
+                space_manager,
+                space_id,
+                parent_node_id,
+                window_manager,
+            );
+            if is_space_visible_on_its_display(space_id) {
+                move_windows_below_node_into_their_areas(
+                    space_id,
+                    parent_node_id,
+                    window_manager,
+                    space_manager,
+                );
             } else if let Some(view) = space_manager.view.find_mut(&space_id) {
-                view.set_flag(ViewFlag::IS_DIRTY);
+                view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
         }
     }

@@ -18,7 +18,7 @@ scripting addition, moving windows onto a space, and what SkyLight reports about
   found (decision 32). They are what the CLI selects spaces by and what queries print
   (decision 3).
 - Space operations refuse while Mission Control is active or the display is animating, and
-  report why through the space operation error.
+  report why through the space operation outcome.
 - Moving windows onto a space tries SkyLight's bridged operation when it resolved at start-up
   (decision 18), then the managed-space move, then the scripting addition, and last the
   compat-id workaround; which path runs depends on the macOS version and is behaviour.

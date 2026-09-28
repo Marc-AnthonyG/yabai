@@ -1,14 +1,14 @@
-use crate::display::identity::display_manager_active_display_list;
+use crate::display::identity::query_displays_active_for_drawing;
 use crate::display::manager::DisplayManager;
-use crate::display::spaces::display_space_list;
-use crate::serialise::space::view_serialize;
-use crate::space::manager::{SpaceManager, space_manager_find_view};
+use crate::display::spaces::query_spaces_of_display;
+use crate::serialise::space::write_space_as_json_object;
+use crate::space::manager::{SpaceManager, find_or_create_view_for_space};
 use crate::support::handles::{DisplayId, SpaceId, WindowId};
 use crate::support::response::Response;
 use crate::window::manager::WindowManager;
-use crate::window::model::window_space_list;
+use crate::window::model::query_every_space_holding_window;
 
-pub(crate) fn space_manager_query_space(
+pub(crate) fn write_space_as_json_object_followed_by_newline(
     response: &mut Response,
     space_id: SpaceId,
     flags: u64,
@@ -16,12 +16,18 @@ pub(crate) fn space_manager_query_space(
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
 ) -> bool {
-    if space_manager_query_view(space_manager, space_id, display_manager, window_manager).is_none()
+    if find_view_for_query_creating_it_once_space_manager_started(
+        space_manager,
+        space_id,
+        display_manager,
+        window_manager,
+    )
+    .is_none()
     {
         return false;
     }
 
-    view_serialize(
+    write_space_as_json_object(
         response,
         space_manager,
         space_id,
@@ -33,7 +39,7 @@ pub(crate) fn space_manager_query_space(
     true
 }
 
-pub(crate) fn space_manager_query_spaces_for_window(
+pub(crate) fn write_spaces_of_window_as_json_array(
     response: &mut Response,
     window_id: WindowId,
     flags: u64,
@@ -41,7 +47,7 @@ pub(crate) fn space_manager_query_spaces_for_window(
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
 ) -> bool {
-    let space_list = window_space_list(window_id);
+    let space_list = query_every_space_holding_window(window_id);
     if space_list.is_empty() {
         return false;
     }
@@ -50,13 +56,18 @@ pub(crate) fn space_manager_query_spaces_for_window(
     response.write(format_args!("["));
     for index in 0..space_count {
         let space_id = space_list[index as usize];
-        if space_manager_query_view(space_manager, space_id, display_manager, window_manager)
-            .is_none()
+        if find_view_for_query_creating_it_once_space_manager_started(
+            space_manager,
+            space_id,
+            display_manager,
+            window_manager,
+        )
+        .is_none()
         {
             continue;
         }
 
-        view_serialize(
+        write_space_as_json_object(
             response,
             space_manager,
             space_id,
@@ -74,7 +85,7 @@ pub(crate) fn space_manager_query_spaces_for_window(
     true
 }
 
-pub(crate) fn space_manager_query_spaces_for_display(
+pub(crate) fn write_spaces_of_display_as_json_array(
     response: &mut Response,
     display_id: DisplayId,
     flags: u64,
@@ -82,7 +93,7 @@ pub(crate) fn space_manager_query_spaces_for_display(
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
 ) -> bool {
-    let Some(space_list) = display_space_list(display_id) else {
+    let Some(space_list) = query_spaces_of_display(display_id) else {
         return false;
     };
     let space_count = space_list.len() as i32;
@@ -90,13 +101,18 @@ pub(crate) fn space_manager_query_spaces_for_display(
     response.write(format_args!("["));
     for index in 0..space_count {
         let space_id = space_list[index as usize];
-        if space_manager_query_view(space_manager, space_id, display_manager, window_manager)
-            .is_none()
+        if find_view_for_query_creating_it_once_space_manager_started(
+            space_manager,
+            space_id,
+            display_manager,
+            window_manager,
+        )
+        .is_none()
         {
             continue;
         }
 
-        view_serialize(
+        write_space_as_json_object(
             response,
             space_manager,
             space_id,
@@ -114,32 +130,37 @@ pub(crate) fn space_manager_query_spaces_for_display(
     true
 }
 
-pub(crate) fn space_manager_query_spaces_for_displays(
+pub(crate) fn write_spaces_of_every_display_as_json_array(
     response: &mut Response,
     flags: u64,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
 ) -> bool {
-    let display_list = display_manager_active_display_list();
+    let display_list = query_displays_active_for_drawing();
     let display_count = display_list.len() as i32;
 
     response.write(format_args!("["));
     for index in 0..display_count {
-        let Some(space_list) = display_space_list(display_list[index as usize]) else {
+        let Some(space_list) = query_spaces_of_display(display_list[index as usize]) else {
             continue;
         };
         let space_count = space_list.len() as i32;
 
         for inner_index in 0..space_count {
             let space_id = space_list[inner_index as usize];
-            if space_manager_query_view(space_manager, space_id, display_manager, window_manager)
-                .is_none()
+            if find_view_for_query_creating_it_once_space_manager_started(
+                space_manager,
+                space_id,
+                display_manager,
+                window_manager,
+            )
+            .is_none()
             {
                 continue;
             }
 
-            view_serialize(
+            write_space_as_json_object(
                 response,
                 space_manager,
                 space_id,
@@ -162,14 +183,14 @@ pub(crate) fn space_manager_query_spaces_for_displays(
     true
 }
 
-pub(crate) fn space_manager_query_view(
+pub(crate) fn find_view_for_query_creating_it_once_space_manager_started(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
 ) -> Option<SpaceId> {
     if space_manager.did_begin {
-        return Some(space_manager_find_view(
+        return Some(find_or_create_view_for_space(
             space_manager,
             space_id,
             display_manager,

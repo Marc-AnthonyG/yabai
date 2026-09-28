@@ -1,24 +1,24 @@
 use crate::display::manager::DisplayManager;
-use crate::layout::tree::{NODE_MAX_WINDOW_COUNT, view_find_window_node};
-use crate::space::focus::space_manager_active_space;
-use crate::space::manager::{SpaceManager, space_manager_find_view};
-use crate::support::arithmetic::in_range_ii;
+use crate::layout::tree::{MOST_WINDOWS_A_NODE_CAN_HOLD, leaf_holding_window};
+use crate::space::focus::query_current_space_of_the_focused_display;
+use crate::space::manager::{SpaceManager, find_or_create_view_for_space};
+use crate::support::arithmetic::is_within_range_including_both_bounds;
 use crate::support::handles::WindowId;
-use crate::window::manager::{WindowManager, window_manager_find_window};
+use crate::window::manager::{WindowManager, tracked_window_with_id};
 
-fn window_node_stack_of_window_in_active_view(
+fn stack_holding_window_in_active_space_view(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     window_id: WindowId,
     display_manager: &mut DisplayManager,
 ) -> Option<(
-    [WindowId; NODE_MAX_WINDOW_COUNT],
-    [WindowId; NODE_MAX_WINDOW_COUNT],
+    [WindowId; MOST_WINDOWS_A_NODE_CAN_HOLD],
+    [WindowId; MOST_WINDOWS_A_NODE_CAN_HOLD],
     i32,
 )> {
-    let space_id = space_manager_find_view(
+    let space_id = find_or_create_view_for_space(
         space_manager,
-        space_manager_active_space(window_manager),
+        query_current_space_of_the_focused_display(window_manager),
         display_manager,
         window_manager,
     );
@@ -26,7 +26,7 @@ fn window_node_stack_of_window_in_active_view(
         return None;
     }
 
-    let Some(node_id) = view_find_window_node(space_manager, space_id, window_id) else {
+    let Some(node_id) = leaf_holding_window(space_manager, space_id, window_id) else {
         return None;
     };
 
@@ -34,13 +34,13 @@ fn window_node_stack_of_window_in_active_view(
     Some((node.window_list, node.window_order, node.window_count))
 }
 
-pub(crate) fn window_manager_find_prev_window_in_stack(
+pub(crate) fn previous_window_in_stack_holding_window(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     window_id: WindowId,
     display_manager: &mut DisplayManager,
 ) -> Option<WindowId> {
-    let (window_list, _window_order, window_count) = window_node_stack_of_window_in_active_view(
+    let (window_list, _window_order, window_count) = stack_holding_window_in_active_space_view(
         space_manager,
         window_manager,
         window_id,
@@ -49,20 +49,20 @@ pub(crate) fn window_manager_find_prev_window_in_stack(
 
     for index in 1..window_count {
         if window_list[index as usize] == window_id {
-            return window_manager_find_window(window_manager, window_list[(index - 1) as usize]);
+            return tracked_window_with_id(window_manager, window_list[(index - 1) as usize]);
         }
     }
 
     None
 }
 
-pub(crate) fn window_manager_find_next_window_in_stack(
+pub(crate) fn next_window_in_stack_holding_window(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     window_id: WindowId,
     display_manager: &mut DisplayManager,
 ) -> Option<WindowId> {
-    let (window_list, _window_order, window_count) = window_node_stack_of_window_in_active_view(
+    let (window_list, _window_order, window_count) = stack_holding_window_in_active_space_view(
         space_manager,
         window_manager,
         window_id,
@@ -71,20 +71,20 @@ pub(crate) fn window_manager_find_next_window_in_stack(
 
     for index in 0..window_count - 1 {
         if window_list[index as usize] == window_id {
-            return window_manager_find_window(window_manager, window_list[(index + 1) as usize]);
+            return tracked_window_with_id(window_manager, window_list[(index + 1) as usize]);
         }
     }
 
     None
 }
 
-pub(crate) fn window_manager_find_first_window_in_stack(
+pub(crate) fn first_window_in_stack_holding_window(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     window_id: WindowId,
     display_manager: &mut DisplayManager,
 ) -> Option<WindowId> {
-    let (window_list, _window_order, window_count) = window_node_stack_of_window_in_active_view(
+    let (window_list, _window_order, window_count) = stack_holding_window_in_active_space_view(
         space_manager,
         window_manager,
         window_id,
@@ -92,19 +92,19 @@ pub(crate) fn window_manager_find_first_window_in_stack(
     )?;
 
     if window_count > 1 {
-        window_manager_find_window(window_manager, window_list[0])
+        tracked_window_with_id(window_manager, window_list[0])
     } else {
         None
     }
 }
 
-pub(crate) fn window_manager_find_last_window_in_stack(
+pub(crate) fn last_window_in_stack_holding_window(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     window_id: WindowId,
     display_manager: &mut DisplayManager,
 ) -> Option<WindowId> {
-    let (window_list, _window_order, window_count) = window_node_stack_of_window_in_active_view(
+    let (window_list, _window_order, window_count) = stack_holding_window_in_active_space_view(
         space_manager,
         window_manager,
         window_id,
@@ -112,19 +112,19 @@ pub(crate) fn window_manager_find_last_window_in_stack(
     )?;
 
     if window_count > 1 {
-        window_manager_find_window(window_manager, window_list[(window_count - 1) as usize])
+        tracked_window_with_id(window_manager, window_list[(window_count - 1) as usize])
     } else {
         None
     }
 }
 
-pub(crate) fn window_manager_find_recent_window_in_stack(
+pub(crate) fn previously_focused_window_in_stack_holding_window(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     window_id: WindowId,
     display_manager: &mut DisplayManager,
 ) -> Option<WindowId> {
-    let (_window_list, window_order, window_count) = window_node_stack_of_window_in_active_view(
+    let (_window_list, window_order, window_count) = stack_holding_window_in_active_space_view(
         space_manager,
         window_manager,
         window_id,
@@ -132,28 +132,28 @@ pub(crate) fn window_manager_find_recent_window_in_stack(
     )?;
 
     if window_count > 1 {
-        window_manager_find_window(window_manager, window_order[1])
+        tracked_window_with_id(window_manager, window_order[1])
     } else {
         None
     }
 }
 
-pub(crate) fn window_manager_find_window_in_stack(
+pub(crate) fn window_at_one_based_position_in_stack_holding_window(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     window_id: WindowId,
     index: i32,
     display_manager: &mut DisplayManager,
 ) -> Option<WindowId> {
-    let (window_list, _window_order, window_count) = window_node_stack_of_window_in_active_view(
+    let (window_list, _window_order, window_count) = stack_holding_window_in_active_space_view(
         space_manager,
         window_manager,
         window_id,
         display_manager,
     )?;
 
-    if window_count > 1 && in_range_ii(index, 1, window_count) {
-        window_manager_find_window(window_manager, window_list[(index - 1) as usize])
+    if window_count > 1 && is_within_range_including_both_bounds(index, 1, window_count) {
+        tracked_window_with_id(window_manager, window_list[(index - 1) as usize])
     } else {
         None
     }

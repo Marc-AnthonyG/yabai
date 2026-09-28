@@ -7,16 +7,16 @@ use objc2::rc::Retained;
 use crate::ffi::appkit::{NSApplicationActivationPolicy, NSRunningApplication};
 use crate::process::model::Process;
 
-pub(crate) fn workspace_application_create_running_ns_application(
-    process: &Arc<Process>,
-) -> *mut c_void {
+pub(crate) fn copy_running_application_of_process(process: &Arc<Process>) -> *mut c_void {
     match NSRunningApplication::runningApplicationWithProcessIdentifier(process.process_id.0) {
         Some(application) => Retained::into_raw(application).cast::<c_void>(),
         None => core::ptr::null_mut(),
     }
 }
 
-pub(crate) fn workspace_application_is_observable(process: &Arc<Process>) -> bool {
+pub(crate) fn is_process_observable_refreshing_its_activation_policy(
+    process: &Arc<Process>,
+) -> bool {
     let application = process.ns_application.load(Ordering::Acquire);
     if let Some(application) = unsafe { application.cast::<NSRunningApplication>().as_ref() } {
         process
@@ -32,7 +32,7 @@ pub(crate) fn workspace_application_is_observable(process: &Arc<Process>) -> boo
     }
 }
 
-pub(crate) fn workspace_application_is_finished_launching(process: &Arc<Process>) -> bool {
+pub(crate) fn has_process_finished_launching(process: &Arc<Process>) -> bool {
     let application = process.ns_application.load(Ordering::Acquire);
     if let Some(application) = unsafe { application.cast::<NSRunningApplication>().as_ref() } {
         application.isFinishedLaunching()

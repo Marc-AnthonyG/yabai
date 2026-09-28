@@ -3,12 +3,14 @@
 use core::ffi::c_int;
 use core::ptr::NonNull;
 
-use crate::display::bounds::display_center;
-use crate::display::identity::display_uuid;
-use crate::display::spaces::{display_manager_display_is_animating, display_space_id};
+use crate::display::bounds::query_center_of_display;
+use crate::display::identity::copy_uuid_of_display;
+use crate::display::spaces::{
+    is_display_animating_a_space_transition, query_current_space_of_display,
+};
 use crate::ffi::accessibility::{
-    AXUIElement, AXUIElementCopyAttributeValue, AXUIElementCopyElementAtPosition, ax_window_id,
-    kAXRoleAttribute, kAXWindowAttribute, kAXWindowRole,
+    AXUIElement, AXUIElementCopyAttributeValue, AXUIElementCopyElementAtPosition, kAXRoleAttribute,
+    kAXWindowAttribute, kAXWindowRole, read_window_id_of_accessibility_element,
 };
 use crate::ffi::carbon_process::ProcessSerialNumber;
 use crate::ffi::core_foundation::{
@@ -18,18 +20,20 @@ use crate::ffi::core_graphics::{CGPostMouseEvent, CGWarpMouseCursorPosition};
 use crate::ffi::skylight::{
     SLSGetConnectionPSN, SLSGetWindowOwner, SLSSetActiveMenuBarDisplayIdentifier,
 };
-use crate::scripting_addition::client::scripting_addition_focus_space;
-use crate::space::focus::space_manager_active_space;
-use crate::space::managed_space::space_display_id;
-use crate::space::operations::SpaceOpError;
-use crate::state::mission_control_mode::{MissionControlMode, mission_control_is_active};
-use crate::state::process_wide::CONNECTION;
+use crate::scripting_addition::client::focus_space_through_scripting_addition;
+use crate::space::focus::query_current_space_of_the_focused_display;
+use crate::space::managed_space::query_display_holding_space;
+use crate::space::operations::SpaceOperationOutcome;
+use crate::state::mission_control_mode::{MissionControlMode, is_mission_control_active};
+use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
 use crate::support::handles::{DisplayId, SpaceId, WindowId};
-use crate::window::focus::{window_manager_center_mouse, window_manager_focus_window_with_raise};
+use crate::window::focus::{
+    focus_and_raise_window_of_process, warp_cursor_to_window_center_if_mouse_follows_focus,
+};
 use crate::window::manager::WindowManager;
-use crate::window::screen_lookup::window_manager_find_window_on_space_by_rank_filtering_window;
+use crate::window::screen_lookup::query_tracked_window_at_rank_on_space_skipping_window;
 
-pub(crate) fn display_manager_find_element_at_point(
+pub(crate) fn copy_accessibility_window_element_at_point(
     point: CGPoint,
     window_manager: &mut WindowManager,
 ) -> Option<CFRetained<AXUIElement>> {
@@ -72,11 +76,11 @@ pub(crate) fn display_manager_find_element_at_point(
     window_ref
 }
 
-pub(crate) fn display_manager_focus_display_with_window_at_point(
+pub(crate) fn focus_window_under_point(
     point: CGPoint,
     window_manager: &mut WindowManager,
 ) -> WindowId {
-    let connection_id = *CONNECTION.get().unwrap();
+    let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
 
     let mut element_connection: c_int = 0;
     let mut element_process_serial_number = ProcessSerialNumber {
@@ -84,18 +88,19 @@ pub(crate) fn display_manager_focus_display_with_window_at_point(
         low_long_of_psn: 0,
     };
 
-    let Some(element_ref) = display_manager_find_element_at_point(point, window_manager) else {
+    let Some(element_ref) = copy_accessibility_window_element_at_point(point, window_manager)
+    else {
         return WindowId(0);
     };
 
-    let element_id = ax_window_id(&element_ref);
+    let element_id = read_window_id_of_accessibility_element(&element_ref);
     if element_id == 0 {
         return WindowId(0);
     }
 
     unsafe { SLSGetWindowOwner(connection_id, element_id, &mut element_connection) };
     unsafe { SLSGetConnectionPSN(element_connection, &mut element_process_serial_number) };
-    window_manager_focus_window_with_raise(
+    focus_and_raise_window_of_process(
         &element_process_serial_number,
         WindowId(element_id),
         &*element_ref,
@@ -103,20 +108,20 @@ pub(crate) fn display_manager_focus_display_with_window_at_point(
     WindowId(element_id)
 }
 
-pub(crate) fn display_manager_set_active_display_id(display_id: DisplayId) {
-    let connection_id = *CONNECTION.get().unwrap();
-    let Some(uuid) = display_uuid(display_id) else {
+pub(crate) fn move_active_menu_bar_to_display(display_id: DisplayId) {
+    let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
+    let Some(uuid) = copy_uuid_of_display(display_id) else {
         return;
     };
     unsafe { SLSSetActiveMenuBarDisplayIdentifier(connection_id, uuid.as_ref(), uuid.as_ref()) };
 }
 
-pub(crate) fn display_manager_focus_display(
+pub(crate) fn focus_display_through_its_front_window_or_a_click_at_its_center(
     display_id: DisplayId,
     space_id: SpaceId,
     window_manager: &mut WindowManager,
 ) {
-    let window_id = window_manager_find_window_on_space_by_rank_filtering_window(
+    let window_id = query_tracked_window_at_rank_on_space_skipping_window(
         window_manager,
         space_id,
         1,
@@ -135,48 +140,50 @@ pub(crate) fn display_manager_focus_display(
         };
         let window_process_serial_number = application.process_serial_number;
 
-        window_manager_focus_window_with_raise(
+        focus_and_raise_window_of_process(
             &window_process_serial_number,
             window_id,
             window_element_ref,
         );
-        window_manager_center_mouse(window_manager, window_id);
-        display_manager_set_active_display_id(display_id);
+        warp_cursor_to_window_center_if_mouse_follows_focus(window_manager, window_id);
+        move_active_menu_bar_to_display(display_id);
     } else {
-        let point = display_center(display_id);
+        let point = query_center_of_display(display_id);
         CGWarpMouseCursorPosition(point);
-        display_manager_set_active_display_id(display_id);
+        move_active_menu_bar_to_display(display_id);
 
-        if space_manager_active_space(window_manager) != display_space_id(display_id) {
+        if query_current_space_of_the_focused_display(window_manager)
+            != query_current_space_of_display(display_id)
+        {
             unsafe { CGPostMouseEvent(point, 0, 1, 1) };
             unsafe { CGPostMouseEvent(point, 0, 1, 0) };
         }
     }
 }
 
-pub(crate) fn display_manager_focus_space(
+pub(crate) fn focus_space_if_it_is_on_display(
     display_id: DisplayId,
     space_id: SpaceId,
     mission_control_mode: &mut MissionControlMode,
-) -> SpaceOpError {
-    let is_in_mission_control = mission_control_is_active(mission_control_mode);
+) -> SpaceOperationOutcome {
+    let is_in_mission_control = is_mission_control_active(mission_control_mode);
     if is_in_mission_control {
-        return SpaceOpError::InMissionControl;
+        return SpaceOperationOutcome::MissionControlIsActive;
     }
 
-    let is_animating = display_manager_display_is_animating(display_id);
+    let is_animating = is_display_animating_a_space_transition(display_id);
     if is_animating {
-        return SpaceOpError::DisplayIsAnimating;
+        return SpaceOperationOutcome::DisplayIsAnimating;
     }
 
-    let space_display_id = space_display_id(space_id);
+    let space_display_id = query_display_holding_space(space_id);
     if space_display_id != display_id {
-        return SpaceOpError::SameDisplay;
+        return SpaceOperationOutcome::NotOnTheSameDisplay;
     }
 
-    if scripting_addition_focus_space(space_id) {
-        SpaceOpError::Success
+    if focus_space_through_scripting_addition(space_id) {
+        SpaceOperationOutcome::Success
     } else {
-        SpaceOpError::ScriptingAddition
+        SpaceOperationOutcome::ScriptingAdditionFailed
     }
 }

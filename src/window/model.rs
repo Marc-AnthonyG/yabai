@@ -15,10 +15,11 @@ use crate::ffi::accessibility::{
 };
 use crate::ffi::color_sync::CGDisplayGetDisplayIDFromUUID;
 use crate::ffi::core_foundation::{
-    CFBoolean, CFEqual, CFIndex, CFNumber, CFString, CFType, CFUUIDCreateFromString, CGPoint,
-    CGRect, SendCFRetained, as_cftype, cfarray_borrow_value_at_index, cfarray_count,
-    cfarray_of_cfnumbers, cfboolean_get_value, cfnumber_read_u64_widening, k_cgs_window_title,
-    kCFNumberSInt32Type, take_create_rule_result, ts_cfstring_copy,
+    CFBoolean, CFEqual, CFIndex, CFNumber, CFRetainedAssumedSendAndSync, CFString, CFType,
+    CFUUIDCreateFromString, CGPoint, CGRect, as_cftype, cfarray_borrow_value_at_index,
+    cfarray_count, cfboolean_get_value, cfnumber_read_u64_widening, cfstring_to_string,
+    create_cfarray_of_cfnumbers, kCFNumberSInt32Type, take_create_rule_result,
+    window_title_property_key,
 };
 use crate::ffi::mach_port::{
     MACH_RCV_MSG, MACH_SEND_MSG, NDR_record, NDR_record_t, mach_msg, mach_msg_header_t,
@@ -31,13 +32,13 @@ use crate::ffi::skylight::{
     SLSWindowIteratorGetCount, SLSWindowIteratorGetLevel, SLSWindowIteratorGetParentID,
     SLSWindowIteratorGetTags, SLSWindowQueryResultCopyWindows, SLSWindowQueryWindows,
 };
-use crate::ffi::skylight_dynamic::cgs_get_connection_port_by_id;
-use crate::space::managed_space::space_is_fullscreen;
-use crate::state::process_wide::{CONNECTION, LAYER_NORMAL_WINDOW_LEVEL};
+use crate::ffi::skylight_dynamic::resolved_cgs_get_connection_port_by_id_function;
+use crate::space::managed_space::is_native_fullscreen_space;
+use crate::state::process_wide::{LAYER_NORMAL_WINDOW_LEVEL, SKYLIGHT_CONNECTION_ID};
 use crate::support::handles::{DisplayId, ProcessId, SpaceId, WindowId};
 use crate::support::macos_version::{
-    workspace_is_macos_sequoia, workspace_is_macos_sonoma, workspace_is_macos_tahoe,
-    workspace_is_macos_ventura,
+    is_running_on_macos_sequoia, is_running_on_macos_sonoma, is_running_on_macos_tahoe,
+    is_running_on_macos_ventura,
 };
 use crate::window::manager::WindowManager;
 
@@ -66,12 +67,12 @@ pub(crate) struct Window {
 pub(crate) struct WindowFlag(pub u8);
 
 impl WindowFlag {
-    pub(crate) const SHADOW: WindowFlag = WindowFlag(0x01);
-    pub(crate) const FULLSCREEN: WindowFlag = WindowFlag(0x02);
-    pub(crate) const MINIMIZE: WindowFlag = WindowFlag(0x04);
-    pub(crate) const FLOAT: WindowFlag = WindowFlag(0x08);
+    pub(crate) const HAS_SHADOW: WindowFlag = WindowFlag(0x01);
+    pub(crate) const IN_NATIVE_FULLSCREEN: WindowFlag = WindowFlag(0x02);
+    pub(crate) const MINIMIZED: WindowFlag = WindowFlag(0x04);
+    pub(crate) const FLOATING: WindowFlag = WindowFlag(0x08);
     pub(crate) const STICKY: WindowFlag = WindowFlag(0x10);
-    pub(crate) const WINDOWED: WindowFlag = WindowFlag(0x20);
+    pub(crate) const IN_WINDOWED_FULLSCREEN: WindowFlag = WindowFlag(0x20);
     pub(crate) const MOVABLE: WindowFlag = WindowFlag(0x40);
     pub(crate) const RESIZABLE: WindowFlag = WindowFlag(0x80);
 }
@@ -80,10 +81,10 @@ impl WindowFlag {
 pub(crate) struct WindowRuleFlag(pub u8);
 
 impl WindowRuleFlag {
-    pub(crate) const MANAGED: WindowRuleFlag = WindowRuleFlag(0x01);
-    pub(crate) const FULLSCREEN: WindowRuleFlag = WindowRuleFlag(0x02);
-    pub(crate) const MFF: WindowRuleFlag = WindowRuleFlag(0x04);
-    pub(crate) const MFF_VALUE: WindowRuleFlag = WindowRuleFlag(0x08);
+    pub(crate) const MANAGE_FORCED_ON: WindowRuleFlag = WindowRuleFlag(0x01);
+    pub(crate) const NATIVE_FULLSCREEN_REQUESTED: WindowRuleFlag = WindowRuleFlag(0x02);
+    pub(crate) const OVERRIDES_MOUSE_FOLLOWS_FOCUS: WindowRuleFlag = WindowRuleFlag(0x04);
+    pub(crate) const MOUSE_FOLLOWS_FOCUS_OVERRIDE_IS_ON: WindowRuleFlag = WindowRuleFlag(0x08);
 }
 
 pub(crate) struct WindowLivenessCell {
@@ -113,7 +114,7 @@ impl WindowLivenessCell {
 
 #[allow(non_snake_case)]
 #[repr(C, packed(4))]
-pub(crate) struct SLSGetWindowSubLevelMessage {
+pub(crate) struct WindowSubLevelMachMessage {
     pub(crate) header: mach_msg_header_t,
     pub(crate) NDR_record: NDR_record_t,
     pub(crate) window_id: u32,
@@ -122,36 +123,36 @@ pub(crate) struct SLSGetWindowSubLevelMessage {
     pub(crate) padding2: i32,
 }
 
-const _: () = assert!(core::mem::size_of::<SLSGetWindowSubLevelMessage>() == 0x30);
-const _: () = assert!(core::mem::offset_of!(SLSGetWindowSubLevelMessage, window_id) == 0x20);
-const _: () = assert!(core::mem::offset_of!(SLSGetWindowSubLevelMessage, sub_level) == 0x24);
+const _: () = assert!(core::mem::size_of::<WindowSubLevelMachMessage>() == 0x30);
+const _: () = assert!(core::mem::offset_of!(WindowSubLevelMachMessage, window_id) == 0x20);
+const _: () = assert!(core::mem::offset_of!(WindowSubLevelMachMessage, sub_level) == 0x24);
 
-pub(crate) fn window_check_flag(window: &Window, flag: WindowFlag) -> bool {
+pub(crate) fn is_window_flag_set(window: &Window, flag: WindowFlag) -> bool {
     (window.flags & flag.0) != 0
 }
 
-pub(crate) fn window_clear_flag(window: &mut Window, flag: WindowFlag) {
+pub(crate) fn clear_window_flag(window: &mut Window, flag: WindowFlag) {
     window.flags &= !flag.0;
 }
 
-pub(crate) fn window_set_flag(window: &mut Window, flag: WindowFlag) {
+pub(crate) fn set_window_flag(window: &mut Window, flag: WindowFlag) {
     window.flags |= flag.0;
 }
 
-pub(crate) fn window_check_rule_flag(window: &Window, flag: WindowRuleFlag) -> bool {
+pub(crate) fn is_window_rule_flag_set(window: &Window, flag: WindowRuleFlag) -> bool {
     (window.rule_flags & flag.0) != 0
 }
 
-pub(crate) fn window_clear_rule_flag(window: &mut Window, flag: WindowRuleFlag) {
+pub(crate) fn clear_window_rule_flag(window: &mut Window, flag: WindowRuleFlag) {
     window.rule_flags &= !flag.0;
 }
 
-pub(crate) fn window_set_rule_flag(window: &mut Window, flag: WindowRuleFlag) {
+pub(crate) fn set_window_rule_flag(window: &mut Window, flag: WindowRuleFlag) {
     window.rule_flags |= flag.0;
 }
 
-pub(crate) fn window_display_uuid(window_id: WindowId) -> Option<CFStringOwned> {
-    let connection_id = *CONNECTION.get().unwrap();
+pub(crate) fn copy_uuid_of_display_holding_window(window_id: WindowId) -> Option<CFStringOwned> {
+    let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
 
     let uuid =
         unsafe { take_create_rule_result(SLSCopyManagedDisplayForWindow(connection_id, window_id.0)) };
@@ -161,14 +162,14 @@ pub(crate) fn window_display_uuid(window_id: WindowId) -> Option<CFStringOwned> 
         return unsafe {
             take_create_rule_result(SLSCopyBestManagedDisplayForRect(connection_id, frame))
         }
-        .map(SendCFRetained);
+        .map(CFRetainedAssumedSendAndSync);
     }
 
-    uuid.map(SendCFRetained)
+    uuid.map(CFRetainedAssumedSendAndSync)
 }
 
-pub(crate) fn window_display_id(window_id: WindowId) -> DisplayId {
-    let Some(uuid_string) = window_display_uuid(window_id) else {
+pub(crate) fn query_display_holding_window(window_id: WindowId) -> DisplayId {
+    let Some(uuid_string) = copy_uuid_of_display_holding_window(window_id) else {
         return DisplayId(0);
     };
 
@@ -180,22 +181,23 @@ pub(crate) fn window_display_id(window_id: WindowId) -> DisplayId {
     DisplayId(id as u32)
 }
 
-pub(crate) fn window_display_space(window_id: WindowId) -> SpaceId {
-    let Some(uuid) = window_display_uuid(window_id) else {
+pub(crate) fn query_current_space_of_display_holding_window(window_id: WindowId) -> SpaceId {
+    let Some(uuid) = copy_uuid_of_display_holding_window(window_id) else {
         return SpaceId(0);
     };
 
-    let space_id =
-        unsafe { SLSManagedDisplayGetCurrentSpace(*CONNECTION.get().unwrap(), uuid.as_ref()) };
+    let space_id = unsafe {
+        SLSManagedDisplayGetCurrentSpace(*SKYLIGHT_CONNECTION_ID.get().unwrap(), uuid.as_ref())
+    };
 
     SpaceId(space_id)
 }
 
-pub(crate) fn window_space(window_id: WindowId) -> SpaceId {
+pub(crate) fn query_space_holding_window(window_id: WindowId) -> SpaceId {
     let mut space_id: u64 = 0;
 
-    let connection_id = *CONNECTION.get().unwrap();
-    let window_list_ref = cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
+    let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
+    let window_list_ref = create_cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
     let space_list_ref = unsafe {
         take_create_rule_result(SLSCopySpacesForWindows(connection_id, 0x7, &*window_list_ref))
     };
@@ -215,15 +217,15 @@ pub(crate) fn window_space(window_id: WindowId) -> SpaceId {
     if space_id != 0 {
         SpaceId(space_id)
     } else {
-        window_display_space(window_id)
+        query_current_space_of_display_holding_window(window_id)
     }
 }
 
-pub(crate) fn window_space_list(window_id: WindowId) -> Vec<SpaceId> {
+pub(crate) fn query_every_space_holding_window(window_id: WindowId) -> Vec<SpaceId> {
     let mut space_list: Vec<SpaceId> = Vec::new();
 
-    let connection_id = *CONNECTION.get().unwrap();
-    let window_list_ref = cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
+    let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
+    let window_list_ref = create_cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
     let Some(space_list_ref) = (unsafe {
         take_create_rule_result(SLSCopySpacesForWindows(connection_id, 0x7, &*window_list_ref))
     }) else {
@@ -249,13 +251,13 @@ pub(crate) fn window_space_list(window_id: WindowId) -> Vec<SpaceId> {
     space_list
 }
 
-pub(crate) fn window_property_title_ts(window_id: WindowId) -> String {
+pub(crate) fn query_window_title_from_window_server(window_id: WindowId) -> String {
     let mut value: *mut CFType = core::ptr::null_mut();
     unsafe {
         SLSCopyWindowProperty(
-            *CONNECTION.get().unwrap(),
+            *SKYLIGHT_CONNECTION_ID.get().unwrap(),
             window_id.0,
-            k_cgs_window_title(),
+            window_title_property_key(),
             &mut value,
         )
     };
@@ -263,19 +265,19 @@ pub(crate) fn window_property_title_ts(window_id: WindowId) -> String {
         return String::new();
     };
 
-    let result = ts_cfstring_copy(unsafe { &*((&*value as *const CFType).cast::<CFString>()) });
+    let result = cfstring_to_string(unsafe { &*((&*value as *const CFType).cast::<CFString>()) });
     drop(value);
     result.unwrap_or_default()
 }
 
-pub(crate) fn window_title_ts(window: &Window) -> String {
+pub(crate) fn window_title_as_string(window: &Window) -> String {
     match &window.title {
-        Some(title) => ts_cfstring_copy(title.as_ref()).unwrap_or_default(),
+        Some(title) => cfstring_to_string(title.as_ref()).unwrap_or_default(),
         None => String::new(),
     }
 }
 
-pub(crate) fn window_title(window: &Window) -> Option<CFStringOwned> {
+pub(crate) fn copy_window_title_through_accessibility(window: &Window) -> Option<CFStringOwned> {
     let mut value: *const CFType = core::ptr::null();
     unsafe {
         AXUIElementCopyAttributeValue(
@@ -284,10 +286,10 @@ pub(crate) fn window_title(window: &Window) -> Option<CFStringOwned> {
             NonNull::from(&mut value),
         )
     };
-    unsafe { take_create_rule_result(value.cast::<CFString>()) }.map(SendCFRetained)
+    unsafe { take_create_rule_result(value.cast::<CFString>()) }.map(CFRetainedAssumedSendAndSync)
 }
 
-pub(crate) fn window_ax_origin(window: &Window) -> CGPoint {
+pub(crate) fn read_window_origin_through_accessibility(window: &Window) -> CGPoint {
     let mut origin = CGPoint::ZERO;
     let mut position_ref: *const CFType = core::ptr::null();
 
@@ -313,7 +315,7 @@ pub(crate) fn window_ax_origin(window: &Window) -> CGPoint {
     origin
 }
 
-pub(crate) fn window_ax_frame(window: &Window) -> CGRect {
+pub(crate) fn read_window_frame_through_accessibility(window: &Window) -> CGRect {
     let mut frame = CGRect::ZERO;
     let mut position_ref: *const CFType = core::ptr::null();
     let mut size_ref: *const CFType = core::ptr::null();
@@ -358,7 +360,7 @@ pub(crate) fn window_ax_frame(window: &Window) -> CGRect {
     frame
 }
 
-pub(crate) fn window_ax_can_move(window: &Window) -> bool {
+pub(crate) fn can_window_be_moved_through_accessibility(window: &Window) -> bool {
     let mut result: u8 = 0;
     if unsafe {
         AXUIElementIsAttributeSettable(
@@ -373,11 +375,11 @@ pub(crate) fn window_ax_can_move(window: &Window) -> bool {
     result != 0
 }
 
-pub(crate) fn window_can_move(window: &Window) -> bool {
-    window_check_flag(window, WindowFlag::MOVABLE)
+pub(crate) fn is_window_movable(window: &Window) -> bool {
+    is_window_flag_set(window, WindowFlag::MOVABLE)
 }
 
-pub(crate) fn window_ax_can_resize(window: &Window) -> bool {
+pub(crate) fn can_window_be_resized_through_accessibility(window: &Window) -> bool {
     let mut result: u8 = 0;
     if unsafe {
         AXUIElementIsAttributeSettable(
@@ -392,11 +394,11 @@ pub(crate) fn window_ax_can_resize(window: &Window) -> bool {
     result != 0
 }
 
-pub(crate) fn window_can_resize(window: &Window) -> bool {
-    window_check_flag(window, WindowFlag::RESIZABLE)
+pub(crate) fn is_window_resizable(window: &Window) -> bool {
+    is_window_flag_set(window, WindowFlag::RESIZABLE)
 }
 
-pub(crate) fn window_can_minimize(window: &Window) -> bool {
+pub(crate) fn can_window_be_minimized_through_accessibility(window: &Window) -> bool {
     let mut result: u8 = 0;
     if unsafe {
         AXUIElementIsAttributeSettable(
@@ -411,7 +413,7 @@ pub(crate) fn window_can_minimize(window: &Window) -> bool {
     result != 0
 }
 
-pub(crate) fn window_is_undersized(window: &Window) -> bool {
+pub(crate) fn is_window_at_most_500_points_wide_or_tall(window: &Window) -> bool {
     if window.frame.size.width <= 500.0f32 as f64 {
         return true;
     }
@@ -421,7 +423,7 @@ pub(crate) fn window_is_undersized(window: &Window) -> bool {
     false
 }
 
-pub(crate) fn window_is_minimized(window: &Window) -> bool {
+pub(crate) fn is_window_minimized_according_to_accessibility(window: &Window) -> bool {
     let mut result: bool = false;
     let mut value: *const CFType = core::ptr::null();
 
@@ -444,7 +446,7 @@ pub(crate) fn window_is_minimized(window: &Window) -> bool {
     result
 }
 
-pub(crate) fn window_is_fullscreen(window: &Window) -> bool {
+pub(crate) fn is_window_in_native_fullscreen_according_to_accessibility(window: &Window) -> bool {
     let mut result: bool = false;
     let mut value: *const CFType = core::ptr::null();
 
@@ -467,13 +469,13 @@ pub(crate) fn window_is_fullscreen(window: &Window) -> bool {
     result
 }
 
-pub(crate) fn window_is_sticky(window_id: WindowId) -> bool {
+pub(crate) fn is_window_on_more_than_one_space(window_id: WindowId) -> bool {
     let mut result = false;
 
-    let window_list_ref = cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
+    let window_list_ref = create_cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
     let space_list_ref = unsafe {
         take_create_rule_result(SLSCopySpacesForWindows(
-            *CONNECTION.get().unwrap(),
+            *SKYLIGHT_CONNECTION_ID.get().unwrap(),
             0x7,
             &*window_list_ref,
         ))
@@ -487,22 +489,28 @@ pub(crate) fn window_is_sticky(window_id: WindowId) -> bool {
     result
 }
 
-pub(crate) fn window_shadow(window_id: WindowId) -> bool {
-    let tags = window_tags(window_id);
+pub(crate) fn is_window_shadow_shown_according_to_window_server(window_id: WindowId) -> bool {
+    let tags = query_window_tags_from_window_server(window_id);
     (tags & 0x8) == 0
 }
 
-pub(crate) fn window_opacity(window_id: WindowId) -> f32 {
+pub(crate) fn query_window_opacity_from_window_server(window_id: WindowId) -> f32 {
     let mut alpha: f32 = 0.0f32;
-    unsafe { SLSGetWindowAlpha(*CONNECTION.get().unwrap(), window_id.0, &mut alpha) };
+    unsafe {
+        SLSGetWindowAlpha(
+            *SKYLIGHT_CONNECTION_ID.get().unwrap(),
+            window_id.0,
+            &mut alpha,
+        )
+    };
     alpha
 }
 
-pub(crate) fn window_parent(window_id: WindowId) -> WindowId {
+pub(crate) fn query_parent_window_from_window_server(window_id: WindowId) -> WindowId {
     let mut parent_window_id: u32 = 0;
-    let connection_id = *CONNECTION.get().unwrap();
+    let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
 
-    let window_ref = cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
+    let window_ref = create_cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
 
     let query =
         unsafe { take_create_rule_result(SLSWindowQueryWindows(connection_id, &*window_ref, 1)) };
@@ -524,16 +532,16 @@ pub(crate) fn window_parent(window_id: WindowId) -> WindowId {
     WindowId(parent_window_id)
 }
 
-pub(crate) fn window_level(window_id: WindowId) -> i32 {
+pub(crate) fn query_window_level_from_window_server(window_id: WindowId) -> i32 {
     let mut level: i32 = 0;
-    let connection_id = *CONNECTION.get().unwrap();
+    let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
 
-    if workspace_is_macos_ventura()
-        || workspace_is_macos_sonoma()
-        || workspace_is_macos_sequoia()
-        || workspace_is_macos_tahoe()
+    if is_running_on_macos_ventura()
+        || is_running_on_macos_sonoma()
+        || is_running_on_macos_sequoia()
+        || is_running_on_macos_tahoe()
     {
-        let window_ref = cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
+        let window_ref = create_cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
 
         let query = unsafe {
             take_create_rule_result(SLSWindowQueryWindows(connection_id, &*window_ref, 1))
@@ -561,12 +569,17 @@ pub(crate) fn window_level(window_id: WindowId) -> i32 {
 }
 
 #[allow(non_snake_case)]
-pub(crate) fn SLSGetWindowSubLevel__Internal(connection_id: i32, window_id: WindowId) -> i32 {
-    let Some(cgs_get_connection_port_by_id) = cgs_get_connection_port_by_id() else {
+pub(crate) fn query_window_sub_level_with_a_raw_mach_message(
+    connection_id: i32,
+    window_id: WindowId,
+) -> i32 {
+    let Some(resolved_cgs_get_connection_port_by_id_function) =
+        resolved_cgs_get_connection_port_by_id_function()
+    else {
         return 0;
     };
 
-    let mut message = SLSGetWindowSubLevelMessage {
+    let mut message = WindowSubLevelMachMessage {
         header: mach_msg_header_t {
             msgh_bits: 0,
             msgh_size: 0,
@@ -594,9 +607,10 @@ pub(crate) fn SLSGetWindowSubLevel__Internal(connection_id: i32, window_id: Wind
     message.NDR_record = unsafe { NDR_record };
     message.window_id = window_id.0;
     message.header.msgh_bits = 0x1513;
-    message.header.msgh_remote_port = unsafe { cgs_get_connection_port_by_id(connection_id) };
+    message.header.msgh_remote_port =
+        unsafe { resolved_cgs_get_connection_port_by_id_function(connection_id) };
     message.header.msgh_local_port = unsafe { mig_get_special_reply_port() };
-    message.header.msgh_id = if workspace_is_macos_tahoe() {
+    message.header.msgh_id = if is_running_on_macos_tahoe() {
         0x76E3
     } else {
         0x73C3
@@ -616,18 +630,21 @@ pub(crate) fn SLSGetWindowSubLevel__Internal(connection_id: i32, window_id: Wind
     message.sub_level
 }
 
-pub(crate) fn window_sub_level(window_id: WindowId) -> i32 {
-    if cgs_get_connection_port_by_id().is_some() {
-        SLSGetWindowSubLevel__Internal(*CONNECTION.get().unwrap(), window_id)
+pub(crate) fn query_window_sub_level_from_window_server(window_id: WindowId) -> i32 {
+    if resolved_cgs_get_connection_port_by_id_function().is_some() {
+        query_window_sub_level_with_a_raw_mach_message(
+            *SKYLIGHT_CONNECTION_ID.get().unwrap(),
+            window_id,
+        )
     } else {
-        unsafe { SLSGetWindowSubLevel(*CONNECTION.get().unwrap(), window_id.0) }
+        unsafe { SLSGetWindowSubLevel(*SKYLIGHT_CONNECTION_ID.get().unwrap(), window_id.0) }
     }
 }
 
-pub(crate) fn window_tags(window_id: WindowId) -> u64 {
+pub(crate) fn query_window_tags_from_window_server(window_id: WindowId) -> u64 {
     let mut tags: u64 = 0;
-    let connection_id = *CONNECTION.get().unwrap();
-    let window_ref = cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
+    let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
+    let window_ref = create_cfarray_of_cfnumbers(&[window_id.0], kCFNumberSInt32Type);
 
     let query =
         unsafe { take_create_rule_result(SLSWindowQueryWindows(connection_id, &*window_ref, 1)) };
@@ -649,7 +666,7 @@ pub(crate) fn window_tags(window_id: WindowId) -> u64 {
     tags
 }
 
-pub(crate) fn window_ax_role(window: &Window) -> Option<CFStringOwned> {
+pub(crate) fn copy_window_role_through_accessibility(window: &Window) -> Option<CFStringOwned> {
     let mut role: *const CFType = core::ptr::null();
     unsafe {
         AXUIElementCopyAttributeValue(
@@ -658,23 +675,23 @@ pub(crate) fn window_ax_role(window: &Window) -> Option<CFStringOwned> {
             NonNull::from(&mut role),
         )
     };
-    unsafe { take_create_rule_result(role.cast::<CFString>()) }.map(SendCFRetained)
+    unsafe { take_create_rule_result(role.cast::<CFString>()) }.map(CFRetainedAssumedSendAndSync)
 }
 
 pub(crate) fn window_role(window: &Window) -> Option<&CFString> {
     window.role.as_ref().map(|role| role.as_ref())
 }
 
-pub(crate) fn window_role_ts(window: &Window) -> String {
+pub(crate) fn window_role_as_string(window: &Window) -> String {
     let Some(role) = window_role(window) else {
         return String::new();
     };
 
-    let result = ts_cfstring_copy(role);
+    let result = cfstring_to_string(role);
     result.unwrap_or_default()
 }
 
-pub(crate) fn window_ax_subrole(window: &Window) -> Option<CFStringOwned> {
+pub(crate) fn copy_window_subrole_through_accessibility(window: &Window) -> Option<CFStringOwned> {
     let mut subrole: *const CFType = core::ptr::null();
     unsafe {
         AXUIElementCopyAttributeValue(
@@ -683,23 +700,26 @@ pub(crate) fn window_ax_subrole(window: &Window) -> Option<CFStringOwned> {
             NonNull::from(&mut subrole),
         )
     };
-    unsafe { take_create_rule_result(subrole.cast::<CFString>()) }.map(SendCFRetained)
+    unsafe { take_create_rule_result(subrole.cast::<CFString>()) }.map(CFRetainedAssumedSendAndSync)
 }
 
 pub(crate) fn window_subrole(window: &Window) -> Option<&CFString> {
     window.subrole.as_ref().map(|subrole| subrole.as_ref())
 }
 
-pub(crate) fn window_subrole_ts(window: &Window) -> String {
+pub(crate) fn window_subrole_as_string(window: &Window) -> String {
     let Some(subrole) = window_subrole(window) else {
         return String::new();
     };
 
-    let result = ts_cfstring_copy(subrole);
+    let result = cfstring_to_string(subrole);
     result.unwrap_or_default()
 }
 
-pub(crate) fn window_is_root(window: &Window, window_manager: &mut WindowManager) -> bool {
+pub(crate) fn is_window_root_according_to_accessibility(
+    window: &Window,
+    window_manager: &mut WindowManager,
+) -> bool {
     let mut result = false;
     let mut value: *const CFType = core::ptr::null();
 
@@ -731,7 +751,7 @@ pub(crate) fn window_is_root(window: &Window, window_manager: &mut WindowManager
     result
 }
 
-pub(crate) fn window_is_real(window: &Window) -> bool {
+pub(crate) fn is_window_a_standard_floating_or_dialog_window(window: &Window) -> bool {
     let mut is_window = false;
 
     'out: {
@@ -755,7 +775,7 @@ pub(crate) fn window_is_real(window: &Window) -> bool {
     is_window
 }
 
-pub(crate) fn window_is_standard(window: &Window) -> bool {
+pub(crate) fn is_window_a_standard_window(window: &Window) -> bool {
     let mut standard_window = false;
 
     'out: {
@@ -776,12 +796,12 @@ pub(crate) fn window_is_standard(window: &Window) -> bool {
     standard_window
 }
 
-pub(crate) fn window_level_is_standard(window: &Window) -> bool {
-    let level = window_level(window.id);
+pub(crate) fn is_window_at_normal_window_level(window: &Window) -> bool {
+    let level = query_window_level_from_window_server(window.id);
     level == *LAYER_NORMAL_WINDOW_LEVEL.get().unwrap()
 }
 
-pub(crate) fn window_is_unknown(window: &Window) -> bool {
+pub(crate) fn is_window_subrole_unknown(window: &Window) -> bool {
     let Some(subrole) = window_subrole(window) else {
         return false;
     };
@@ -793,7 +813,7 @@ pub(crate) fn window_is_unknown(window: &Window) -> bool {
     result
 }
 
-pub(crate) fn window_create(
+pub(crate) fn create_window_from_accessibility_element(
     application: ProcessId,
     window_ref: AXUIElementRef,
     window_id: WindowId,
@@ -826,40 +846,43 @@ pub(crate) fn window_create(
     window.application = Some(application);
     window.element_ref = window_ref;
     window.id = window_id;
-    window.frame = window_ax_frame(&window);
-    window.role = window_ax_role(&window);
-    window.subrole = window_ax_subrole(&window);
-    window.title = window_title(&window);
-    window.is_root = window_parent(window.id) == WindowId(0) || window_is_root(&window, window_manager);
+    window.frame = read_window_frame_through_accessibility(&window);
+    window.role = copy_window_role_through_accessibility(&window);
+    window.subrole = copy_window_subrole_through_accessibility(&window);
+    window.title = copy_window_title_through_accessibility(&window);
+    window.is_root = query_parent_window_from_window_server(window.id) == WindowId(0)
+        || is_window_root_according_to_accessibility(&window, window_manager);
 
-    if window_shadow(window.id) {
-        window_set_flag(&mut window, WindowFlag::SHADOW);
+    if is_window_shadow_shown_according_to_window_server(window.id) {
+        set_window_flag(&mut window, WindowFlag::HAS_SHADOW);
     }
 
-    if window_is_minimized(&window) {
-        window_set_flag(&mut window, WindowFlag::MINIMIZE);
+    if is_window_minimized_according_to_accessibility(&window) {
+        set_window_flag(&mut window, WindowFlag::MINIMIZED);
     }
 
-    if window_ax_can_move(&window) {
-        window_set_flag(&mut window, WindowFlag::MOVABLE);
+    if can_window_be_moved_through_accessibility(&window) {
+        set_window_flag(&mut window, WindowFlag::MOVABLE);
     }
 
-    if window_ax_can_resize(&window) {
-        window_set_flag(&mut window, WindowFlag::RESIZABLE);
+    if can_window_be_resized_through_accessibility(&window) {
+        set_window_flag(&mut window, WindowFlag::RESIZABLE);
     }
 
-    if (window_is_fullscreen(&window)) || (space_is_fullscreen(window_space(window.id))) {
-        window_set_flag(&mut window, WindowFlag::FULLSCREEN);
+    if (is_window_in_native_fullscreen_according_to_accessibility(&window))
+        || (is_native_fullscreen_space(query_space_holding_window(window.id)))
+    {
+        set_window_flag(&mut window, WindowFlag::IN_NATIVE_FULLSCREEN);
     }
 
-    if window_is_sticky(window.id) {
-        window_set_flag(&mut window, WindowFlag::STICKY);
+    if is_window_on_more_than_one_space(window.id) {
+        set_window_flag(&mut window, WindowFlag::STICKY);
     }
 
     window
 }
 
-pub(crate) fn window_destroy(mut window: Window) {
+pub(crate) fn destroy_window_releasing_its_accessibility_element(mut window: Window) {
     window.id = WindowId(0);
     if window.role.is_some() {
         drop(window.role.take());

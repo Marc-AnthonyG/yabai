@@ -97,14 +97,35 @@ fn run_or_fail_the_build(command: &mut Command) {
 
 const SA_OPCODES_NO_LIVE_DAEMON_CODE_SENDS: [&str; 1] = ["SA_OPCODE_WINDOW_FOCUS"];
 
-const OSAX_ATTRIBUTE_NAMES: [&str; 7] = [
-    "OSAX_ATTRIB_DOCK_SPACES",
-    "OSAX_ATTRIB_DPPM",
-    "OSAX_ATTRIB_ADD_SPACE",
-    "OSAX_ATTRIB_REM_SPACE",
-    "OSAX_ATTRIB_MOV_SPACE",
-    "OSAX_ATTRIB_SET_WINDOW",
-    "OSAX_ATTRIB_ANIM_TIME",
+const OSAX_ATTRIBUTE_RUST_NAME_BY_C_NAME: [(&str, &str); 7] = [
+    (
+        "OSAX_ATTRIB_DOCK_SPACES",
+        "SCRIPTING_ADDITION_FOUND_DOCK_SPACES",
+    ),
+    (
+        "OSAX_ATTRIB_DPPM",
+        "SCRIPTING_ADDITION_FOUND_DESKTOP_PICTURE_MANAGER",
+    ),
+    (
+        "OSAX_ATTRIB_ADD_SPACE",
+        "SCRIPTING_ADDITION_FOUND_ADD_SPACE_FUNCTION",
+    ),
+    (
+        "OSAX_ATTRIB_REM_SPACE",
+        "SCRIPTING_ADDITION_FOUND_REMOVE_SPACE_FUNCTION",
+    ),
+    (
+        "OSAX_ATTRIB_MOV_SPACE",
+        "SCRIPTING_ADDITION_FOUND_MOVE_SPACE_FUNCTION",
+    ),
+    (
+        "OSAX_ATTRIB_SET_WINDOW",
+        "SCRIPTING_ADDITION_FOUND_SET_FRONT_WINDOW_FUNCTION",
+    ),
+    (
+        "OSAX_ATTRIB_ANIM_TIME",
+        "SCRIPTING_ADDITION_FOUND_ANIMATION_TIME",
+    ),
 ];
 
 fn generate_osax_common(common_header: &Path, out_directory: &Path) {
@@ -130,49 +151,54 @@ fn generate_osax_common(common_header: &Path, out_directory: &Path) {
     let mut generated = String::new();
     writeln!(
         generated,
-        "pub const SA_SOCKET_PATH_FMT: &str = \"{socket_path_format}\";"
+        "pub const SCRIPTING_ADDITION_SOCKET_PATH_FORMAT: &str = \"{socket_path_format}\";"
     )
     .unwrap();
     writeln!(
         generated,
-        "pub const SA_SOCKET_BUFF_LEN: usize = 0x{socket_buffer_length:X};"
+        "pub const SCRIPTING_ADDITION_FRAME_BUFFER_LENGTH: usize = 0x{socket_buffer_length:X};"
     )
     .unwrap();
     writeln!(generated).unwrap();
     writeln!(
         generated,
-        "pub const OSAX_VERSION: &str = \"{osax_version}\";"
+        "pub const SCRIPTING_ADDITION_VERSION: &str = \"{osax_version}\";"
     )
     .unwrap();
     writeln!(generated).unwrap();
 
-    for attribute_name in OSAX_ATTRIBUTE_NAMES {
-        let attribute_value =
-            require_hexadecimal_define(&defines, attribute_name, common_header);
+    for (attribute_c_name, attribute_rust_name) in OSAX_ATTRIBUTE_RUST_NAME_BY_C_NAME {
+        let attribute_value = require_hexadecimal_define(&defines, attribute_c_name, common_header);
         writeln!(
             generated,
-            "pub const {attribute_name}: u32 = 0x{attribute_value:02X};"
+            "pub const {attribute_rust_name}: u32 = 0x{attribute_value:02X};"
         )
         .unwrap();
     }
     writeln!(generated).unwrap();
 
-    writeln!(generated, "pub const OSAX_ATTRIB_ALL: u32 = {};", {
-        let mut all = String::new();
-        for (index, attribute_name) in OSAX_ATTRIBUTE_NAMES.iter().enumerate() {
-            if index > 0 {
-                all.push_str("\n    | ");
+    writeln!(
+        generated,
+        "pub const SCRIPTING_ADDITION_FOUND_EVERYTHING_IT_NEEDS: u32 = {};",
+        {
+            let mut all = String::new();
+            for (index, (_, attribute_rust_name)) in
+                OSAX_ATTRIBUTE_RUST_NAME_BY_C_NAME.iter().enumerate()
+            {
+                if index > 0 {
+                    all.push_str("\n    | ");
+                }
+                all.push_str(attribute_rust_name);
             }
-            all.push_str(attribute_name);
+            all
         }
-        all
-    })
+    )
     .unwrap();
     writeln!(generated).unwrap();
 
     writeln!(generated, "#[repr(u8)]").unwrap();
     writeln!(generated, "#[derive(Clone, Copy, PartialEq, Eq)]").unwrap();
-    writeln!(generated, "pub enum SaOpcode {{").unwrap();
+    writeln!(generated, "pub enum ScriptingAdditionOpcode {{").unwrap();
     for (variant_name, variant_value) in &opcodes {
         writeln!(generated, "    {variant_name} = 0x{variant_value:02X},").unwrap();
     }

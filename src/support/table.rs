@@ -23,11 +23,11 @@ impl<K: PartialEq, V> Table<K, V> {
         }
     }
 
-    fn bucket_index(&self, key: &K) -> usize {
+    fn bucket_index_of_key(&self, key: &K) -> usize {
         ((self.hash)(key) % self.capacity as u64) as usize
     }
 
-    fn rehash(&mut self) {
+    fn double_capacity_and_rehash_every_entry(&mut self) {
         let old_buckets = std::mem::take(&mut self.buckets);
 
         self.count = 0;
@@ -39,15 +39,15 @@ impl<K: PartialEq, V> Table<K, V> {
 
         for old_bucket in old_buckets {
             for (key, value) in old_bucket {
-                let bucket_index = self.bucket_index(&key);
+                let bucket_index = self.bucket_index_of_key(&key);
                 self.buckets[bucket_index].push((key, value));
                 self.count += 1;
             }
         }
     }
 
-    pub fn add(&mut self, key: K, value: V) {
-        let bucket_index = self.bucket_index(&key);
+    pub fn add_unless_key_already_present(&mut self, key: K, value: V) {
+        let bucket_index = self.bucket_index_of_key(&key);
         let occupied = self.buckets[bucket_index]
             .iter()
             .any(|(bucket_key, _)| *bucket_key == key);
@@ -58,13 +58,13 @@ impl<K: PartialEq, V> Table<K, V> {
 
             let load = (1.0f32 * self.count as f32) / self.capacity as f32;
             if load > self.max_load {
-                self.rehash();
+                self.double_capacity_and_rehash_every_entry();
             }
         }
     }
 
     pub fn find(&self, key: &K) -> Option<&V> {
-        let bucket_index = self.bucket_index(key);
+        let bucket_index = self.bucket_index_of_key(key);
         self.buckets[bucket_index]
             .iter()
             .find(|(bucket_key, _)| bucket_key == key)
@@ -72,7 +72,7 @@ impl<K: PartialEq, V> Table<K, V> {
     }
 
     pub fn find_mut(&mut self, key: &K) -> Option<&mut V> {
-        let bucket_index = self.bucket_index(key);
+        let bucket_index = self.bucket_index_of_key(key);
         self.buckets[bucket_index]
             .iter_mut()
             .find(|(bucket_key, _)| bucket_key == key)
@@ -80,7 +80,7 @@ impl<K: PartialEq, V> Table<K, V> {
     }
 
     pub fn remove(&mut self, key: &K) -> Option<V> {
-        let bucket_index = self.bucket_index(key);
+        let bucket_index = self.bucket_index_of_key(key);
         let position = self.buckets[bucket_index]
             .iter()
             .position(|(bucket_key, _)| bucket_key == key);
@@ -141,7 +141,7 @@ mod tests {
 
     fn add_each_key_with_its_value_plus_one_hundred(table: &mut Table<u32, u32>, keys: &[u32]) {
         for key in keys {
-            table.add(*key, key + 100);
+            table.add_unless_key_already_present(*key, key + 100);
         }
     }
 
@@ -150,7 +150,7 @@ mod tests {
         let mut table: Table<u32, &str> =
             Table::new(0, hash_a_window_id_as_the_window_manager_does);
 
-        table.add(42, "value");
+        table.add_unless_key_already_present(42, "value");
 
         assert_eq!(table.find(&42), Some(&"value"));
         assert_eq!(table.len(), 1);
@@ -169,12 +169,12 @@ mod tests {
     }
 
     #[test]
-    fn add_does_not_overwrite_the_value_of_a_key_already_present() {
+    fn add_unless_key_already_present_keeps_the_value_it_already_holds() {
         let mut table: Table<u32, &str> =
             Table::new(4, hash_a_window_id_as_the_window_manager_does);
 
-        table.add(11, "first");
-        table.add(11, "second");
+        table.add_unless_key_already_present(11, "first");
+        table.add_unless_key_already_present(11, "second");
 
         assert_eq!(table.find(&11), Some(&"first"));
         assert_eq!(table.len(), 1);
@@ -184,8 +184,8 @@ mod tests {
     fn remove_returns_the_value_and_a_later_find_misses() {
         let mut table: Table<u32, &str> =
             Table::new(4, hash_a_window_id_as_the_window_manager_does);
-        table.add(3, "three");
-        table.add(7, "seven");
+        table.add_unless_key_already_present(3, "three");
+        table.add_unless_key_already_present(7, "seven");
 
         assert_eq!(table.remove(&3), Some("three"));
 
@@ -198,7 +198,7 @@ mod tests {
     fn remove_of_a_missing_key_returns_nothing_and_leaves_the_count_alone() {
         let mut table: Table<u32, &str> =
             Table::new(4, hash_a_window_id_as_the_window_manager_does);
-        table.add(3, "three");
+        table.add_unless_key_already_present(3, "three");
 
         assert_eq!(table.remove(&4), None);
 
@@ -208,7 +208,7 @@ mod tests {
     #[test]
     fn find_mut_changes_the_stored_value_in_place() {
         let mut table: Table<u32, u32> = Table::new(4, hash_a_window_id_as_the_window_manager_does);
-        table.add(3, 1);
+        table.add_unless_key_already_present(3, 1);
 
         if let Some(value) = table.find_mut(&3) {
             *value = 2;
@@ -255,7 +255,7 @@ mod tests {
         table.remove(&3);
         assert_eq!(table.keys_in_bucket_order(), vec![2, 19, 7, 8, 11, 15]);
 
-        table.add(3, 999);
+        table.add_unless_key_already_present(3, 999);
         assert_eq!(table.keys_in_bucket_order(), vec![2, 19, 3, 7, 8, 11, 15]);
     }
 
@@ -304,7 +304,7 @@ mod tests {
             11,
             12,
         ] {
-            table.add(space_id, ());
+            table.add_unless_key_already_present(space_id, ());
         }
         assert_eq!(
             table.keys_in_bucket_order(),
@@ -313,7 +313,7 @@ mod tests {
             ]
         );
 
-        table.add(13, ());
+        table.add_unless_key_already_present(13, ());
 
         assert_eq!(
             table.keys_in_bucket_order(),

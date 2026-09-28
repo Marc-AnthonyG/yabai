@@ -6,55 +6,59 @@ use std::sync::OnceLock;
 use std::sync::atomic::Ordering;
 
 use crate::application::model::Application;
-use crate::event::queue::{Event, event_loop_post};
+use crate::event::queue::{Event, post_event_to_event_loop};
 use crate::ffi::CFStringOwned;
 use crate::ffi::accessibility::{
     AXError, AXObserver, AXObserverAddNotification, AXObserverCreate, AXObserverGetRunLoopSource,
-    AXObserverRemoveNotification, AXUIElement, ax_error_str, ax_window_id, kAXCreatedNotification,
-    kAXErrorSuccess, kAXFocusedWindowChangedNotification, kAXMenuClosedNotification,
-    kAXMenuOpenedNotification, kAXTitleChangedNotification, kAXUIElementDestroyedNotification,
-    kAXWindowDeminiaturizedNotification, kAXWindowMiniaturizedNotification,
-    kAXWindowMovedNotification, kAXWindowResizedNotification,
+    AXObserverRemoveNotification, AXUIElement, accessibility_error_constant_name,
+    kAXCreatedNotification, kAXErrorSuccess, kAXFocusedWindowChangedNotification,
+    kAXMenuClosedNotification, kAXMenuOpenedNotification, kAXTitleChangedNotification,
+    kAXUIElementDestroyedNotification, kAXWindowDeminiaturizedNotification,
+    kAXWindowMiniaturizedNotification, kAXWindowMovedNotification, kAXWindowResizedNotification,
+    read_window_id_of_accessibility_element,
 };
 use crate::ffi::core_foundation::{
-    CFEqual, CFRetained, CFRunLoopAddSource, CFRunLoopGetMain, CFRunLoopSourceInvalidate, CFString,
-    SendCFRetained, Type, as_cftype, kCFRunLoopDefaultMode,
+    CFEqual, CFRetained, CFRetainedAssumedSendAndSync, CFRunLoopAddSource, CFRunLoopGetMain,
+    CFRunLoopSourceInvalidate, CFString, Type, as_cftype, kCFRunLoopDefaultMode,
 };
 use crate::ffi::dispatch::dispatch_after_on_main_queue;
-use crate::state::process_wide::PENDING_WINDOW_FOCUS;
+use crate::state::process_wide::WINDOW_FOCUS_NOTIFICATION_IS_PENDING;
 use crate::support::handles::WindowId;
 use crate::window::model::WindowLivenessCell;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) struct AxApplicationNotification(pub u8);
+pub(crate) struct ApplicationAccessibilityNotification(pub u8);
 
-impl AxApplicationNotification {
-    pub(crate) const WINDOW_CREATED: AxApplicationNotification =
-        AxApplicationNotification(1 << AX_APPLICATION_WINDOW_CREATED_INDEX);
-    pub(crate) const WINDOW_FOCUSED: AxApplicationNotification =
-        AxApplicationNotification(1 << AX_APPLICATION_WINDOW_FOCUSED_INDEX);
-    pub(crate) const WINDOW_MOVED: AxApplicationNotification =
-        AxApplicationNotification(1 << AX_APPLICATION_WINDOW_MOVED_INDEX);
-    pub(crate) const WINDOW_RESIZED: AxApplicationNotification =
-        AxApplicationNotification(1 << AX_APPLICATION_WINDOW_RESIZED_INDEX);
-    pub(crate) const WINDOW_TITLE_CHANGED: AxApplicationNotification =
-        AxApplicationNotification(1 << AX_APPLICATION_WINDOW_TITLE_CHANGED_INDEX);
-    pub(crate) const ALL: AxApplicationNotification = AxApplicationNotification(
-        AxApplicationNotification::WINDOW_CREATED.0
-            | AxApplicationNotification::WINDOW_FOCUSED.0
-            | AxApplicationNotification::WINDOW_MOVED.0
-            | AxApplicationNotification::WINDOW_RESIZED.0
-            | AxApplicationNotification::WINDOW_TITLE_CHANGED.0,
-    );
+impl ApplicationAccessibilityNotification {
+    pub(crate) const WINDOW_CREATED: ApplicationAccessibilityNotification =
+        ApplicationAccessibilityNotification(1 << APPLICATION_NOTIFICATION_INDEX_OF_WINDOW_CREATED);
+    pub(crate) const WINDOW_FOCUSED: ApplicationAccessibilityNotification =
+        ApplicationAccessibilityNotification(1 << APPLICATION_NOTIFICATION_INDEX_OF_WINDOW_FOCUSED);
+    pub(crate) const WINDOW_MOVED: ApplicationAccessibilityNotification =
+        ApplicationAccessibilityNotification(1 << APPLICATION_NOTIFICATION_INDEX_OF_WINDOW_MOVED);
+    pub(crate) const WINDOW_RESIZED: ApplicationAccessibilityNotification =
+        ApplicationAccessibilityNotification(1 << APPLICATION_NOTIFICATION_INDEX_OF_WINDOW_RESIZED);
+    pub(crate) const WINDOW_TITLE_CHANGED: ApplicationAccessibilityNotification =
+        ApplicationAccessibilityNotification(
+            1 << APPLICATION_NOTIFICATION_INDEX_OF_WINDOW_TITLE_CHANGED,
+        );
+    pub(crate) const ALL: ApplicationAccessibilityNotification =
+        ApplicationAccessibilityNotification(
+            ApplicationAccessibilityNotification::WINDOW_CREATED.0
+                | ApplicationAccessibilityNotification::WINDOW_FOCUSED.0
+                | ApplicationAccessibilityNotification::WINDOW_MOVED.0
+                | ApplicationAccessibilityNotification::WINDOW_RESIZED.0
+                | ApplicationAccessibilityNotification::WINDOW_TITLE_CHANGED.0,
+        );
 }
 
-pub(crate) const AX_APPLICATION_WINDOW_CREATED_INDEX: usize = 0;
-pub(crate) const AX_APPLICATION_WINDOW_FOCUSED_INDEX: usize = 1;
-pub(crate) const AX_APPLICATION_WINDOW_MOVED_INDEX: usize = 2;
-pub(crate) const AX_APPLICATION_WINDOW_RESIZED_INDEX: usize = 3;
-pub(crate) const AX_APPLICATION_WINDOW_TITLE_CHANGED_INDEX: usize = 4;
+pub(crate) const APPLICATION_NOTIFICATION_INDEX_OF_WINDOW_CREATED: usize = 0;
+pub(crate) const APPLICATION_NOTIFICATION_INDEX_OF_WINDOW_FOCUSED: usize = 1;
+pub(crate) const APPLICATION_NOTIFICATION_INDEX_OF_WINDOW_MOVED: usize = 2;
+pub(crate) const APPLICATION_NOTIFICATION_INDEX_OF_WINDOW_RESIZED: usize = 3;
+pub(crate) const APPLICATION_NOTIFICATION_INDEX_OF_WINDOW_TITLE_CHANGED: usize = 4;
 
-pub(crate) static AX_APPLICATION_NOTIFICATION_STR: [&str; 7] = [
+pub(crate) static APPLICATION_NOTIFICATION_CONSTANT_NAMES: [&str; 7] = [
     "kAXCreatedNotification",
     "kAXFocusedWindowChangedNotification",
     "kAXWindowMovedNotification",
@@ -64,23 +68,24 @@ pub(crate) static AX_APPLICATION_NOTIFICATION_STR: [&str; 7] = [
     "kAXMenuClosedNotification",
 ];
 
-pub(crate) static AX_APPLICATION_NOTIFICATION: OnceLock<[CFStringOwned; 7]> = OnceLock::new();
+pub(crate) static APPLICATION_NOTIFICATION_CFSTRINGS: OnceLock<[CFStringOwned; 7]> =
+    OnceLock::new();
 
-pub(crate) fn ax_application_notification() -> &'static [CFStringOwned; 7] {
-    AX_APPLICATION_NOTIFICATION.get_or_init(|| {
+pub(crate) fn application_notification_cfstrings() -> &'static [CFStringOwned; 7] {
+    APPLICATION_NOTIFICATION_CFSTRINGS.get_or_init(|| {
         [
-            SendCFRetained(kAXCreatedNotification().retain()),
-            SendCFRetained(kAXFocusedWindowChangedNotification().retain()),
-            SendCFRetained(kAXWindowMovedNotification().retain()),
-            SendCFRetained(kAXWindowResizedNotification().retain()),
-            SendCFRetained(kAXTitleChangedNotification().retain()),
-            SendCFRetained(kAXMenuOpenedNotification().retain()),
-            SendCFRetained(kAXMenuClosedNotification().retain()),
+            CFRetainedAssumedSendAndSync(kAXCreatedNotification().retain()),
+            CFRetainedAssumedSendAndSync(kAXFocusedWindowChangedNotification().retain()),
+            CFRetainedAssumedSendAndSync(kAXWindowMovedNotification().retain()),
+            CFRetainedAssumedSendAndSync(kAXWindowResizedNotification().retain()),
+            CFRetainedAssumedSendAndSync(kAXTitleChangedNotification().retain()),
+            CFRetainedAssumedSendAndSync(kAXMenuOpenedNotification().retain()),
+            CFRetainedAssumedSendAndSync(kAXMenuClosedNotification().retain()),
         ]
     })
 }
 
-pub(crate) unsafe extern "C-unwind" fn application_notification_handler(
+pub(crate) unsafe extern "C-unwind" fn handle_application_accessibility_notification_callback(
     _observer: NonNull<AXObserver>,
     element: NonNull<AXUIElement>,
     notification: NonNull<CFString>,
@@ -93,38 +98,50 @@ pub(crate) unsafe extern "C-unwind" fn application_notification_handler(
         Some(as_cftype(notification)),
         Some(as_cftype(kAXCreatedNotification())),
     ) {
-        event_loop_post(Event::WindowCreated(SendCFRetained(element.retain())));
+        post_event_to_event_loop(Event::WindowCreated(CFRetainedAssumedSendAndSync(
+            element.retain(),
+        )));
     } else if CFEqual(
         Some(as_cftype(notification)),
         Some(as_cftype(kAXFocusedWindowChangedNotification())),
     ) {
-        PENDING_WINDOW_FOCUS.store(true, Ordering::Release);
-        event_loop_post(Event::WindowFocused(WindowId(ax_window_id(element))));
+        WINDOW_FOCUS_NOTIFICATION_IS_PENDING.store(true, Ordering::Release);
+        post_event_to_event_loop(Event::WindowFocused(WindowId(
+            read_window_id_of_accessibility_element(element),
+        )));
     } else if CFEqual(
         Some(as_cftype(notification)),
         Some(as_cftype(kAXWindowMovedNotification())),
     ) {
-        event_loop_post(Event::WindowMoved(WindowId(ax_window_id(element))));
+        post_event_to_event_loop(Event::WindowMoved(WindowId(
+            read_window_id_of_accessibility_element(element),
+        )));
     } else if CFEqual(
         Some(as_cftype(notification)),
         Some(as_cftype(kAXWindowResizedNotification())),
     ) {
-        event_loop_post(Event::WindowResized(WindowId(ax_window_id(element))));
+        post_event_to_event_loop(Event::WindowResized(WindowId(
+            read_window_id_of_accessibility_element(element),
+        )));
     } else if CFEqual(
         Some(as_cftype(notification)),
         Some(as_cftype(kAXTitleChangedNotification())),
     ) {
-        event_loop_post(Event::WindowTitleChanged(WindowId(ax_window_id(element))));
+        post_event_to_event_loop(Event::WindowTitleChanged(WindowId(
+            read_window_id_of_accessibility_element(element),
+        )));
     } else if CFEqual(
         Some(as_cftype(notification)),
         Some(as_cftype(kAXMenuOpenedNotification())),
     ) {
-        event_loop_post(Event::MenuOpened(WindowId(ax_window_id(element))));
+        post_event_to_event_loop(Event::MenuOpened(WindowId(
+            read_window_id_of_accessibility_element(element),
+        )));
     } else if CFEqual(
         Some(as_cftype(notification)),
         Some(as_cftype(kAXMenuClosedNotification())),
     ) {
-        event_loop_post(Event::MenuClosed);
+        post_event_to_event_loop(Event::MenuClosed);
     } else if CFEqual(
         Some(as_cftype(notification)),
         Some(as_cftype(kAXWindowMiniaturizedNotification())),
@@ -134,7 +151,7 @@ pub(crate) unsafe extern "C-unwind" fn application_notification_handler(
             return;
         }
 
-        event_loop_post(Event::WindowMinimized(window_liveness_cell.window_id));
+        post_event_to_event_loop(Event::WindowMinimized(window_liveness_cell.window_id));
     } else if CFEqual(
         Some(as_cftype(notification)),
         Some(as_cftype(kAXWindowDeminiaturizedNotification())),
@@ -144,7 +161,7 @@ pub(crate) unsafe extern "C-unwind" fn application_notification_handler(
             return;
         }
 
-        event_loop_post(Event::WindowDeminimized(window_liveness_cell.window_id));
+        post_event_to_event_loop(Event::WindowDeminimized(window_liveness_cell.window_id));
     } else if CFEqual(
         Some(as_cftype(notification)),
         Some(as_cftype(kAXUIElementDestroyedNotification())),
@@ -161,25 +178,27 @@ pub(crate) unsafe extern "C-unwind" fn application_notification_handler(
             return;
         }
 
-        event_loop_post(Event::WindowDestroyed(window_liveness_cell.window_id));
+        post_event_to_event_loop(Event::WindowDestroyed(window_liveness_cell.window_id));
     }
 }
 
-pub(crate) fn application_observe(application: &mut Application) -> bool {
+pub(crate) fn start_observing_application_notifications_reporting_whether_all_registered(
+    application: &mut Application,
+) -> bool {
     if unsafe {
         AXObserverCreate(
             application.process_id.0,
-            Some(application_notification_handler),
+            Some(handle_application_accessibility_notification_callback),
             NonNull::from(&mut application.observer_ref),
         )
     } == kAXErrorSuccess
     {
-        for index in 0..ax_application_notification().len() {
+        for index in 0..application_notification_cfstrings().len() {
             let result = unsafe {
                 AXObserverAddNotification(
                     &*application.observer_ref,
                     &*application.element_ref,
-                    ax_application_notification()[index].as_ref(),
+                    application_notification_cfstrings()[index].as_ref(),
                     application.process_id.0 as isize as *mut c_void,
                 )
             };
@@ -191,10 +210,10 @@ pub(crate) fn application_observe(application: &mut Application) -> bool {
                 }
                 crate::debug!(
                     "{}: error '{}' for application '{}' and notification '{}'\n",
-                    "application_observe",
-                    ax_error_str(result),
+                    "start_observing_application_notifications_reporting_whether_all_registered",
+                    accessibility_error_constant_name(result),
                     application.name,
-                    AX_APPLICATION_NOTIFICATION_STR[index]
+                    APPLICATION_NOTIFICATION_CONSTANT_NAMES[index]
                 );
             }
         }
@@ -208,11 +227,11 @@ pub(crate) fn application_observe(application: &mut Application) -> bool {
         );
     }
 
-    (application.notification & AxApplicationNotification::ALL.0)
-        == AxApplicationNotification::ALL.0
+    (application.notification & ApplicationAccessibilityNotification::ALL.0)
+        == ApplicationAccessibilityNotification::ALL.0
 }
 
-pub(crate) fn application_unobserve(application: &mut Application) {
+pub(crate) fn stop_observing_application_notifications(application: &mut Application) {
     if application.is_observing {
         let notification = core::mem::replace(&mut application.notification, 0);
         let observer_ref = NonNull::new(core::mem::replace(
@@ -228,7 +247,7 @@ pub(crate) fn application_unobserve(application: &mut Application) {
         let element_ref = unsafe { &*application.element_ref }.retain();
 
         dispatch_after_on_main_queue(0, move || {
-            for index in 0..ax_application_notification().len() {
+            for index in 0..application_notification_cfstrings().len() {
                 if notification & (1u8 << index) == 0 {
                     continue;
                 }
@@ -237,7 +256,7 @@ pub(crate) fn application_unobserve(application: &mut Application) {
                     AXObserverRemoveNotification(
                         &observer_ref,
                         &element_ref,
-                        ax_application_notification()[index].as_ref(),
+                        application_notification_cfstrings()[index].as_ref(),
                     )
                 };
             }

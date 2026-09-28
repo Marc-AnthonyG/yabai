@@ -8,51 +8,52 @@ use crate::ffi::accessibility::{
 };
 use crate::ffi::carbon_process::ProcessSerialNumber;
 use crate::ffi::core_foundation::CFRetained;
-use crate::layout::settings::ViewType;
+use crate::layout::settings::ViewLayout;
 use crate::space::manager::SpaceManager;
-use crate::support::color::{RgbaColor, rgba_color_from_hex};
+use crate::support::color::{RgbaColor, rgba_color_from_packed_argb};
 use crate::support::easing::AnimationEasingType;
 use crate::support::handles::{NodeId, ProcessId, SpaceId, WindowId};
 use crate::support::table::Table;
 use crate::window::animator::WindowAnimator;
 use crate::window::model::{
-    Window, WindowFlag, WindowRuleFlag, window_can_move, window_check_flag, window_check_rule_flag,
-    window_is_real, window_is_standard, window_is_sticky, window_level_is_standard,
+    Window, WindowFlag, WindowRuleFlag, is_window_a_standard_floating_or_dialog_window,
+    is_window_a_standard_window, is_window_at_normal_window_level, is_window_flag_set,
+    is_window_movable, is_window_on_more_than_one_space, is_window_rule_flag_set,
 };
 use crate::window::rule::Rule;
 use crate::window::scratchpad::Scratchpad;
-use crate::window::shadow::window_manager_purify_window;
+use crate::window::shadow::apply_shadow_removal_mode_to_window;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum WindowOpError {
+pub(crate) enum WindowOperationOutcome {
     Success,
-    InvalidSrcView,
-    InvalidSrcNode,
-    InvalidDstView,
-    InvalidDstNode,
+    InvalidSourceView,
+    InvalidSourceNode,
+    InvalidDestinationView,
+    InvalidDestinationNode,
     InvalidOperation,
     SameWindow,
-    CantMinimize,
+    CannotMinimize,
     AlreadyMinimized,
     MinimizeFailed,
     NotMinimized,
     DeminimizeFailed,
-    MaxStack,
+    StackIsFull,
     SameStack,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 #[repr(i32)]
-pub(crate) enum PurifyMode {
+pub(crate) enum ShadowRemovalMode {
     #[default]
-    Disabled = 0,
-    Managed = 1,
-    Always = 2,
+    Never = 0,
+    FromManagedWindows = 1,
+    FromEveryWindow = 2,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 #[repr(i32)]
-pub(crate) enum FfmMode {
+pub(crate) enum FocusFollowsMouseMode {
     #[default]
     Disabled = 0,
     Autofocus = 1,
@@ -61,11 +62,11 @@ pub(crate) enum FfmMode {
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 #[repr(i32)]
-pub(crate) enum WindowOriginMode {
+pub(crate) enum WindowOriginDisplayMode {
     #[default]
-    Default = 0,
-    Focused = 1,
-    Cursor = 2,
+    DisplayTheWindowOpenedOn = 0,
+    FocusedDisplay = 1,
+    DisplayUnderTheCursor = 2,
 }
 
 pub(crate) struct WindowManager {
@@ -83,9 +84,9 @@ pub(crate) struct WindowManager {
     pub(crate) focused_window_process_serial_number: ProcessSerialNumber,
     pub(crate) last_window_id: WindowId,
     pub(crate) enable_mff: bool,
-    pub(crate) ffm_mode: FfmMode,
-    pub(crate) purify_mode: PurifyMode,
-    pub(crate) window_origin_mode: WindowOriginMode,
+    pub(crate) focus_follows_mouse_mode: FocusFollowsMouseMode,
+    pub(crate) shadow_removal_mode: ShadowRemovalMode,
+    pub(crate) window_origin_display_mode: WindowOriginDisplayMode,
     pub(crate) enable_window_opacity: bool,
     pub(crate) menubar_opacity: f32,
     pub(crate) active_window_opacity: f32,
@@ -98,21 +99,22 @@ pub(crate) struct WindowManager {
     pub(crate) scratchpad_window: Vec<Scratchpad>,
 }
 
-pub(crate) static PURIFY_MODE_STR: [&str; 3] = ["on", "float", "off"];
+pub(crate) static SHADOW_REMOVAL_MODE_NAMES: [&str; 3] = ["on", "float", "off"];
 
-pub(crate) static FFM_MODE_STR: [&str; 3] = ["disabled", "autofocus", "autoraise"];
+pub(crate) static FOCUS_FOLLOWS_MOUSE_MODE_NAMES: [&str; 3] =
+    ["disabled", "autofocus", "autoraise"];
 
-pub(crate) static WINDOW_ORIGIN_MODE_STR: [&str; 3] = ["default", "focused", "cursor"];
+pub(crate) static WINDOW_ORIGIN_DISPLAY_MODE_NAMES: [&str; 3] = ["default", "focused", "cursor"];
 
-pub(crate) fn hash_wm_window_id(key: &WindowId) -> u64 {
+pub(crate) fn hash_window_id_for_table(key: &WindowId) -> u64 {
     key.0 as u64
 }
 
-pub(crate) fn hash_wm_process_id(key: &ProcessId) -> u64 {
+pub(crate) fn hash_process_id_for_table(key: &ProcessId) -> u64 {
     key.0 as u32 as u64
 }
 
-pub(crate) fn window_manager_is_window_eligible(
+pub(crate) fn is_window_eligible_for_management(
     window_id: WindowId,
     window_manager: &mut WindowManager,
 ) -> bool {
@@ -121,11 +123,12 @@ pub(crate) fn window_manager_is_window_eligible(
     };
 
     let result = window.is_root
-        && (window_is_real(window) || window_check_rule_flag(window, WindowRuleFlag::MANAGED));
+        && (is_window_a_standard_floating_or_dialog_window(window)
+            || is_window_rule_flag_set(window, WindowRuleFlag::MANAGE_FORCED_ON));
     result
 }
 
-pub(crate) fn window_manager_should_manage_window(
+pub(crate) fn should_window_be_managed(
     window_id: WindowId,
     window_manager: &mut WindowManager,
 ) -> bool {
@@ -136,13 +139,13 @@ pub(crate) fn window_manager_should_manage_window(
     if !window.is_root {
         return false;
     }
-    if window_check_flag(window, WindowFlag::FLOAT) {
+    if is_window_flag_set(window, WindowFlag::FLOATING) {
         return false;
     }
-    if window_is_sticky(window_id) {
+    if is_window_on_more_than_one_space(window_id) {
         return false;
     }
-    if window_check_flag(window, WindowFlag::MINIMIZE) {
+    if is_window_flag_set(window, WindowFlag::MINIMIZED) {
         return false;
     }
 
@@ -159,25 +162,24 @@ pub(crate) fn window_manager_should_manage_window(
         return false;
     }
 
-    (window_is_standard(window) && window_level_is_standard(window) && window_can_move(window))
-        || window_check_rule_flag(window, WindowRuleFlag::MANAGED)
+    (is_window_a_standard_window(window)
+        && is_window_at_normal_window_level(window)
+        && is_window_movable(window))
+        || is_window_rule_flag_set(window, WindowRuleFlag::MANAGE_FORCED_ON)
 }
 
-pub(crate) fn window_manager_find_managed_window(
+pub(crate) fn space_managing_window(
     window_manager: &mut WindowManager,
     window_id: WindowId,
 ) -> Option<SpaceId> {
     window_manager.managed_window.find(&window_id).copied()
 }
 
-pub(crate) fn window_manager_remove_managed_window(
-    window_manager: &mut WindowManager,
-    window_id: WindowId,
-) {
+pub(crate) fn forget_managed_window(window_manager: &mut WindowManager, window_id: WindowId) {
     window_manager.managed_window.remove(&window_id);
 }
 
-pub(crate) fn window_manager_add_managed_window(
+pub(crate) fn record_managed_window_on_space_updating_its_shadow(
     window_manager: &mut WindowManager,
     window_id: WindowId,
     space_manager: &mut SpaceManager,
@@ -186,14 +188,16 @@ pub(crate) fn window_manager_add_managed_window(
     let Some(view) = space_manager.view.find(&space_id) else {
         return;
     };
-    if view.layout == ViewType::Float {
+    if view.layout == ViewLayout::Float {
         return;
     }
-    window_manager.managed_window.add(window_id, space_id);
-    window_manager_purify_window(window_manager, window_id);
+    window_manager
+        .managed_window
+        .add_unless_key_already_present(window_id, space_id);
+    apply_shadow_removal_mode_to_window(window_manager, window_id);
 }
 
-pub(crate) fn window_manager_find_lost_front_switched_event(
+pub(crate) fn has_front_switched_event_arrived_before_application_was_tracked(
     window_manager: &mut WindowManager,
     process_id: ProcessId,
 ) -> bool {
@@ -203,7 +207,7 @@ pub(crate) fn window_manager_find_lost_front_switched_event(
         .is_some()
 }
 
-pub(crate) fn window_manager_remove_lost_front_switched_event(
+pub(crate) fn forget_front_switched_event_that_arrived_before_application_was_tracked(
     window_manager: &mut WindowManager,
     process_id: ProcessId,
 ) {
@@ -212,16 +216,16 @@ pub(crate) fn window_manager_remove_lost_front_switched_event(
         .remove(&process_id);
 }
 
-pub(crate) fn window_manager_add_lost_front_switched_event(
+pub(crate) fn record_front_switched_event_that_arrived_before_application_was_tracked(
     window_manager: &mut WindowManager,
     process_id: ProcessId,
 ) {
     window_manager
         .application_lost_front_switched_event
-        .add(process_id, ());
+        .add_unless_key_already_present(process_id, ());
 }
 
-pub(crate) fn window_manager_find_lost_focused_event(
+pub(crate) fn has_focused_event_arrived_before_window_was_tracked(
     window_manager: &mut WindowManager,
     window_id: WindowId,
 ) -> bool {
@@ -231,21 +235,23 @@ pub(crate) fn window_manager_find_lost_focused_event(
         .is_some()
 }
 
-pub(crate) fn window_manager_remove_lost_focused_event(
+pub(crate) fn forget_focused_event_that_arrived_before_window_was_tracked(
     window_manager: &mut WindowManager,
     window_id: WindowId,
 ) {
     window_manager.window_lost_focused_event.remove(&window_id);
 }
 
-pub(crate) fn window_manager_add_lost_focused_event(
+pub(crate) fn record_focused_event_that_arrived_before_window_was_tracked(
     window_manager: &mut WindowManager,
     window_id: WindowId,
 ) {
-    window_manager.window_lost_focused_event.add(window_id, ());
+    window_manager
+        .window_lost_focused_event
+        .add_unless_key_already_present(window_id, ());
 }
 
-pub(crate) fn window_manager_find_window(
+pub(crate) fn tracked_window_with_id(
     window_manager: &mut WindowManager,
     window_id: WindowId,
 ) -> Option<WindowId> {
@@ -255,18 +261,20 @@ pub(crate) fn window_manager_find_window(
         .map(|window| window.id)
 }
 
-pub(crate) fn window_manager_remove_window(
+pub(crate) fn stop_tracking_window(
     window_manager: &mut WindowManager,
     window_id: WindowId,
 ) -> Option<Window> {
     window_manager.window.remove(&window_id)
 }
 
-pub(crate) fn window_manager_add_window(window_manager: &mut WindowManager, window: Window) {
-    window_manager.window.add(window.id, window);
+pub(crate) fn start_tracking_window(window_manager: &mut WindowManager, window: Window) {
+    window_manager
+        .window
+        .add_unless_key_already_present(window.id, window);
 }
 
-pub(crate) fn window_manager_find_application(
+pub(crate) fn tracked_application_with_process_id(
     window_manager: &mut WindowManager,
     process_id: ProcessId,
 ) -> Option<ProcessId> {
@@ -276,23 +284,23 @@ pub(crate) fn window_manager_find_application(
         .map(|application| application.process_id)
 }
 
-pub(crate) fn window_manager_remove_application(
+pub(crate) fn stop_tracking_application(
     window_manager: &mut WindowManager,
     process_id: ProcessId,
 ) -> Option<Application> {
     window_manager.application.remove(&process_id)
 }
 
-pub(crate) fn window_manager_add_application(
+pub(crate) fn start_tracking_application(
     window_manager: &mut WindowManager,
     application: Application,
 ) {
     window_manager
         .application
-        .add(application.process_id, application);
+        .add_unless_key_already_present(application.process_id, application);
 }
 
-pub(crate) fn window_manager_find_application_windows(
+pub(crate) fn tracked_windows_of_application(
     window_manager: &mut WindowManager,
     process_id: ProcessId,
 ) -> Vec<WindowId> {
@@ -307,15 +315,15 @@ pub(crate) fn window_manager_find_application_windows(
     window_list
 }
 
-pub(crate) fn window_manager_init(window_manager: &mut WindowManager) {
+pub(crate) fn initialize_window_manager(window_manager: &mut WindowManager) {
     window_manager.system_element = CFRetained::into_raw(unsafe { AXUIElementCreateSystemWide() })
         .as_ptr()
         .cast_const();
     unsafe { AXUIElementSetMessagingTimeout(&*window_manager.system_element, 1.0) };
 
-    window_manager.ffm_mode = FfmMode::Disabled;
-    window_manager.purify_mode = PurifyMode::Disabled;
-    window_manager.window_origin_mode = WindowOriginMode::Default;
+    window_manager.focus_follows_mouse_mode = FocusFollowsMouseMode::Disabled;
+    window_manager.shadow_removal_mode = ShadowRemovalMode::Never;
+    window_manager.window_origin_display_mode = WindowOriginDisplayMode::DisplayTheWindowOpenedOn;
     window_manager.enable_mff = false;
     window_manager.enable_window_opacity = false;
     window_manager.menubar_opacity = 1.0f32;
@@ -324,29 +332,30 @@ pub(crate) fn window_manager_init(window_manager: &mut WindowManager) {
     window_manager.window_opacity_duration = 0.0f32;
     window_manager.window_animation_duration = 0.0f32;
     window_manager.window_animation_easing = AnimationEasingType::EaseOutCirc;
-    window_manager.insert_feedback_color = rgba_color_from_hex(0xffd75f5f);
+    window_manager.insert_feedback_color = rgba_color_from_packed_argb(0xffd75f5f);
     window_manager.insert_feedback_color_follows_the_system_accent_color = true;
 
-    window_manager.application = Table::new(150, hash_wm_process_id);
-    window_manager.window = Table::new(150, hash_wm_window_id);
-    window_manager.managed_window = Table::new(150, hash_wm_window_id);
-    window_manager.window_lost_focused_event = Table::new(150, hash_wm_window_id);
-    window_manager.application_lost_front_switched_event = Table::new(150, hash_wm_process_id);
+    window_manager.application = Table::new(150, hash_process_id_for_table);
+    window_manager.window = Table::new(150, hash_window_id_for_table);
+    window_manager.managed_window = Table::new(150, hash_window_id_for_table);
+    window_manager.window_lost_focused_event = Table::new(150, hash_window_id_for_table);
+    window_manager.application_lost_front_switched_event =
+        Table::new(150, hash_process_id_for_table);
     window_manager.window_animator = Arc::new(WindowAnimator::new());
-    window_manager.insert_feedback = Table::new(150, hash_wm_window_id);
+    window_manager.insert_feedback = Table::new(150, hash_window_id_for_table);
 }
 
 #[cfg(test)]
-pub(crate) fn window_manager_tracking_nothing_with_its_initial_settings() -> WindowManager {
+pub(crate) fn create_window_manager_tracking_nothing_with_its_initial_settings() -> WindowManager {
     WindowManager {
         system_element: core::ptr::null(),
-        application: Table::new(150, hash_wm_process_id),
-        window: Table::new(150, hash_wm_window_id),
-        managed_window: Table::new(150, hash_wm_window_id),
-        window_lost_focused_event: Table::new(150, hash_wm_window_id),
-        application_lost_front_switched_event: Table::new(150, hash_wm_process_id),
+        application: Table::new(150, hash_process_id_for_table),
+        window: Table::new(150, hash_window_id_for_table),
+        managed_window: Table::new(150, hash_window_id_for_table),
+        window_lost_focused_event: Table::new(150, hash_window_id_for_table),
+        application_lost_front_switched_event: Table::new(150, hash_process_id_for_table),
         window_animator: Arc::new(WindowAnimator::new()),
-        insert_feedback: Table::new(150, hash_wm_window_id),
+        insert_feedback: Table::new(150, hash_window_id_for_table),
         rules: Vec::new(),
         applications_to_refresh: Vec::new(),
         focused_window_id: WindowId(0),
@@ -356,9 +365,9 @@ pub(crate) fn window_manager_tracking_nothing_with_its_initial_settings() -> Win
         },
         last_window_id: WindowId(0),
         enable_mff: false,
-        ffm_mode: FfmMode::Disabled,
-        purify_mode: PurifyMode::Disabled,
-        window_origin_mode: WindowOriginMode::Default,
+        focus_follows_mouse_mode: FocusFollowsMouseMode::Disabled,
+        shadow_removal_mode: ShadowRemovalMode::Never,
+        window_origin_display_mode: WindowOriginDisplayMode::DisplayTheWindowOpenedOn,
         enable_window_opacity: false,
         menubar_opacity: 1.0f32,
         active_window_opacity: 1.0f32,
@@ -366,7 +375,7 @@ pub(crate) fn window_manager_tracking_nothing_with_its_initial_settings() -> Win
         window_opacity_duration: 0.0f32,
         window_animation_duration: 0.0f32,
         window_animation_easing: AnimationEasingType::EaseOutCirc,
-        insert_feedback_color: rgba_color_from_hex(0xffd75f5f),
+        insert_feedback_color: rgba_color_from_packed_argb(0xffd75f5f),
         insert_feedback_color_follows_the_system_accent_color: true,
         scratchpad_window: Vec::new(),
     }

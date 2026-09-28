@@ -3,9 +3,9 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, OnceLock};
 
 use crate::ffi::accessibility::AXUIElement;
-use crate::ffi::core_foundation::SendCFRetained;
+use crate::ffi::core_foundation::CFRetainedAssumedSendAndSync;
 use crate::ffi::core_graphics::CGEvent;
-use crate::mouse::tap::MouseMod;
+use crate::mouse::tap::MouseModifier;
 use crate::process::model::Process;
 use crate::support::color::RgbaColor;
 use crate::support::handles::{DisplayId, ProcessId, SpaceId, WindowId};
@@ -16,7 +16,7 @@ pub(crate) enum Event {
     ApplicationFrontSwitched(Arc<Process>),
     ApplicationVisible(ProcessId),
     ApplicationHidden(ProcessId),
-    WindowCreated(SendCFRetained<AXUIElement>),
+    WindowCreated(CFRetainedAssumedSendAndSync<AXUIElement>),
     WindowDestroyed(WindowId),
     WindowFocused(WindowId),
     WindowMoved(WindowId),
@@ -24,10 +24,10 @@ pub(crate) enum Event {
     WindowMinimized(WindowId),
     WindowDeminimized(WindowId),
     WindowTitleChanged(WindowId),
-    SlsWindowOrdered(WindowId),
-    SlsWindowDestroyed(WindowId),
-    SlsSpaceCreated(SpaceId),
-    SlsSpaceDestroyed(SpaceId),
+    SkylightWindowOrdered(WindowId),
+    SkylightWindowDestroyed(WindowId),
+    SkylightSpaceCreated(SpaceId),
+    SkylightSpaceDestroyed(SpaceId),
     SpaceChanged,
     DisplayAdded(DisplayId),
     DisplayRemoved(DisplayId),
@@ -35,18 +35,18 @@ pub(crate) enum Event {
     DisplayResized(DisplayId),
     DisplayChanged,
     MouseDown {
-        event: SendCFRetained<CGEvent>,
-        event_modifier: MouseMod,
+        event: CFRetainedAssumedSendAndSync<CGEvent>,
+        event_modifier: MouseModifier,
     },
     MouseUp {
-        event: SendCFRetained<CGEvent>,
+        event: CFRetainedAssumedSendAndSync<CGEvent>,
     },
     MouseDragged {
-        event: SendCFRetained<CGEvent>,
+        event: CFRetainedAssumedSendAndSync<CGEvent>,
     },
     MouseMoved {
-        event: SendCFRetained<CGEvent>,
-        event_modifier: MouseMod,
+        event: CFRetainedAssumedSendAndSync<CGEvent>,
+        event_modifier: MouseModifier,
     },
     MissionControlShowAllWindows,
     MissionControlShowFrontWindows,
@@ -58,7 +58,7 @@ pub(crate) enum Event {
     MenuOpened(WindowId),
     MenuClosed,
     MenuBarHiddenChanged,
-    DockDidChangePref,
+    DockDidChangePreferences,
     SystemWoke,
     SystemAccentColorChanged(RgbaColor),
     InsertFeedbackFadeInStep,
@@ -67,13 +67,13 @@ pub(crate) enum Event {
 
 pub(crate) static EVENT_SENDER: OnceLock<Sender<Event>> = OnceLock::new();
 
-pub(crate) fn event_loop_post(event: Event) {
+pub(crate) fn post_event_to_event_loop(event: Event) {
     if let Some(event_sender) = EVENT_SENDER.get() {
         let _ = event_sender.send(event);
     }
 }
 
-pub(crate) fn event_loop_begin() -> Receiver<Event> {
+pub(crate) fn create_event_loop_channel_storing_its_sender() -> Receiver<Event> {
     let (event_sender, event_receiver) = channel::<Event>();
     let _ = EVENT_SENDER.set(event_sender);
 

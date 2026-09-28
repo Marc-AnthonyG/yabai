@@ -7,12 +7,14 @@ use crate::ffi::carbon_events::{
     kEventAppTerminated, kEventClassApplication, noErr,
 };
 use crate::ffi::carbon_process::{GetNextProcess, GetProcessPID, ProcessSerialNumber, kNoProcess};
-use crate::ffi::libsystem::process_is_being_debugged;
+use crate::ffi::libsystem::is_process_being_debugged;
 use crate::ffi::skylight::_SLPSGetFrontProcess;
-use crate::notifications::process::process_handler;
-use crate::process::model::{Process, process_create, process_pid_for_psn};
+use crate::notifications::process::handle_carbon_application_event_callback;
+use crate::process::model::{
+    Process, create_process_unless_it_is_ignored, query_process_id_of_process_serial_number,
+};
 use crate::support::handles::ProcessId;
-use crate::support::strings::string_equals;
+use crate::support::strings::are_both_strings_present_and_equal;
 use crate::support::table::Table;
 
 pub(crate) struct ProcessManager {
@@ -29,30 +31,31 @@ pub(crate) fn hash_process_serial_number(key: &ProcessSerialNumber) -> u64 {
     key.low_long_of_psn as u64
 }
 
-pub(crate) fn process_manager_add_running_processes(process_manager: &mut ProcessManager) {
+pub(crate) fn add_every_running_process_to_the_process_table(process_manager: &mut ProcessManager) {
     let mut process_serial_number = ProcessSerialNumber {
         high_long_of_psn: kNoProcess,
         low_long_of_psn: kNoProcess,
     };
     while unsafe { GetNextProcess(&mut process_serial_number) } == noErr as i16 {
-        let process_id = process_pid_for_psn(process_serial_number);
-        if process_is_being_debugged(process_id.0) {
+        let process_id = query_process_id_of_process_serial_number(process_serial_number);
+        if is_process_being_debugged(process_id.0) {
             crate::debug!(
                 "{}: process with pid {} is running under a debugger! ignoring..\n",
-                "process_manager_add_running_processes",
+                "add_every_running_process_to_the_process_table",
                 process_id.0
             );
             continue;
         }
 
-        let Some(process) = process_create(process_serial_number, process_id) else {
+        let Some(process) = create_process_unless_it_is_ignored(process_serial_number, process_id)
+        else {
             continue;
         };
 
-        if string_equals(Some(&process.name), Some("Finder")) {
+        if are_both_strings_present_and_equal(Some(&process.name), Some("Finder")) {
             crate::debug!(
                 "{}: {} ({}) was found! caching psn..\n",
-                "process_manager_add_running_processes",
+                "add_every_running_process_to_the_process_table",
                 process.name,
                 process.process_id.0
             );
@@ -64,13 +67,15 @@ pub(crate) fn process_manager_add_running_processes(process_manager: &mut Proces
             .unwrap()
             .lock()
             .unwrap()
-            .add(process.process_serial_number, process);
+            .add_unless_key_already_present(process.process_serial_number, process);
     }
 }
 
-pub(crate) fn process_manager_begin(process_manager: &mut ProcessManager) -> bool {
+pub(crate) fn start_process_manager_observing_application_events(
+    process_manager: &mut ProcessManager,
+) -> bool {
     let target = unsafe { GetApplicationEventTarget() };
-    let handler = process_handler as EventHandlerUPP;
+    let handler = handle_carbon_application_event_callback as EventHandlerUPP;
     let event_type: [EventTypeSpec; 3] = [
         EventTypeSpec {
             event_class: kEventClassApplication,
@@ -87,7 +92,7 @@ pub(crate) fn process_manager_begin(process_manager: &mut ProcessManager) -> boo
     ];
     PROCESS_TABLE.get_or_init(|| Mutex::new(Table::new(125, hash_process_serial_number)));
 
-    objc2::rc::autoreleasepool(|_| process_manager_add_running_processes(process_manager));
+    objc2::rc::autoreleasepool(|_| add_every_running_process_to_the_process_table(process_manager));
 
     let mut front_process_serial_number = ProcessSerialNumber {
         high_long_of_psn: 0,
@@ -118,7 +123,7 @@ pub(crate) fn process_manager_begin(process_manager: &mut ProcessManager) -> boo
     installed
 }
 
-pub(crate) fn process_manager_find_process(
+pub(crate) fn process_with_process_serial_number(
     process_serial_number: &ProcessSerialNumber,
 ) -> Option<Arc<Process>> {
     PROCESS_TABLE

@@ -37,7 +37,10 @@ pub enum RegexMatch {
     No = 2,
 }
 
-pub fn regex_match(regex: Option<&PosixRegex>, subject: &std::ffi::CStr) -> RegexMatch {
+pub fn match_subject_against_optional_regex(
+    regex: Option<&PosixRegex>,
+    subject: &std::ffi::CStr,
+) -> RegexMatch {
     match regex {
         None => RegexMatch::Undefined,
         Some(regex) => {
@@ -54,7 +57,7 @@ pub fn regex_match(regex: Option<&PosixRegex>, subject: &std::ffi::CStr) -> Rege
 mod tests {
     use std::ffi::CStr;
 
-    use super::{PosixRegex, RegexMatch, regex_match};
+    use super::{PosixRegex, RegexMatch, match_subject_against_optional_regex};
 
     fn compile_or_panic(pattern: &CStr) -> PosixRegex {
         PosixRegex::compile(pattern)
@@ -66,26 +69,29 @@ mod tests {
     }
 
     #[test]
-    fn regex_match_without_a_regex_is_undefined() {
-        assert!(regex_match(None, c"Safari") == RegexMatch::Undefined);
+    fn match_subject_against_optional_regex_without_a_regex_is_undefined() {
+        assert!(match_subject_against_optional_regex(None, c"Safari") == RegexMatch::Undefined);
     }
 
     #[test]
-    fn regex_match_is_yes_when_the_subject_matches() {
+    fn match_subject_against_optional_regex_is_yes_when_the_subject_matches() {
         let regex = compile_or_panic(c"^Safari$");
 
-        assert!(regex_match(Some(&regex), c"Safari") == RegexMatch::Yes);
+        assert!(match_subject_against_optional_regex(Some(&regex), c"Safari") == RegexMatch::Yes);
     }
 
     #[test]
-    fn regex_match_is_no_when_the_subject_does_not_match() {
+    fn match_subject_against_optional_regex_is_no_when_the_subject_does_not_match() {
         let regex = compile_or_panic(c"^Safari$");
 
-        assert!(regex_match(Some(&regex), c"Safari Technology Preview") == RegexMatch::No);
+        assert!(
+            match_subject_against_optional_regex(Some(&regex), c"Safari Technology Preview")
+                == RegexMatch::No
+        );
     }
 
     #[test]
-    fn regex_match_results_keep_the_c_values() {
+    fn match_subject_against_optional_regex_results_keep_the_c_values() {
         assert_eq!(RegexMatch::Undefined as i32, 0);
         assert_eq!(RegexMatch::Yes as i32, 1);
         assert_eq!(RegexMatch::No as i32, 2);

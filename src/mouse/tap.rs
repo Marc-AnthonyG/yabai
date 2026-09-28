@@ -4,14 +4,14 @@ use crate::ffi::core_foundation::{CFMachPort, CFRunLoopSource};
 use crate::ffi::core_graphics::CGEvent;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) struct MouseMod(pub u8);
+pub(crate) struct MouseModifier(pub u8);
 
-impl MouseMod {
-    pub(crate) const ALT: MouseMod = MouseMod(0x02);
-    pub(crate) const SHIFT: MouseMod = MouseMod(0x04);
-    pub(crate) const CMD: MouseMod = MouseMod(0x08);
-    pub(crate) const CTRL: MouseMod = MouseMod(0x10);
-    pub(crate) const FN: MouseMod = MouseMod(0x20);
+impl MouseModifier {
+    pub(crate) const ALT: MouseModifier = MouseModifier(0x02);
+    pub(crate) const SHIFT: MouseModifier = MouseModifier(0x04);
+    pub(crate) const COMMAND: MouseModifier = MouseModifier(0x08);
+    pub(crate) const CONTROL: MouseModifier = MouseModifier(0x10);
+    pub(crate) const FUNCTION: MouseModifier = MouseModifier(0x20);
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -67,7 +67,7 @@ impl MouseTapState {
 
 pub static MOUSE_TAP_STATE: MouseTapState = MouseTapState::new();
 
-pub(crate) static MOUSE_MOD_STR: [Option<&str>; 33] = [
+pub(crate) static MOUSE_MODIFIER_NAMES: [Option<&str>; 33] = [
     None,
     Some("none"),
     Some("alt"),
@@ -103,12 +103,12 @@ pub(crate) static MOUSE_MOD_STR: [Option<&str>; 33] = [
     Some("fn"),
 ];
 
-pub(crate) static MOUSE_MODE_STR: [&str; 5] = ["none", "move", "resize", "swap", "stack"];
+pub(crate) static MOUSE_MODE_NAMES: [&str; 5] = ["none", "move", "resize", "swap", "stack"];
 
-pub(crate) fn mouse_state_init() {
+pub(crate) fn set_default_mouse_modifier_and_actions() {
     MOUSE_TAP_STATE
         .modifier
-        .store(MouseMod::FN.0, Ordering::Relaxed);
+        .store(MouseModifier::FUNCTION.0, Ordering::Relaxed);
     MOUSE_TAP_STATE
         .action1
         .store(MouseMode::Move as u8, Ordering::Relaxed);

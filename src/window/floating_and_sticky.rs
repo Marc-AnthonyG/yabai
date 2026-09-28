@@ -1,22 +1,23 @@
 use crate::display::manager::DisplayManager;
 use crate::mouse::drag::MouseDragState;
-use crate::scripting_addition::client::scripting_addition_set_sticky;
-use crate::space::focus::space_manager_active_space;
+use crate::scripting_addition::client::set_window_sticky_through_scripting_addition;
+use crate::space::focus::query_current_space_of_the_focused_display;
 use crate::space::manager::SpaceManager;
-use crate::space::tiling::{space_manager_tile_window_on_space, space_manager_untile_window};
+use crate::space::tiling::{tile_window_on_space, untile_window_from_view_of_space};
 use crate::support::handles::WindowId;
 use crate::window::manager::{
-    WindowManager, window_manager_add_managed_window, window_manager_find_managed_window,
-    window_manager_is_window_eligible, window_manager_remove_managed_window,
-    window_manager_should_manage_window,
+    WindowManager, forget_managed_window, is_window_eligible_for_management,
+    record_managed_window_on_space_updating_its_shadow, should_window_be_managed,
+    space_managing_window,
 };
 use crate::window::model::{
-    WindowFlag, WindowRuleFlag, window_can_move, window_check_flag, window_check_rule_flag,
-    window_clear_flag, window_is_standard, window_level_is_standard, window_set_flag,
+    WindowFlag, WindowRuleFlag, clear_window_flag, is_window_a_standard_window,
+    is_window_at_normal_window_level, is_window_flag_set, is_window_movable,
+    is_window_rule_flag_set, set_window_flag,
 };
-use crate::window::shadow::window_manager_purify_window;
+use crate::window::shadow::apply_shadow_removal_mode_to_window;
 
-pub(crate) fn window_manager_make_window_floating(
+pub(crate) fn set_whether_window_floats(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     window_id: WindowId,
@@ -25,7 +26,7 @@ pub(crate) fn window_manager_make_window_floating(
     display_manager: &mut DisplayManager,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    if !window_manager_is_window_eligible(window_id, window_manager) {
+    if !is_window_eligible_for_management(window_id, window_manager) {
         return;
     }
 
@@ -33,20 +34,20 @@ pub(crate) fn window_manager_make_window_floating(
         let Some(window) = window_manager.window.find(&window_id) else {
             return;
         };
-        if !window_is_standard(window)
-            || !window_level_is_standard(window)
-            || !window_can_move(window)
+        if !is_window_a_standard_window(window)
+            || !is_window_at_normal_window_level(window)
+            || !is_window_movable(window)
         {
-            if !window_check_rule_flag(window, WindowRuleFlag::MANAGED) {
+            if !is_window_rule_flag_set(window, WindowRuleFlag::MANAGE_FORCED_ON) {
                 return;
             }
         }
     }
 
     if should_float {
-        let view = window_manager_find_managed_window(window_manager, window_id);
+        let view = space_managing_window(window_manager, window_id);
         if let Some(space_id) = view {
-            space_manager_untile_window(
+            untile_window_from_view_of_space(
                 space_manager,
                 space_id,
                 window_id,
@@ -54,36 +55,41 @@ pub(crate) fn window_manager_make_window_floating(
                 window_manager,
                 mouse_drag_state,
             );
-            window_manager_remove_managed_window(window_manager, window_id);
-            window_manager_purify_window(window_manager, window_id);
+            forget_managed_window(window_manager, window_id);
+            apply_shadow_removal_mode_to_window(window_manager, window_id);
         }
         if let Some(window) = window_manager.window.find_mut(&window_id) {
-            window_set_flag(window, WindowFlag::FLOAT);
+            set_window_flag(window, WindowFlag::FLOATING);
         }
     } else {
         let Some(window) = window_manager.window.find_mut(&window_id) else {
             return;
         };
-        window_clear_flag(window, WindowFlag::FLOAT);
+        clear_window_flag(window, WindowFlag::FLOATING);
 
-        if !window_check_flag(window, WindowFlag::STICKY) {
-            if (window_manager_should_manage_window(window_id, window_manager))
-                && (window_manager_find_managed_window(window_manager, window_id).is_none())
+        if !is_window_flag_set(window, WindowFlag::STICKY) {
+            if (should_window_be_managed(window_id, window_manager))
+                && (space_managing_window(window_manager, window_id).is_none())
             {
-                let view = space_manager_tile_window_on_space(
+                let view = tile_window_on_space(
                     space_manager,
                     window_id,
-                    space_manager_active_space(window_manager),
+                    query_current_space_of_the_focused_display(window_manager),
                     display_manager,
                     window_manager,
                 );
-                window_manager_add_managed_window(window_manager, window_id, space_manager, view);
+                record_managed_window_on_space_updating_its_shadow(
+                    window_manager,
+                    window_id,
+                    space_manager,
+                    view,
+                );
             }
         }
     }
 }
 
-pub(crate) fn window_manager_make_window_sticky(
+pub(crate) fn set_whether_window_is_sticky(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     window_id: WindowId,
@@ -91,15 +97,15 @@ pub(crate) fn window_manager_make_window_sticky(
     display_manager: &mut DisplayManager,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    if !window_manager_is_window_eligible(window_id, window_manager) {
+    if !is_window_eligible_for_management(window_id, window_manager) {
         return;
     }
 
     if should_sticky {
-        if scripting_addition_set_sticky(window_id, true) {
-            let view = window_manager_find_managed_window(window_manager, window_id);
+        if set_window_sticky_through_scripting_addition(window_id, true) {
+            let view = space_managing_window(window_manager, window_id);
             if let Some(space_id) = view {
-                space_manager_untile_window(
+                untile_window_from_view_of_space(
                     space_manager,
                     space_id,
                     window_id,
@@ -107,32 +113,32 @@ pub(crate) fn window_manager_make_window_sticky(
                     window_manager,
                     mouse_drag_state,
                 );
-                window_manager_remove_managed_window(window_manager, window_id);
-                window_manager_purify_window(window_manager, window_id);
+                forget_managed_window(window_manager, window_id);
+                apply_shadow_removal_mode_to_window(window_manager, window_id);
             }
             if let Some(window) = window_manager.window.find_mut(&window_id) {
-                window_set_flag(window, WindowFlag::STICKY);
+                set_window_flag(window, WindowFlag::STICKY);
             }
         }
     } else {
-        if scripting_addition_set_sticky(window_id, false) {
+        if set_window_sticky_through_scripting_addition(window_id, false) {
             let Some(window) = window_manager.window.find_mut(&window_id) else {
                 return;
             };
-            window_clear_flag(window, WindowFlag::STICKY);
+            clear_window_flag(window, WindowFlag::STICKY);
 
-            if !window_check_flag(window, WindowFlag::FLOAT) {
-                if (window_manager_should_manage_window(window_id, window_manager))
-                    && (window_manager_find_managed_window(window_manager, window_id).is_none())
+            if !is_window_flag_set(window, WindowFlag::FLOATING) {
+                if (should_window_be_managed(window_id, window_manager))
+                    && (space_managing_window(window_manager, window_id).is_none())
                 {
-                    let view = space_manager_tile_window_on_space(
+                    let view = tile_window_on_space(
                         space_manager,
                         window_id,
-                        space_manager_active_space(window_manager),
+                        query_current_space_of_the_focused_display(window_manager),
                         display_manager,
                         window_manager,
                     );
-                    window_manager_add_managed_window(
+                    record_managed_window_on_space_updating_its_shadow(
                         window_manager,
                         window_id,
                         space_manager,

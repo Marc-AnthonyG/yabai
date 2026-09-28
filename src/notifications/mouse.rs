@@ -4,21 +4,23 @@ use core::ffi::c_void;
 use core::ptr::{NonNull, null_mut};
 use std::sync::atomic::Ordering;
 
-use crate::event::queue::{Event, event_loop_post};
-use crate::ffi::carbon_core::read_os_timer;
+use crate::event::queue::{Event, post_event_to_event_loop};
+use crate::ffi::carbon_core::read_system_clock_in_nanoseconds;
 use crate::ffi::core_foundation::{
-    CFMachPortCreateRunLoopSource, CFMachPortInvalidate, CFRetained, CFRunLoopAddSource,
-    CFRunLoopGetMain, CFRunLoopRemoveSource, SendCFRetained, kCFRunLoopCommonModes,
+    CFMachPortCreateRunLoopSource, CFMachPortInvalidate, CFRetained, CFRetainedAssumedSendAndSync,
+    CFRunLoopAddSource, CFRunLoopGetMain, CFRunLoopRemoveSource, kCFRunLoopCommonModes,
 };
 use crate::ffi::core_graphics::{
     CGEvent, CGEventField, CGEventFlags, CGEventGetFlags, CGEventGetIntegerValueField, CGEventMask,
     CGEventTapCreate, CGEventTapEnable, CGEventTapIsEnabled, CGEventTapPostEvent, CGEventTapProxy,
     CGEventType, kCGEventTapOptionDefault, kCGHIDEventTap, kCGHeadInsertEventTap,
 };
-use crate::mouse::tap::{MOUSE_TAP_STATE, MouseMod, MouseTapState};
-use crate::state::process_wide::{LAST_GESTURE_TIME, PENDING_GESTURE};
+use crate::mouse::tap::{MOUSE_TAP_STATE, MouseModifier, MouseTapState};
+use crate::state::process_wide::{
+    DOCK_SWIPE_GESTURE_IS_IN_PROGRESS, LAST_DOCK_SWIPE_GESTURE_END_TIME,
+};
 
-pub(crate) const MOUSE_EVENT_MASK_FFM: u32 = (1 << CGEventType::MouseMoved.0)
+pub(crate) const MOUSE_EVENT_MASK_FOR_FOCUS_FOLLOWS_MOUSE: u32 = (1 << CGEventType::MouseMoved.0)
     | (1 << CGEventType::LeftMouseDown.0)
     | (1 << CGEventType::LeftMouseUp.0)
     | (1 << CGEventType::LeftMouseDragged.0)
@@ -27,7 +29,7 @@ pub(crate) const MOUSE_EVENT_MASK_FFM: u32 = (1 << CGEventType::MouseMoved.0)
     | (1 << CGEventType::RightMouseDragged.0)
     | (1 << /* kCGSEventDockControl */ 30);
 
-pub(crate) const MOUSE_EVENT_MASK: u32 = (1 << CGEventType::LeftMouseDown.0)
+pub(crate) const MOUSE_EVENT_MASK_WITHOUT_MOUSE_MOVED: u32 = (1 << CGEventType::LeftMouseDown.0)
     | (1 << CGEventType::LeftMouseUp.0)
     | (1 << CGEventType::LeftMouseDragged.0)
     | (1 << CGEventType::RightMouseDown.0)
@@ -35,29 +37,39 @@ pub(crate) const MOUSE_EVENT_MASK: u32 = (1 << CGEventType::LeftMouseDown.0)
     | (1 << CGEventType::RightMouseDragged.0)
     | (1 << /* kCGSEventDockControl */ 30);
 
-pub(crate) fn mouse_mod_from_cgflags(core_graphics_event_flags: u32) -> MouseMod {
+pub(crate) fn mouse_modifier_from_core_graphics_event_flags(
+    core_graphics_event_flags: u32,
+) -> MouseModifier {
     let mut flags: u8 = 0;
 
-    if (core_graphics_event_flags as u64 & CGEventFlags::MaskAlternate.0) == CGEventFlags::MaskAlternate.0 {
-        flags |= MouseMod::ALT.0;
+    if (core_graphics_event_flags as u64 & CGEventFlags::MaskAlternate.0)
+        == CGEventFlags::MaskAlternate.0
+    {
+        flags |= MouseModifier::ALT.0;
     }
     if (core_graphics_event_flags as u64 & CGEventFlags::MaskShift.0) == CGEventFlags::MaskShift.0 {
-        flags |= MouseMod::SHIFT.0;
+        flags |= MouseModifier::SHIFT.0;
     }
-    if (core_graphics_event_flags as u64 & CGEventFlags::MaskCommand.0) == CGEventFlags::MaskCommand.0 {
-        flags |= MouseMod::CMD.0;
+    if (core_graphics_event_flags as u64 & CGEventFlags::MaskCommand.0)
+        == CGEventFlags::MaskCommand.0
+    {
+        flags |= MouseModifier::COMMAND.0;
     }
-    if (core_graphics_event_flags as u64 & CGEventFlags::MaskControl.0) == CGEventFlags::MaskControl.0 {
-        flags |= MouseMod::CTRL.0;
+    if (core_graphics_event_flags as u64 & CGEventFlags::MaskControl.0)
+        == CGEventFlags::MaskControl.0
+    {
+        flags |= MouseModifier::CONTROL.0;
     }
-    if (core_graphics_event_flags as u64 & CGEventFlags::MaskSecondaryFn.0) == CGEventFlags::MaskSecondaryFn.0 {
-        flags |= MouseMod::FN.0;
+    if (core_graphics_event_flags as u64 & CGEventFlags::MaskSecondaryFn.0)
+        == CGEventFlags::MaskSecondaryFn.0
+    {
+        flags |= MouseModifier::FUNCTION.0;
     }
 
-    MouseMod(flags)
+    MouseModifier(flags)
 }
 
-pub(crate) unsafe extern "C-unwind" fn mouse_handler(
+pub(crate) unsafe extern "C-unwind" fn handle_mouse_event_tap_callback(
     proxy: CGEventTapProxy,
     event_type: CGEventType,
     event: NonNull<CGEvent>,
@@ -73,10 +85,11 @@ pub(crate) unsafe extern "C-unwind" fn mouse_handler(
             }
         }
         CGEventType::LeftMouseDown | CGEventType::RightMouseDown => {
-            let event_modifier =
-                mouse_mod_from_cgflags(CGEventGetFlags(Some(unsafe { event.as_ref() })).0 as u32);
-            event_loop_post(Event::MouseDown {
-                event: SendCFRetained(unsafe { CFRetained::retain(event) }),
+            let event_modifier = mouse_modifier_from_core_graphics_event_flags(
+                CGEventGetFlags(Some(unsafe { event.as_ref() })).0 as u32,
+            );
+            post_event_to_event_loop(Event::MouseDown {
+                event: CFRetainedAssumedSendAndSync(unsafe { CFRetained::retain(event) }),
                 event_modifier,
             });
 
@@ -95,8 +108,8 @@ pub(crate) unsafe extern "C-unwind" fn mouse_handler(
             }
         }
         CGEventType::LeftMouseUp | CGEventType::RightMouseUp => {
-            event_loop_post(Event::MouseUp {
-                event: SendCFRetained(unsafe { CFRetained::retain(event) }),
+            post_event_to_event_loop(Event::MouseUp {
+                event: CFRetainedAssumedSendAndSync(unsafe { CFRetained::retain(event) }),
             });
 
             if mouse_state.consume_mouse_click.load(Ordering::Relaxed) {
@@ -120,19 +133,20 @@ pub(crate) unsafe extern "C-unwind" fn mouse_handler(
         }
         CGEventType::LeftMouseDragged | CGEventType::RightMouseDragged => {
             mouse_state.drag_detected.store(true, Ordering::Relaxed);
-            event_loop_post(Event::MouseDragged {
-                event: SendCFRetained(unsafe { CFRetained::retain(event) }),
+            post_event_to_event_loop(Event::MouseDragged {
+                event: CFRetainedAssumedSendAndSync(unsafe { CFRetained::retain(event) }),
             });
         }
         CGEventType::MouseMoved => {
-            let event_modifier =
-                mouse_mod_from_cgflags(CGEventGetFlags(Some(unsafe { event.as_ref() })).0 as u32);
+            let event_modifier = mouse_modifier_from_core_graphics_event_flags(
+                CGEventGetFlags(Some(unsafe { event.as_ref() })).0 as u32,
+            );
             if event_modifier.0 == mouse_state.modifier.load(Ordering::Relaxed) {
                 return event.as_ptr();
             }
 
-            event_loop_post(Event::MouseMoved {
-                event: SendCFRetained(unsafe { CFRetained::retain(event) }),
+            post_event_to_event_loop(Event::MouseMoved {
+                event: CFRetainedAssumedSendAndSync(unsafe { CFRetained::retain(event) }),
                 event_modifier,
             });
         }
@@ -152,12 +166,13 @@ pub(crate) unsafe extern "C-unwind" fn mouse_handler(
                         CGEventField(/* kCGEventGesturePhase */ 132),
                     ) as i32;
                     if phase == /* kCGSGesturePhaseBegan */ 1 {
-                        PENDING_GESTURE.store(true, Ordering::Release);
+                        DOCK_SWIPE_GESTURE_IS_IN_PROGRESS.store(true, Ordering::Release);
                     } else if phase == /* kCGSGesturePhaseEnded */ 4
                         || phase == /* kCGSGesturePhaseCancelled */ 8
                     {
-                        PENDING_GESTURE.store(false, Ordering::Release);
-                        LAST_GESTURE_TIME.store(read_os_timer(), Ordering::Release);
+                        DOCK_SWIPE_GESTURE_IS_IN_PROGRESS.store(false, Ordering::Release);
+                        LAST_DOCK_SWIPE_GESTURE_END_TIME
+                            .store(read_system_clock_in_nanoseconds(), Ordering::Release);
                     }
                 }
             }
@@ -168,7 +183,7 @@ pub(crate) unsafe extern "C-unwind" fn mouse_handler(
     event.as_ptr()
 }
 
-pub(crate) fn mouse_handler_begin(mask: u32) -> bool {
+pub(crate) fn start_mouse_event_tap(mask: u32) -> bool {
     let mouse_state = &MOUSE_TAP_STATE;
 
     if !mouse_state.handle.load(Ordering::Relaxed).is_null() {
@@ -181,7 +196,7 @@ pub(crate) fn mouse_handler_begin(mask: u32) -> bool {
             kCGHeadInsertEventTap,
             kCGEventTapOptionDefault,
             mask as CGEventMask,
-            Some(mouse_handler),
+            Some(handle_mouse_event_tap_callback),
             mouse_state as *const MouseTapState as *mut c_void,
         )
     };
@@ -214,7 +229,7 @@ pub(crate) fn mouse_handler_begin(mask: u32) -> bool {
     true
 }
 
-pub(crate) fn mouse_handler_end() {
+pub(crate) fn stop_mouse_event_tap() {
     let mouse_state = &MOUSE_TAP_STATE;
 
     let Some(handle) = NonNull::new(mouse_state.handle.load(Ordering::Relaxed)) else {

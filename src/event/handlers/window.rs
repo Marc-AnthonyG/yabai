@@ -1,60 +1,74 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use crate::application::model::application_is_frontmost;
+use crate::application::model::is_application_frontmost;
 use crate::debug;
 use crate::display::manager::DisplayManager;
-use crate::event::queue::{Event, event_loop_post};
-use crate::ffi::accessibility::{AXUIElement, AXUIElementRef, ax_window_id, ax_window_pid};
-use crate::ffi::core_foundation::{CFRetained, SendCFRetained};
+use crate::event::queue::{Event, post_event_to_event_loop};
+use crate::ffi::accessibility::{
+    AXUIElement, AXUIElementRef, read_process_id_from_accessibility_element_memory,
+    read_window_id_of_accessibility_element,
+};
+use crate::ffi::core_foundation::{CFRetained, CFRetainedAssumedSendAndSync};
 use crate::ffi::core_graphics::{CGPointEqualToPoint, CGRectEqualToRect};
 use crate::ffi::skylight::{SLSOrderWindow, SLSSpaceSetFrontPSN};
-use crate::layout::area::ax_diff;
+use crate::layout::area::is_difference_beyond_accessibility_rounding;
 use crate::layout::settings::ViewFlag;
-use crate::layout::tree::{view_find_window_node, window_node_flush};
+use crate::layout::tree::{leaf_holding_window, move_windows_below_node_into_their_areas};
 use crate::mouse::drag::MouseDragState;
 use crate::mouse::tap::MouseMode;
-use crate::notifications::window::{update_window_notifications, window_unobserve};
+use crate::notifications::window::{
+    request_skylight_notifications_for_windows_that_need_them, stop_observing_window_notifications,
+};
 use crate::process::manager::ProcessManager;
 use crate::signal::definition::{SIGNAL_TYPE_COUNT, Signal, SignalType};
-use crate::signal::queue::{PendingSignal, SignalContext, event_signal_push};
-use crate::space::focus::{space_manager_active_space, space_manager_focus_space_using_gesture};
-use crate::space::lookup::space_manager_cursor_space;
+use crate::signal::queue::{
+    PendingSignal, SignalContext, queue_pending_signal_for_its_subscribers,
+};
+use crate::space::focus::{
+    focus_space_with_synthesized_dock_swipes, query_current_space_of_the_focused_display,
+};
+use crate::space::lookup::query_current_space_of_display_under_the_cursor;
 use crate::space::managed_space::{
-    space_display_id, space_is_visible, space_manager_is_window_on_space,
+    is_space_visible_on_its_display, is_window_on_space, query_display_holding_space,
 };
 use crate::space::manager::SpaceManager;
 use crate::space::tiling::{
-    space_manager_tile_window_on_space, space_manager_tile_window_on_space_with_insertion_point,
-    space_manager_untile_window,
+    tile_window_on_space, tile_window_on_space_preferring_insertion_point,
+    untile_window_from_view_of_space,
 };
 use crate::state::mission_control_mode::MissionControlMode;
-use crate::state::process_wide::{CONNECTION, PENDING_WINDOW_FOCUS};
+use crate::state::process_wide::{SKYLIGHT_CONNECTION_ID, WINDOW_FOCUS_NOTIFICATION_IS_PENDING};
 use crate::support::handles::{ProcessId, WindowId};
-use crate::support::log::or_null;
-use crate::support::macos_version::{workspace_is_macos_sequoia, workspace_is_macos_tahoe};
-use crate::window::discovery::window_manager_create_and_add_window;
-use crate::window::focus::window_did_receive_focus;
-use crate::window::fullscreen::window_manager_wait_for_native_fullscreen_transition;
+use crate::support::log::text_or_printf_null_placeholder;
+use crate::support::macos_version::{is_running_on_macos_sequoia, is_running_on_macos_tahoe};
+use crate::window::discovery::track_newly_discovered_window_applying_its_rules;
+use crate::window::focus::respond_to_window_receiving_focus;
+use crate::window::fullscreen::wait_until_native_fullscreen_transition_finishes;
 use crate::window::manager::{
-    WindowManager, WindowOriginMode, window_manager_add_lost_focused_event,
-    window_manager_add_managed_window, window_manager_find_application,
-    window_manager_find_lost_focused_event, window_manager_find_managed_window,
-    window_manager_find_window, window_manager_is_window_eligible,
-    window_manager_remove_lost_focused_event, window_manager_remove_managed_window,
-    window_manager_remove_window, window_manager_should_manage_window,
+    WindowManager, WindowOriginDisplayMode,
+    forget_focused_event_that_arrived_before_window_was_tracked, forget_managed_window,
+    has_focused_event_arrived_before_window_was_tracked, is_window_eligible_for_management,
+    record_focused_event_that_arrived_before_window_was_tracked,
+    record_managed_window_on_space_updating_its_shadow, should_window_be_managed,
+    space_managing_window, stop_tracking_window, tracked_application_with_process_id,
+    tracked_window_with_id,
 };
 use crate::window::model::{
-    WindowFlag, window_ax_can_move, window_ax_can_resize, window_ax_frame, window_ax_origin,
-    window_ax_role, window_ax_subrole, window_check_flag, window_clear_flag, window_destroy,
-    window_is_fullscreen, window_set_flag, window_space, window_title,
+    WindowFlag, can_window_be_moved_through_accessibility,
+    can_window_be_resized_through_accessibility, clear_window_flag,
+    copy_window_role_through_accessibility, copy_window_subrole_through_accessibility,
+    copy_window_title_through_accessibility, destroy_window_releasing_its_accessibility_element,
+    is_window_flag_set, is_window_in_native_fullscreen_according_to_accessibility,
+    query_space_holding_window, read_window_frame_through_accessibility,
+    read_window_origin_through_accessibility, set_window_flag,
 };
 use crate::window::rule::RuleFlag;
-use crate::window::scratchpad::window_manager_remove_scratchpad_for_window;
-use crate::window::shadow::window_manager_purify_window;
+use crate::window::scratchpad::remove_window_from_its_scratchpad;
+use crate::window::shadow::apply_shadow_removal_mode_to_window;
 
-pub(crate) fn event_handler_window_created(
-    element_ref: SendCFRetained<AXUIElement>,
+pub(crate) fn handle_window_created_event(
+    element_ref: CFRetainedAssumedSendAndSync<AXUIElement>,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
     process_manager: &mut ProcessManager,
     display_manager: &mut DisplayManager,
@@ -64,29 +78,32 @@ pub(crate) fn event_handler_window_created(
     mouse_drag_state: &mut MouseDragState,
     mission_control_mode: &mut MissionControlMode,
 ) {
-    let window_id = WindowId(ax_window_id(element_ref.as_ref()));
+    let window_id = WindowId(read_window_id_of_accessibility_element(
+        element_ref.as_ref(),
+    ));
     if window_id.0 == 0 {
         return;
     }
 
-    let existing_window = window_manager_find_window(window_manager, window_id);
+    let existing_window = tracked_window_with_id(window_manager, window_id);
     if existing_window.is_some() {
         return;
     }
 
-    let window_process_id =
-        ProcessId(unsafe { ax_window_pid(element_ref.as_ref() as *const AXUIElement) });
+    let window_process_id = ProcessId(unsafe {
+        read_process_id_from_accessibility_element_memory(element_ref.as_ref() as *const AXUIElement)
+    });
     if window_process_id.0 == 0 {
         return;
     }
 
-    let application = window_manager_find_application(window_manager, window_process_id);
+    let application = tracked_application_with_process_id(window_manager, window_process_id);
     let Some(application) = application else {
         return;
     };
 
     let window_ref: AXUIElementRef = CFRetained::into_raw(element_ref.0).as_ptr();
-    let window = window_manager_create_and_add_window(
+    let window = track_newly_discovered_window_applying_its_rules(
         space_manager,
         window_manager,
         application,
@@ -105,7 +122,8 @@ pub(crate) fn event_handler_window_created(
     let mut rule_len = window_manager.rules.len() as i32;
     let mut index: i32 = 0;
     while index < rule_len {
-        if RuleFlag(window_manager.rules[index as usize].flags).contains(RuleFlag::ONE_SHOT_REMOVE)
+        if RuleFlag(window_manager.rules[index as usize].flags)
+            .contains(RuleFlag::ONE_SHOT_DUE_FOR_REMOVAL)
         {
             window_manager.rules.swap_remove(index as usize);
             index -= 1;
@@ -114,33 +132,42 @@ pub(crate) fn event_handler_window_created(
         index += 1;
     }
 
-    if window_manager_should_manage_window(window, window_manager)
-        && window_manager_find_managed_window(window_manager, window).is_none()
+    if should_window_be_managed(window, window_manager)
+        && space_managing_window(window_manager, window).is_none()
     {
         let space_id;
 
-        if window_manager.window_origin_mode == WindowOriginMode::Default {
-            space_id = window_space(window);
-        } else if window_manager.window_origin_mode == WindowOriginMode::Focused {
+        if window_manager.window_origin_display_mode
+            == WindowOriginDisplayMode::DisplayTheWindowOpenedOn
+        {
+            space_id = query_space_holding_window(window);
+        } else if window_manager.window_origin_display_mode
+            == WindowOriginDisplayMode::FocusedDisplay
+        {
             space_id = space_manager.current_space_id;
         } else
         /* if (g_window_manager.window_origin_mode == WINDOW_ORIGIN_CURSOR) */
         {
-            space_id = space_manager_cursor_space();
+            space_id = query_current_space_of_display_under_the_cursor();
         }
 
-        let view = space_manager_tile_window_on_space(
+        let view = tile_window_on_space(
             space_manager,
             window,
             space_id,
             display_manager,
             window_manager,
         );
-        window_manager_add_managed_window(window_manager, window, space_manager, view);
+        record_managed_window_on_space_updating_its_shadow(
+            window_manager,
+            window,
+            space_manager,
+            view,
+        );
     }
 
-    if window_manager_is_window_eligible(window, window_manager) {
-        event_signal_push(
+    if is_window_eligible_for_management(window, window_manager) {
+        queue_pending_signal_for_its_subscribers(
             SignalType::WindowCreated,
             SignalContext::Window(window),
             signal_event,
@@ -152,12 +179,12 @@ pub(crate) fn event_handler_window_created(
         );
     }
 
-    if workspace_is_macos_sequoia() || workspace_is_macos_tahoe() {
-        update_window_notifications(window_manager, space_manager);
+    if is_running_on_macos_sequoia() || is_running_on_macos_tahoe() {
+        request_skylight_notifications_for_windows_that_need_them(window_manager, space_manager);
     }
 }
 
-pub(crate) fn event_handler_window_destroyed(
+pub(crate) fn handle_window_destroyed_event(
     window_id: WindowId,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
     process_manager: &mut ProcessManager,
@@ -167,12 +194,12 @@ pub(crate) fn event_handler_window_destroyed(
     signal_storage: &mut Vec<PendingSignal>,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    let window = match window_manager_find_window(window_manager, window_id) {
+    let window = match tracked_window_with_id(window_manager, window_id) {
         Some(window) if window.0 != 0 => window,
         _ => {
             debug!(
                 "{}: window has already been destroyed, ignoring event..\n",
-                "EVENT_HANDLER_WINDOW_DESTROYED"
+                "handle_window_destroyed_event"
             );
             return;
         }
@@ -186,14 +213,14 @@ pub(crate) fn event_handler_window_destroyed(
         .map(|application| Arc::clone(&application.name));
     debug!(
         "{}: {} {}\n",
-        "EVENT_HANDLER_WINDOW_DESTROYED",
+        "handle_window_destroyed_event",
         application_name.as_deref().unwrap_or("<unknown>"),
         window.0 as i32
     );
 
-    let view = window_manager_find_managed_window(window_manager, window);
+    let view = space_managing_window(window_manager, window);
     if let Some(view) = view {
-        space_manager_untile_window(
+        untile_window_from_view_of_space(
             space_manager,
             view,
             window,
@@ -201,7 +228,7 @@ pub(crate) fn event_handler_window_destroyed(
             window_manager,
             mouse_drag_state,
         );
-        window_manager_remove_managed_window(window_manager, window);
+        forget_managed_window(window_manager, window);
     }
 
     if mouse_drag_state.window_id == Some(window) {
@@ -216,7 +243,7 @@ pub(crate) fn event_handler_window_destroyed(
         .find(&window)
         .is_some_and(|window| window.is_eligible);
     if is_eligible {
-        event_signal_push(
+        queue_pending_signal_for_its_subscribers(
             SignalType::WindowDestroyed,
             SignalContext::Window(window),
             signal_event,
@@ -228,7 +255,7 @@ pub(crate) fn event_handler_window_destroyed(
         );
     }
 
-    window_manager_remove_scratchpad_for_window(
+    remove_window_from_its_scratchpad(
         window_manager,
         window,
         false,
@@ -237,18 +264,18 @@ pub(crate) fn event_handler_window_destroyed(
         space_manager,
         mouse_drag_state,
     );
-    let window = window_manager_remove_window(window_manager, window);
+    let window = stop_tracking_window(window_manager, window);
     if let Some(mut window) = window {
-        window_unobserve(&mut window, window_manager);
-        window_destroy(window);
+        stop_observing_window_notifications(&mut window, window_manager);
+        destroy_window_releasing_its_accessibility_element(window);
     }
 
-    if workspace_is_macos_sequoia() || workspace_is_macos_tahoe() {
-        update_window_notifications(window_manager, space_manager);
+    if is_running_on_macos_sequoia() || is_running_on_macos_tahoe() {
+        request_skylight_notifications_for_windows_that_need_them(window_manager, space_manager);
     }
 }
 
-pub(crate) fn event_handler_window_focused(
+pub(crate) fn handle_window_focused_event(
     window_id: WindowId,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
     process_manager: &mut ProcessManager,
@@ -258,11 +285,11 @@ pub(crate) fn event_handler_window_focused(
     signal_storage: &mut Vec<PendingSignal>,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    PENDING_WINDOW_FOCUS.store(false, Ordering::Release);
+    WINDOW_FOCUS_NOTIFICATION_IS_PENDING.store(false, Ordering::Release);
 
-    let window = window_manager_find_window(window_manager, window_id);
+    let window = tracked_window_with_id(window_manager, window_id);
     let Some(window) = window else {
-        window_manager_add_lost_focused_event(window_manager, window_id);
+        record_focused_event_that_arrived_before_window_was_tracked(window_manager, window_id);
         return;
     };
 
@@ -273,7 +300,7 @@ pub(crate) fn event_handler_window_focused(
     if !is_still_alive {
         debug!(
             "{}: {} has been marked invalid by the system, ignoring event..\n",
-            "EVENT_HANDLER_WINDOW_FOCUSED", window_id.0 as i32
+            "handle_window_focused_event", window_id.0 as i32
         );
         return;
     }
@@ -281,9 +308,9 @@ pub(crate) fn event_handler_window_focused(
     let is_minimized = window_manager
         .window
         .find(&window)
-        .is_some_and(|window| window_check_flag(window, WindowFlag::MINIMIZE));
+        .is_some_and(|window| is_window_flag_set(window, WindowFlag::MINIMIZED));
     if is_minimized {
-        window_manager_add_lost_focused_event(window_manager, window);
+        record_focused_event_that_arrived_before_window_was_tracked(window_manager, window);
         return;
     }
 
@@ -295,7 +322,7 @@ pub(crate) fn event_handler_window_focused(
     let Some(application) = application else {
         return;
     };
-    if !application_is_frontmost(application) {
+    if !is_application_frontmost(application) {
         return;
     }
     let application_name = Arc::clone(&application.name);
@@ -303,29 +330,29 @@ pub(crate) fn event_handler_window_focused(
 
     debug!(
         "{}: {} {}\n",
-        "EVENT_HANDLER_WINDOW_FOCUSED", application_name, window.0 as i32
+        "handle_window_focused_event", application_name, window.0 as i32
     );
 
     if space_manager.skip_window_focus_animation {
-        let space_id = window_space(window);
-        if space_id.0 != 0 && !space_is_visible(space_id) {
+        let space_id = query_space_holding_window(window);
+        if space_id.0 != 0 && !is_space_visible_on_its_display(space_id) {
             unsafe {
                 SLSSpaceSetFrontPSN(
-                    *CONNECTION.get().unwrap(),
+                    *SKYLIGHT_CONNECTION_ID.get().unwrap(),
                     space_id.0,
                     application_process_serial_number,
                 )
             };
-            space_manager_focus_space_using_gesture(
-                space_display_id(space_id),
+            focus_space_with_synthesized_dock_swipes(
+                query_display_holding_space(space_id),
                 space_id,
                 window_manager,
             );
         }
     }
 
-    window_did_receive_focus(window_manager, mouse_drag_state, window, space_manager);
-    event_signal_push(
+    respond_to_window_receiving_focus(window_manager, mouse_drag_state, window, space_manager);
+    queue_pending_signal_for_its_subscribers(
         SignalType::WindowFocused,
         SignalContext::Window(window),
         signal_event,
@@ -337,7 +364,7 @@ pub(crate) fn event_handler_window_focused(
     );
 }
 
-pub(crate) fn event_handler_window_moved(
+pub(crate) fn handle_window_moved_event(
     window_id: WindowId,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
     process_manager: &mut ProcessManager,
@@ -347,7 +374,7 @@ pub(crate) fn event_handler_window_moved(
     signal_storage: &mut Vec<PendingSignal>,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    let window = window_manager_find_window(window_manager, window_id);
+    let window = tracked_window_with_id(window_manager, window_id);
     let Some(window) = window else {
         return;
     };
@@ -359,7 +386,7 @@ pub(crate) fn event_handler_window_moved(
     if !is_still_alive {
         debug!(
             "{}: {} has been marked invalid by the system, ignoring event..\n",
-            "EVENT_HANDLER_WINDOW_MOVED", window_id.0 as i32
+            "handle_window_moved_event", window_id.0 as i32
         );
         return;
     }
@@ -374,7 +401,7 @@ pub(crate) fn event_handler_window_moved(
     if application_is_hidden {
         debug!(
             "{}: {} was moved while the application is hidden, ignoring event..\n",
-            "EVENT_HANDLER_WINDOW_MOVED", window_id.0 as i32
+            "handle_window_moved_event", window_id.0 as i32
         );
         return;
     }
@@ -382,12 +409,12 @@ pub(crate) fn event_handler_window_moved(
     let Some(window_record) = window_manager.window.find(&window) else {
         return;
     };
-    let new_origin = window_ax_origin(window_record);
+    let new_origin = read_window_origin_through_accessibility(window_record);
     if CGPointEqualToPoint(new_origin, window_record.frame.origin) {
         debug!(
             "{}:DEBOUNCED {} {}\n",
-            "EVENT_HANDLER_WINDOW_MOVED",
-            or_null(application_name.as_deref()),
+            "handle_window_moved_event",
+            text_or_printf_null_placeholder(application_name.as_deref()),
             window.0 as i32
         );
         return;
@@ -395,11 +422,11 @@ pub(crate) fn event_handler_window_moved(
 
     debug!(
         "{}: {} {}\n",
-        "EVENT_HANDLER_WINDOW_MOVED",
-        or_null(application_name.as_deref()),
+        "handle_window_moved_event",
+        text_or_printf_null_placeholder(application_name.as_deref()),
         window.0 as i32
     );
-    event_signal_push(
+    queue_pending_signal_for_its_subscribers(
         SignalType::WindowMoved,
         SignalContext::Window(window),
         signal_event,
@@ -416,30 +443,44 @@ pub(crate) fn event_handler_window_moved(
     window_record.frame.origin = new_origin;
 
     if !windowed_fullscreen {
-        window_clear_flag(window_record, WindowFlag::WINDOWED);
+        clear_window_flag(window_record, WindowFlag::IN_WINDOWED_FULLSCREEN);
 
         if mouse_drag_state.window_id.is_none() || mouse_drag_state.window_id != Some(window) {
-            let view = window_manager_find_managed_window(window_manager, window);
+            let view = space_managing_window(window_manager, window);
             if let Some(view) = view {
-                let node = view_find_window_node(space_manager, view, window);
+                let node = leaf_holding_window(space_manager, view, window);
                 if let Some(node) = node
                     && space_manager.view.find(&view).is_some_and(|view| {
                         view.find_node(node).is_some_and(|window_node| {
-                            (ax_diff(window_node.area.x as f64, new_origin.x)
-                                || ax_diff(window_node.area.y as f64, new_origin.y))
-                                && window_node.zoom.is_none_or(|zoom| {
-                                    view.find_node(zoom).is_some_and(|zoom| {
-                                        ax_diff(zoom.area.x as f64, new_origin.x)
-                                            || ax_diff(zoom.area.y as f64, new_origin.y)
-                                    })
+                            (is_difference_beyond_accessibility_rounding(
+                                window_node.area.x as f64,
+                                new_origin.x,
+                            ) || is_difference_beyond_accessibility_rounding(
+                                window_node.area.y as f64,
+                                new_origin.y,
+                            )) && window_node.zoom.is_none_or(|zoom| {
+                                view.find_node(zoom).is_some_and(|zoom| {
+                                    is_difference_beyond_accessibility_rounding(
+                                        zoom.area.x as f64,
+                                        new_origin.x,
+                                    ) || is_difference_beyond_accessibility_rounding(
+                                        zoom.area.y as f64,
+                                        new_origin.y,
+                                    )
                                 })
+                            })
                         })
                     })
                 {
-                    if space_is_visible(view) {
-                        window_node_flush(view, node, window_manager, space_manager);
+                    if is_space_visible_on_its_display(view) {
+                        move_windows_below_node_into_their_areas(
+                            view,
+                            node,
+                            window_manager,
+                            space_manager,
+                        );
                     } else if let Some(view) = space_manager.view.find_mut(&view) {
-                        view.set_flag(ViewFlag::IS_DIRTY);
+                        view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
                     }
                 }
             }
@@ -447,7 +488,7 @@ pub(crate) fn event_handler_window_moved(
     }
 }
 
-pub(crate) fn event_handler_window_resized(
+pub(crate) fn handle_window_resized_event(
     window_id: WindowId,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
     process_manager: &mut ProcessManager,
@@ -457,7 +498,7 @@ pub(crate) fn event_handler_window_resized(
     signal_storage: &mut Vec<PendingSignal>,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    let window = window_manager_find_window(window_manager, window_id);
+    let window = tracked_window_with_id(window_manager, window_id);
     let Some(window) = window else {
         return;
     };
@@ -469,7 +510,7 @@ pub(crate) fn event_handler_window_resized(
     if !is_still_alive {
         debug!(
             "{}: {} has been marked invalid by the system, ignoring event..\n",
-            "EVENT_HANDLER_WINDOW_RESIZED", window_id.0 as i32
+            "handle_window_resized_event", window_id.0 as i32
         );
         return;
     }
@@ -484,7 +525,7 @@ pub(crate) fn event_handler_window_resized(
     if application_is_hidden {
         debug!(
             "{}: {} was resized while the application is hidden, ignoring event..\n",
-            "EVENT_HANDLER_WINDOW_RESIZED", window_id.0 as i32
+            "handle_window_resized_event", window_id.0 as i32
         );
         return;
     }
@@ -492,12 +533,12 @@ pub(crate) fn event_handler_window_resized(
     let Some(window_record) = window_manager.window.find(&window) else {
         return;
     };
-    let new_frame = window_ax_frame(window_record);
+    let new_frame = read_window_frame_through_accessibility(window_record);
     if CGRectEqualToRect(new_frame, window_record.frame) {
         debug!(
             "{}:DEBOUNCED {} {}\n",
-            "EVENT_HANDLER_WINDOW_RESIZED",
-            or_null(application_name.as_deref()),
+            "handle_window_resized_event",
+            text_or_printf_null_placeholder(application_name.as_deref()),
             window.0 as i32
         );
         return;
@@ -505,11 +546,11 @@ pub(crate) fn event_handler_window_resized(
 
     debug!(
         "{}: {} {}\n",
-        "EVENT_HANDLER_WINDOW_RESIZED",
-        or_null(application_name.as_deref()),
+        "handle_window_resized_event",
+        text_or_printf_null_placeholder(application_name.as_deref()),
         window.0 as i32
     );
-    event_signal_push(
+    queue_pending_signal_for_its_subscribers(
         SignalType::WindowResized,
         SignalContext::Window(window),
         signal_event,
@@ -523,34 +564,34 @@ pub(crate) fn event_handler_window_resized(
     let Some(window_record) = window_manager.window.find_mut(&window) else {
         return;
     };
-    let was_fullscreen = window_check_flag(window_record, WindowFlag::FULLSCREEN);
+    let was_fullscreen = is_window_flag_set(window_record, WindowFlag::IN_NATIVE_FULLSCREEN);
 
-    let is_fullscreen = window_is_fullscreen(window_record);
+    let is_fullscreen = is_window_in_native_fullscreen_according_to_accessibility(window_record);
     if is_fullscreen {
-        window_set_flag(window_record, WindowFlag::FULLSCREEN);
+        set_window_flag(window_record, WindowFlag::IN_NATIVE_FULLSCREEN);
     } else {
-        window_clear_flag(window_record, WindowFlag::FULLSCREEN);
+        clear_window_flag(window_record, WindowFlag::IN_NATIVE_FULLSCREEN);
     }
 
     if was_fullscreen != is_fullscreen {
-        if window_ax_can_move(window_record) {
-            window_set_flag(window_record, WindowFlag::MOVABLE);
+        if can_window_be_moved_through_accessibility(window_record) {
+            set_window_flag(window_record, WindowFlag::MOVABLE);
         } else {
-            window_clear_flag(window_record, WindowFlag::MOVABLE);
+            clear_window_flag(window_record, WindowFlag::MOVABLE);
         }
 
-        if window_ax_can_resize(window_record) {
-            window_set_flag(window_record, WindowFlag::RESIZABLE);
+        if can_window_be_resized_through_accessibility(window_record) {
+            set_window_flag(window_record, WindowFlag::RESIZABLE);
         } else {
-            window_clear_flag(window_record, WindowFlag::RESIZABLE);
+            clear_window_flag(window_record, WindowFlag::RESIZABLE);
         }
 
         drop(window_record.role.take());
-        let role = window_ax_role(window_record);
+        let role = copy_window_role_through_accessibility(window_record);
         window_record.role = role;
 
         drop(window_record.subrole.take());
-        let subrole = window_ax_subrole(window_record);
+        let subrole = copy_window_subrole_through_accessibility(window_record);
         window_record.subrole = subrole;
     }
 
@@ -558,9 +599,9 @@ pub(crate) fn event_handler_window_resized(
     window_record.frame = new_frame;
 
     if !was_fullscreen && is_fullscreen {
-        let view = window_manager_find_managed_window(window_manager, window);
+        let view = space_managing_window(window_manager, window);
         if let Some(view) = view {
-            space_manager_untile_window(
+            untile_window_from_view_of_space(
                 space_manager,
                 view,
                 window,
@@ -568,23 +609,28 @@ pub(crate) fn event_handler_window_resized(
                 window_manager,
                 mouse_drag_state,
             );
-            window_manager_remove_managed_window(window_manager, window);
-            window_manager_purify_window(window_manager, window);
+            forget_managed_window(window_manager, window);
+            apply_shadow_removal_mode_to_window(window_manager, window);
         }
     } else if was_fullscreen && !is_fullscreen {
-        window_manager_wait_for_native_fullscreen_transition(window);
+        wait_until_native_fullscreen_transition_finishes(window);
 
-        if window_manager_should_manage_window(window, window_manager)
-            && window_manager_find_managed_window(window_manager, window).is_none()
+        if should_window_be_managed(window, window_manager)
+            && space_managing_window(window_manager, window).is_none()
         {
-            let view = space_manager_tile_window_on_space(
+            let view = tile_window_on_space(
                 space_manager,
                 window,
-                window_space(window),
+                query_space_holding_window(window),
                 display_manager,
                 window_manager,
             );
-            window_manager_add_managed_window(window_manager, window, space_manager, view);
+            record_managed_window_on_space_updating_its_shadow(
+                window_manager,
+                window,
+                space_manager,
+                view,
+            );
         }
     } else if !was_fullscreen == !is_fullscreen {
         if mouse_drag_state.current_action == MouseMode::Move
@@ -597,44 +643,57 @@ pub(crate) fn event_handler_window_resized(
 
         if !windowed_fullscreen {
             if let Some(window_record) = window_manager.window.find_mut(&window) {
-                window_clear_flag(window_record, WindowFlag::WINDOWED);
+                clear_window_flag(window_record, WindowFlag::IN_WINDOWED_FULLSCREEN);
             }
 
             if mouse_drag_state.window_id.is_none() || mouse_drag_state.window_id != Some(window) {
-                let view = window_manager_find_managed_window(window_manager, window);
+                let view = space_managing_window(window_manager, window);
                 if let Some(view) = view {
-                    let node = view_find_window_node(space_manager, view, window);
+                    let node = leaf_holding_window(space_manager, view, window);
                     if let Some(node) = node
                         && space_manager.view.find(&view).is_some_and(|view| {
                             view.find_node(node).is_some_and(|window_node| {
-                                (ax_diff(window_node.area.x as f64, new_frame.origin.x)
-                                    || ax_diff(window_node.area.y as f64, new_frame.origin.y)
-                                    || ax_diff(window_node.area.width as f64, new_frame.size.width)
-                                    || ax_diff(
-                                        window_node.area.height as f64,
-                                        new_frame.size.height,
-                                    ))
-                                    && window_node.zoom.is_none_or(|zoom| {
-                                        view.find_node(zoom).is_some_and(|zoom| {
-                                            ax_diff(zoom.area.x as f64, new_frame.origin.x)
-                                                || ax_diff(zoom.area.y as f64, new_frame.origin.y)
-                                                || ax_diff(
-                                                    zoom.area.width as f64,
-                                                    new_frame.size.width,
-                                                )
-                                                || ax_diff(
-                                                    zoom.area.height as f64,
-                                                    new_frame.size.height,
-                                                )
-                                        })
+                                (is_difference_beyond_accessibility_rounding(
+                                    window_node.area.x as f64,
+                                    new_frame.origin.x,
+                                ) || is_difference_beyond_accessibility_rounding(
+                                    window_node.area.y as f64,
+                                    new_frame.origin.y,
+                                ) || is_difference_beyond_accessibility_rounding(
+                                    window_node.area.width as f64,
+                                    new_frame.size.width,
+                                ) || is_difference_beyond_accessibility_rounding(
+                                    window_node.area.height as f64,
+                                    new_frame.size.height,
+                                )) && window_node.zoom.is_none_or(|zoom| {
+                                    view.find_node(zoom).is_some_and(|zoom| {
+                                        is_difference_beyond_accessibility_rounding(
+                                            zoom.area.x as f64,
+                                            new_frame.origin.x,
+                                        ) || is_difference_beyond_accessibility_rounding(
+                                            zoom.area.y as f64,
+                                            new_frame.origin.y,
+                                        ) || is_difference_beyond_accessibility_rounding(
+                                            zoom.area.width as f64,
+                                            new_frame.size.width,
+                                        ) || is_difference_beyond_accessibility_rounding(
+                                            zoom.area.height as f64,
+                                            new_frame.size.height,
+                                        )
                                     })
+                                })
                             })
                         })
                     {
-                        if space_is_visible(view) {
-                            window_node_flush(view, node, window_manager, space_manager);
+                        if is_space_visible_on_its_display(view) {
+                            move_windows_below_node_into_their_areas(
+                                view,
+                                node,
+                                window_manager,
+                                space_manager,
+                            );
                         } else if let Some(view) = space_manager.view.find_mut(&view) {
-                            view.set_flag(ViewFlag::IS_DIRTY);
+                            view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
                         }
                     }
                 }
@@ -643,7 +702,7 @@ pub(crate) fn event_handler_window_resized(
     }
 }
 
-pub(crate) fn event_handler_window_minimized(
+pub(crate) fn handle_window_minimized_event(
     window_id: WindowId,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
     process_manager: &mut ProcessManager,
@@ -653,7 +712,7 @@ pub(crate) fn event_handler_window_minimized(
     signal_storage: &mut Vec<PendingSignal>,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    let window = window_manager_find_window(window_manager, window_id);
+    let window = tracked_window_with_id(window_manager, window_id);
     let Some(window) = window else {
         return;
     };
@@ -665,7 +724,7 @@ pub(crate) fn event_handler_window_minimized(
     if !is_still_alive {
         debug!(
             "{}: {} has been marked invalid by the system, ignoring event..\n",
-            "EVENT_HANDLER_WINDOW_MINIMIZED", window.0 as i32
+            "handle_window_minimized_event", window.0 as i32
         );
         return;
     }
@@ -678,42 +737,42 @@ pub(crate) fn event_handler_window_minimized(
         .map(|application| Arc::clone(&application.name));
     debug!(
         "{}: {} {}\n",
-        "EVENT_HANDLER_WINDOW_MINIMIZED",
-        or_null(application_name.as_deref()),
+        "handle_window_minimized_event",
+        text_or_printf_null_placeholder(application_name.as_deref()),
         window.0 as i32
     );
     let Some(window_record) = window_manager.window.find_mut(&window) else {
         return;
     };
-    window_set_flag(window_record, WindowFlag::MINIMIZE);
+    set_window_flag(window_record, WindowFlag::MINIMIZED);
 
-    if window_ax_can_move(window_record) {
-        window_set_flag(window_record, WindowFlag::MOVABLE);
+    if can_window_be_moved_through_accessibility(window_record) {
+        set_window_flag(window_record, WindowFlag::MOVABLE);
     } else {
-        window_clear_flag(window_record, WindowFlag::MOVABLE);
+        clear_window_flag(window_record, WindowFlag::MOVABLE);
     }
 
-    if window_ax_can_resize(window_record) {
-        window_set_flag(window_record, WindowFlag::RESIZABLE);
+    if can_window_be_resized_through_accessibility(window_record) {
+        set_window_flag(window_record, WindowFlag::RESIZABLE);
     } else {
-        window_clear_flag(window_record, WindowFlag::RESIZABLE);
+        clear_window_flag(window_record, WindowFlag::RESIZABLE);
     }
 
     drop(window_record.role.take());
-    let role = window_ax_role(window_record);
+    let role = copy_window_role_through_accessibility(window_record);
     window_record.role = role;
 
     drop(window_record.subrole.take());
-    let subrole = window_ax_subrole(window_record);
+    let subrole = copy_window_subrole_through_accessibility(window_record);
     window_record.subrole = subrole;
 
     if window == window_manager.last_window_id {
         window_manager.last_window_id = window_manager.focused_window_id;
     }
 
-    let view = window_manager_find_managed_window(window_manager, window);
+    let view = space_managing_window(window_manager, window);
     if let Some(view) = view {
-        space_manager_untile_window(
+        untile_window_from_view_of_space(
             space_manager,
             view,
             window,
@@ -721,11 +780,11 @@ pub(crate) fn event_handler_window_minimized(
             window_manager,
             mouse_drag_state,
         );
-        window_manager_remove_managed_window(window_manager, window);
-        window_manager_purify_window(window_manager, window);
+        forget_managed_window(window_manager, window);
+        apply_shadow_removal_mode_to_window(window_manager, window);
     }
 
-    event_signal_push(
+    queue_pending_signal_for_its_subscribers(
         SignalType::WindowMinimized,
         SignalContext::Window(window),
         signal_event,
@@ -737,7 +796,7 @@ pub(crate) fn event_handler_window_minimized(
     );
 }
 
-pub(crate) fn event_handler_window_deminimized(
+pub(crate) fn handle_window_deminimized_event(
     window_id: WindowId,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
     process_manager: &mut ProcessManager,
@@ -746,7 +805,7 @@ pub(crate) fn event_handler_window_deminimized(
     space_manager: &mut SpaceManager,
     signal_storage: &mut Vec<PendingSignal>,
 ) {
-    let window = window_manager_find_window(window_manager, window_id);
+    let window = tracked_window_with_id(window_manager, window_id);
     let Some(window) = window else {
         return;
     };
@@ -758,35 +817,35 @@ pub(crate) fn event_handler_window_deminimized(
     if !is_still_alive {
         debug!(
             "{}: {} has been marked invalid by the system, ignoring event..\n",
-            "EVENT_HANDLER_WINDOW_DEMINIMIZED", window.0 as i32
+            "handle_window_deminimized_event", window.0 as i32
         );
-        window_manager_remove_lost_focused_event(window_manager, window);
+        forget_focused_event_that_arrived_before_window_was_tracked(window_manager, window);
         return;
     }
 
     let Some(window_record) = window_manager.window.find_mut(&window) else {
         return;
     };
-    window_clear_flag(window_record, WindowFlag::MINIMIZE);
+    clear_window_flag(window_record, WindowFlag::MINIMIZED);
 
-    if window_ax_can_move(window_record) {
-        window_set_flag(window_record, WindowFlag::MOVABLE);
+    if can_window_be_moved_through_accessibility(window_record) {
+        set_window_flag(window_record, WindowFlag::MOVABLE);
     } else {
-        window_clear_flag(window_record, WindowFlag::MOVABLE);
+        clear_window_flag(window_record, WindowFlag::MOVABLE);
     }
 
-    if window_ax_can_resize(window_record) {
-        window_set_flag(window_record, WindowFlag::RESIZABLE);
+    if can_window_be_resized_through_accessibility(window_record) {
+        set_window_flag(window_record, WindowFlag::RESIZABLE);
     } else {
-        window_clear_flag(window_record, WindowFlag::RESIZABLE);
+        clear_window_flag(window_record, WindowFlag::RESIZABLE);
     }
 
     drop(window_record.role.take());
-    let role = window_ax_role(window_record);
+    let role = copy_window_role_through_accessibility(window_record);
     window_record.role = role;
 
     drop(window_record.subrole.take());
-    let subrole = window_ax_subrole(window_record);
+    let subrole = copy_window_subrole_through_accessibility(window_record);
     window_record.subrole = subrole;
 
     let window_application = window_record.application;
@@ -794,19 +853,18 @@ pub(crate) fn event_handler_window_deminimized(
         .and_then(|application| window_manager.application.find(&application))
         .map(|application| Arc::clone(&application.name));
 
-    let space_id = space_manager_active_space(window_manager);
-    if space_manager_is_window_on_space(space_id, window) {
+    let space_id = query_current_space_of_the_focused_display(window_manager);
+    if is_window_on_space(space_id, window) {
         debug!(
             "{}: window {} {} is deminimized on active space\n",
-            "EVENT_HANDLER_WINDOW_DEMINIMIZED",
-            or_null(application_name.as_deref()),
+            "handle_window_deminimized_event",
+            text_or_printf_null_placeholder(application_name.as_deref()),
             window.0 as i32
         );
-        if window_manager_should_manage_window(window, window_manager)
-            && window_manager_find_managed_window(window_manager, window).is_none()
+        if should_window_be_managed(window, window_manager)
+            && space_managing_window(window_manager, window).is_none()
         {
-            let last_window =
-                window_manager_find_window(window_manager, window_manager.last_window_id);
+            let last_window = tracked_window_with_id(window_manager, window_manager.last_window_id);
             let last_window_application = last_window
                 .and_then(|last_window| window_manager.window.find(&last_window))
                 .and_then(|last_window| last_window.application);
@@ -814,7 +872,7 @@ pub(crate) fn event_handler_window_deminimized(
                 Some(last_window) if last_window_application != window_application => last_window,
                 _ => WindowId(0),
             };
-            let view = space_manager_tile_window_on_space_with_insertion_point(
+            let view = tile_window_on_space_preferring_insertion_point(
                 space_manager,
                 window,
                 space_id,
@@ -822,23 +880,28 @@ pub(crate) fn event_handler_window_deminimized(
                 display_manager,
                 window_manager,
             );
-            window_manager_add_managed_window(window_manager, window, space_manager, view);
+            record_managed_window_on_space_updating_its_shadow(
+                window_manager,
+                window,
+                space_manager,
+                view,
+            );
         }
     } else {
         debug!(
             "{}: window {} {} is deminimized on inactive space\n",
-            "EVENT_HANDLER_WINDOW_DEMINIMIZED",
-            or_null(application_name.as_deref()),
+            "handle_window_deminimized_event",
+            text_or_printf_null_placeholder(application_name.as_deref()),
             window.0 as i32
         );
     }
 
-    if window_manager_find_lost_focused_event(window_manager, window) {
-        event_loop_post(Event::WindowFocused(window));
-        window_manager_remove_lost_focused_event(window_manager, window);
+    if has_focused_event_arrived_before_window_was_tracked(window_manager, window) {
+        post_event_to_event_loop(Event::WindowFocused(window));
+        forget_focused_event_that_arrived_before_window_was_tracked(window_manager, window);
     }
 
-    event_signal_push(
+    queue_pending_signal_for_its_subscribers(
         SignalType::WindowDeminimized,
         SignalContext::Window(window),
         signal_event,
@@ -850,7 +913,7 @@ pub(crate) fn event_handler_window_deminimized(
     );
 }
 
-pub(crate) fn event_handler_window_title_changed(
+pub(crate) fn handle_window_title_changed_event(
     window_id: WindowId,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
     process_manager: &mut ProcessManager,
@@ -859,7 +922,7 @@ pub(crate) fn event_handler_window_title_changed(
     space_manager: &mut SpaceManager,
     signal_storage: &mut Vec<PendingSignal>,
 ) {
-    let window = window_manager_find_window(window_manager, window_id);
+    let window = tracked_window_with_id(window_manager, window_id);
     let Some(window) = window else {
         return;
     };
@@ -871,7 +934,7 @@ pub(crate) fn event_handler_window_title_changed(
     if !is_still_alive {
         debug!(
             "{}: {} has been marked invalid by the system, ignoring event..\n",
-            "EVENT_HANDLER_WINDOW_TITLE_CHANGED", window_id.0 as i32
+            "handle_window_title_changed_event", window_id.0 as i32
         );
         return;
     }
@@ -884,8 +947,8 @@ pub(crate) fn event_handler_window_title_changed(
         .map(|application| Arc::clone(&application.name));
     debug!(
         "{}: {} {}\n",
-        "EVENT_HANDLER_WINDOW_TITLE_CHANGED",
-        or_null(application_name.as_deref()),
+        "handle_window_title_changed_event",
+        text_or_printf_null_placeholder(application_name.as_deref()),
         window.0 as i32
     );
 
@@ -895,10 +958,10 @@ pub(crate) fn event_handler_window_title_changed(
 
     drop(window_record.title.take());
 
-    let title = window_title(window_record);
+    let title = copy_window_title_through_accessibility(window_record);
     window_record.title = title;
 
-    event_signal_push(
+    queue_pending_signal_for_its_subscribers(
         SignalType::WindowTitleChanged,
         SignalContext::Window(window),
         signal_event,
@@ -910,14 +973,14 @@ pub(crate) fn event_handler_window_title_changed(
     );
 }
 
-pub(crate) fn event_handler_sls_window_ordered(
+pub(crate) fn handle_skylight_window_ordered_event(
     window_id: WindowId,
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
 ) {
     debug!(
         "{}: {}\n",
-        "EVENT_HANDLER_SLS_WINDOW_ORDERED", window_id.0 as i32
+        "handle_skylight_window_ordered_event", window_id.0 as i32
     );
     let node = window_manager.insert_feedback.find(&window_id).copied();
     let feedback_window_order = node.and_then(|(space_id, node_id)| {
@@ -937,7 +1000,7 @@ pub(crate) fn event_handler_sls_window_ordered(
     if let Some((feedback_window_id, relative_window_id)) = feedback_window_order {
         unsafe {
             SLSOrderWindow(
-                *CONNECTION.get().unwrap(),
+                *SKYLIGHT_CONNECTION_ID.get().unwrap(),
                 feedback_window_id,
                 1,
                 relative_window_id,
@@ -946,7 +1009,7 @@ pub(crate) fn event_handler_sls_window_ordered(
     }
 }
 
-pub(crate) fn event_handler_sls_window_destroyed(
+pub(crate) fn handle_skylight_window_destroyed_event(
     window_id: WindowId,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
     process_manager: &mut ProcessManager,
@@ -958,10 +1021,10 @@ pub(crate) fn event_handler_sls_window_destroyed(
 ) {
     debug!(
         "{}: {}\n",
-        "EVENT_HANDLER_SLS_WINDOW_DESTROYED", window_id.0 as i32
+        "handle_skylight_window_destroyed_event", window_id.0 as i32
     );
 
-    let window = window_manager_find_window(window_manager, window_id);
+    let window = tracked_window_with_id(window_manager, window_id);
     let Some(window) = window else {
         return;
     };
@@ -973,12 +1036,12 @@ pub(crate) fn event_handler_sls_window_destroyed(
     if !claimed_for_destruction {
         debug!(
             "{}: {} has been marked invalid by the system, ignoring event..\n",
-            "EVENT_HANDLER_SLS_WINDOW_DESTROYED", window_id.0 as i32
+            "handle_skylight_window_destroyed_event", window_id.0 as i32
         );
         return;
     }
 
-    event_handler_window_destroyed(
+    handle_window_destroyed_event(
         window,
         signal_event,
         process_manager,

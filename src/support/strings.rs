@@ -1,11 +1,11 @@
-pub(crate) const MAXLEN: usize = 512;
+pub(crate) const FIXED_STRING_BUFFER_LENGTH: usize = 512;
 
-pub static BOOL_STR: [&str; 2] = ["off", "on"];
+pub static BOOLEAN_NAMES: [&str; 2] = ["off", "on"];
 
-pub fn string_equals(first: Option<&str>, second: Option<&str>) -> bool {
+pub fn are_both_strings_present_and_equal(first: Option<&str>, second: Option<&str>) -> bool {
     matches!((first, second), (Some(first), Some(second)) if first == second)
 }
 
-pub fn string_copy(string: &str) -> String {
+pub fn copy_into_owned_string(string: &str) -> String {
     string.to_owned()
 }

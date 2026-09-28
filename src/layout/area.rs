@@ -3,7 +3,10 @@ use crate::layout::tree::{
     WindowNodeChild, WindowNodeSplit,
     window_node_split_and_child_placing_a_window_inserted_in_direction,
 };
-use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, STACK};
+use crate::support::direction::{
+    DIRECTION_EAST, DIRECTION_NORTH, DIRECTION_SOUTH, DIRECTION_STACK_INSTEAD_OF_SPLIT,
+    DIRECTION_WEST,
+};
 
 #[derive(Clone, Copy, Default)]
 pub(crate) struct Area {
@@ -35,20 +38,20 @@ pub(crate) fn cgrect_from_area(area: Area) -> CGRect {
     }
 }
 
-pub(crate) fn area_max_point(area: Area) -> CGPoint {
+pub(crate) fn bottom_right_pixel_inside_area(area: Area) -> CGPoint {
     CGPoint {
         x: (area.x + area.width - 1.0f32) as f64,
         y: (area.y + area.height - 1.0f32) as f64,
     }
 }
 
-pub(crate) fn area_make_pair(
+pub(crate) fn divide_area_into_two_by_split_ratio_and_gap(
     split: WindowNodeSplit,
     gap: i32,
     ratio: f32,
     parent_area: Area,
 ) -> (Area, Area) {
-    if split == WindowNodeSplit::Y {
+    if split == WindowNodeSplit::Vertical {
         let mut left_area = parent_area;
         let mut right_area = parent_area;
 
@@ -81,13 +84,14 @@ pub(crate) fn area_a_window_inserted_in_direction_takes_from_node_area(
     ratio: f32,
     gap: i32,
 ) -> Option<Area> {
-    if insert_direction == STACK {
+    if insert_direction == DIRECTION_STACK_INSTEAD_OF_SPLIT {
         return Some(node_area);
     }
     let (split, child_of_the_inserted_window) =
         window_node_split_and_child_placing_a_window_inserted_in_direction(insert_direction)?;
 
-    let (first_child_area, second_child_area) = area_make_pair(split, gap, ratio, node_area);
+    let (first_child_area, second_child_area) =
+        divide_area_into_two_by_split_ratio_and_gap(split, gap, ratio, node_area);
     if child_of_the_inserted_window == WindowNodeChild::Second {
         Some(second_child_area)
     } else {
@@ -95,27 +99,27 @@ pub(crate) fn area_a_window_inserted_in_direction_takes_from_node_area(
     }
 }
 
-pub(crate) fn area_is_in_direction(
+pub(crate) fn is_target_area_in_direction_of_source_area_and_facing_it(
     first_area: &Area,
     first_area_max_point: CGPoint,
     second_area: &Area,
     second_area_max_point: CGPoint,
     direction: i32,
 ) -> bool {
-    if direction == DIR_NORTH && first_area_max_point.y <= second_area.y as f64 {
+    if direction == DIRECTION_NORTH && first_area_max_point.y <= second_area.y as f64 {
         return false;
     }
-    if direction == DIR_EAST && second_area_max_point.x <= first_area.x as f64 {
+    if direction == DIRECTION_EAST && second_area_max_point.x <= first_area.x as f64 {
         return false;
     }
-    if direction == DIR_SOUTH && second_area_max_point.y <= first_area.y as f64 {
+    if direction == DIRECTION_SOUTH && second_area_max_point.y <= first_area.y as f64 {
         return false;
     }
-    if direction == DIR_WEST && first_area_max_point.x <= second_area.x as f64 {
+    if direction == DIRECTION_WEST && first_area_max_point.x <= second_area.x as f64 {
         return false;
     }
 
-    if direction == DIR_NORTH || direction == DIR_SOUTH {
+    if direction == DIRECTION_NORTH || direction == DIRECTION_SOUTH {
         return (second_area_max_point.x > first_area.x as f64
             && second_area_max_point.x <= first_area_max_point.x)
             || (second_area.x < first_area.x
@@ -124,7 +128,7 @@ pub(crate) fn area_is_in_direction(
                 && (second_area.x as f64) < first_area_max_point.x);
     }
 
-    if direction == DIR_EAST || direction == DIR_WEST {
+    if direction == DIRECTION_EAST || direction == DIRECTION_WEST {
         return (second_area_max_point.y > first_area.y as f64
             && second_area_max_point.y <= first_area_max_point.y)
             || (second_area.y < first_area.y
@@ -136,7 +140,7 @@ pub(crate) fn area_is_in_direction(
     false
 }
 
-pub(crate) fn area_distance_in_direction(
+pub(crate) fn distance_from_source_area_to_target_area_in_direction(
     first_area: &Area,
     first_area_max_point: CGPoint,
     second_area: &Area,
@@ -144,28 +148,28 @@ pub(crate) fn area_distance_in_direction(
     direction: i32,
 ) -> i32 {
     match direction {
-        DIR_NORTH => {
+        DIRECTION_NORTH => {
             return (if second_area_max_point.y > first_area.y as f64 {
                 second_area_max_point.y - first_area.y as f64
             } else {
                 first_area.y as f64 - second_area_max_point.y
             }) as i32;
         }
-        DIR_EAST => {
+        DIRECTION_EAST => {
             return (if (second_area.x as f64) < first_area_max_point.x {
                 first_area_max_point.x - second_area.x as f64
             } else {
                 second_area.x as f64 - first_area_max_point.x
             }) as i32;
         }
-        DIR_SOUTH => {
+        DIRECTION_SOUTH => {
             return (if (second_area.y as f64) < first_area_max_point.y {
                 first_area_max_point.y - second_area.y as f64
             } else {
                 second_area.y as f64 - first_area_max_point.y
             }) as i32;
         }
-        DIR_WEST => {
+        DIRECTION_WEST => {
             return (if second_area_max_point.x > first_area.x as f64 {
                 second_area_max_point.x - first_area.x as f64
             } else {
@@ -178,7 +182,7 @@ pub(crate) fn area_distance_in_direction(
     i32::MAX
 }
 
-pub(crate) fn ax_diff(first: f64, second: f64) -> bool {
+pub(crate) fn is_difference_beyond_accessibility_rounding(first: f64, second: f64) -> bool {
     let difference = first - second;
     let absolute = if difference < 0.0f64 {
         difference * -1.0f64
@@ -191,12 +195,18 @@ pub(crate) fn ax_diff(first: f64, second: f64) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        Area, area_a_window_inserted_in_direction_takes_from_node_area, area_distance_in_direction,
-        area_from_cgrect, area_is_in_direction, area_make_pair, area_max_point, cgrect_from_area,
+        Area, area_a_window_inserted_in_direction_takes_from_node_area, area_from_cgrect,
+        bottom_right_pixel_inside_area, cgrect_from_area,
+        distance_from_source_area_to_target_area_in_direction,
+        divide_area_into_two_by_split_ratio_and_gap,
+        is_target_area_in_direction_of_source_area_and_facing_it,
     };
     use crate::ffi::core_foundation::{CGPoint, CGRect, CGSize};
     use crate::layout::tree::WindowNodeSplit;
-    use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, STACK};
+    use crate::support::direction::{
+        DIRECTION_EAST, DIRECTION_NORTH, DIRECTION_SOUTH, DIRECTION_STACK_INSTEAD_OF_SPLIT,
+        DIRECTION_WEST,
+    };
 
     struct TestArea {
         area: Area,
@@ -213,60 +223,60 @@ mod tests {
         display_list[0].area.y = 0.0;
         display_list[0].area.width = 2560.0;
         display_list[0].area.height = 1440.0;
-        display_list[0].area_max = area_max_point(display_list[0].area);
+        display_list[0].area_max = bottom_right_pixel_inside_area(display_list[0].area);
 
         display_list[1].area.x = -1728.0;
         display_list[1].area.y = 0.0;
         display_list[1].area.width = 1728.0;
         display_list[1].area.height = 1117.0;
-        display_list[1].area_max = area_max_point(display_list[1].area);
+        display_list[1].area_max = bottom_right_pixel_inside_area(display_list[1].area);
 
         display_list[2].area.x = 2560.0;
         display_list[2].area.y = 0.0;
         display_list[2].area.width = 1920.0;
         display_list[2].area.height = 1080.0;
-        display_list[2].area_max = area_max_point(display_list[2].area);
+        display_list[2].area_max = bottom_right_pixel_inside_area(display_list[2].area);
 
         display_list
     }
 
     #[test]
-    fn test_display_area_is_in_direction() {
+    fn test_display_is_target_area_in_direction_of_source_area_and_facing_it() {
         let display_list = init_test_display_list();
 
-        let t1 = area_is_in_direction(
+        let t1 = is_target_area_in_direction_of_source_area_and_facing_it(
             &display_list[0].area,
             display_list[0].area_max,
             &display_list[1].area,
             display_list[1].area_max,
-            DIR_WEST,
+            DIRECTION_WEST,
         );
         assert_eq!(t1, true);
 
-        let t2 = area_is_in_direction(
+        let t2 = is_target_area_in_direction_of_source_area_and_facing_it(
             &display_list[0].area,
             display_list[0].area_max,
             &display_list[1].area,
             display_list[1].area_max,
-            DIR_EAST,
+            DIRECTION_EAST,
         );
         assert_eq!(t2, false);
 
-        let t3 = area_is_in_direction(
+        let t3 = is_target_area_in_direction_of_source_area_and_facing_it(
             &display_list[0].area,
             display_list[0].area_max,
             &display_list[2].area,
             display_list[2].area_max,
-            DIR_WEST,
+            DIRECTION_WEST,
         );
         assert_eq!(t3, false);
 
-        let t4 = area_is_in_direction(
+        let t4 = is_target_area_in_direction_of_source_area_and_facing_it(
             &display_list[0].area,
             display_list[0].area_max,
             &display_list[2].area,
             display_list[2].area_max,
-            DIR_EAST,
+            DIRECTION_EAST,
         );
         assert_eq!(t4, true);
     }
@@ -287,14 +297,14 @@ mod tests {
 
             let source_display = &display_list[source as usize];
             let candidate_display = &display_list[index as usize];
-            if area_is_in_direction(
+            if is_target_area_in_direction_of_source_area_and_facing_it(
                 &source_display.area,
                 source_display.area_max,
                 &candidate_display.area,
                 candidate_display.area_max,
                 direction,
             ) {
-                let distance = area_distance_in_direction(
+                let distance = distance_from_source_area_to_target_area_in_direction(
                     &source_display.area,
                     source_display.area_max,
                     &candidate_display.area,
@@ -317,22 +327,22 @@ mod tests {
         let display_count = display_list.len() as i32;
         let mut best_index;
 
-        best_index = closest_display_in_direction(&display_list, display_count, 0, DIR_WEST);
+        best_index = closest_display_in_direction(&display_list, display_count, 0, DIRECTION_WEST);
         assert_eq!(best_index, 1);
 
-        best_index = closest_display_in_direction(&display_list, display_count, 1, DIR_WEST);
+        best_index = closest_display_in_direction(&display_list, display_count, 1, DIRECTION_WEST);
         assert_eq!(best_index, -1);
 
-        best_index = closest_display_in_direction(&display_list, display_count, 2, DIR_WEST);
+        best_index = closest_display_in_direction(&display_list, display_count, 2, DIRECTION_WEST);
         assert_eq!(best_index, 0);
 
-        best_index = closest_display_in_direction(&display_list, display_count, 0, DIR_EAST);
+        best_index = closest_display_in_direction(&display_list, display_count, 0, DIRECTION_EAST);
         assert_eq!(best_index, 2);
 
-        best_index = closest_display_in_direction(&display_list, display_count, 1, DIR_EAST);
+        best_index = closest_display_in_direction(&display_list, display_count, 1, DIRECTION_EAST);
         assert_eq!(best_index, 0);
 
-        best_index = closest_display_in_direction(&display_list, display_count, 2, DIR_EAST);
+        best_index = closest_display_in_direction(&display_list, display_count, 2, DIRECTION_EAST);
         assert_eq!(best_index, -1);
     }
 
@@ -357,7 +367,8 @@ mod tests {
         expected_first_area: (f32, f32, f32, f32),
         expected_second_area: (f32, f32, f32, f32),
     ) {
-        let (first_area, second_area) = area_make_pair(split, gap, ratio, parent_area);
+        let (first_area, second_area) =
+            divide_area_into_two_by_split_ratio_and_gap(split, gap, ratio, parent_area);
 
         assert_eq!(
             (x_y_width_height(first_area), x_y_width_height(second_area)),
@@ -368,10 +379,10 @@ mod tests {
     }
 
     #[test]
-    fn area_make_pair_for_a_y_split_truncates_both_widths_and_rounds_the_offset_of_the_second_area()
+    fn divide_area_into_two_by_split_ratio_and_gap_for_a_y_split_truncates_both_widths_and_rounds_the_offset_of_the_second_area()
     {
         assert_pair_is(
-            WindowNodeSplit::Y,
+            WindowNodeSplit::Vertical,
             10,
             0.5,
             area_at(0.0, 0.0, 1001.0, 500.0),
@@ -379,7 +390,7 @@ mod tests {
             (506.0, 0.0, 495.0, 500.0),
         );
         assert_pair_is(
-            WindowNodeSplit::Y,
+            WindowNodeSplit::Vertical,
             10,
             0.6,
             area_at(0.0, 25.0, 1001.0, 500.0),
@@ -387,7 +398,7 @@ mod tests {
             (605.0, 25.0, 396.0, 500.0),
         );
         assert_pair_is(
-            WindowNodeSplit::Y,
+            WindowNodeSplit::Vertical,
             7,
             0.3333,
             area_at(-1728.0, 38.0, 1728.0, 1079.0),
@@ -397,9 +408,10 @@ mod tests {
     }
 
     #[test]
-    fn area_make_pair_for_a_y_split_keeps_a_fractional_origin_of_the_parent() {
+    fn divide_area_into_two_by_split_ratio_and_gap_for_a_y_split_keeps_a_fractional_origin_of_the_parent()
+     {
         assert_pair_is(
-            WindowNodeSplit::Y,
+            WindowNodeSplit::Vertical,
             0,
             0.5,
             area_at(100.25, 30.0, 1439.0, 900.0),
@@ -409,10 +421,10 @@ mod tests {
     }
 
     #[test]
-    fn area_make_pair_for_an_x_split_truncates_both_heights_and_rounds_the_offset_of_the_second_area()
+    fn divide_area_into_two_by_split_ratio_and_gap_for_an_x_split_truncates_both_heights_and_rounds_the_offset_of_the_second_area()
      {
         assert_pair_is(
-            WindowNodeSplit::X,
+            WindowNodeSplit::Horizontal,
             10,
             0.5,
             area_at(0.0, 0.0, 800.0, 1001.0),
@@ -420,7 +432,7 @@ mod tests {
             (0.0, 506.0, 800.0, 495.0),
         );
         assert_pair_is(
-            WindowNodeSplit::X,
+            WindowNodeSplit::Horizontal,
             10,
             0.6,
             area_at(50.0, 25.0, 800.0, 1001.0),
@@ -428,7 +440,7 @@ mod tests {
             (50.0, 630.0, 800.0, 396.0),
         );
         assert_pair_is(
-            WindowNodeSplit::X,
+            WindowNodeSplit::Horizontal,
             12,
             0.1,
             area_at(0.0, 38.5, 1512.0, 944.0),
@@ -436,7 +448,7 @@ mod tests {
             (0.0, 143.5, 1512.0, 838.0),
         );
         assert_pair_is(
-            WindowNodeSplit::X,
+            WindowNodeSplit::Horizontal,
             0,
             0.9,
             area_at(0.0, 0.0, 1512.0, 945.0),
@@ -446,9 +458,9 @@ mod tests {
     }
 
     #[test]
-    fn area_make_pair_splits_along_x_for_every_split_other_than_y() {
+    fn divide_area_into_two_by_split_ratio_and_gap_splits_along_x_for_every_split_other_than_y() {
         for split in [
-            WindowNodeSplit::X,
+            WindowNodeSplit::Horizontal,
             WindowNodeSplit::Auto,
             WindowNodeSplit::None,
         ] {
@@ -464,7 +476,7 @@ mod tests {
     }
 
     #[test]
-    fn area_max_point_is_the_last_pixel_inside_the_area_computed_in_f32() {
+    fn bottom_right_pixel_inside_area_is_the_last_pixel_inside_the_area_computed_in_f32() {
         let expected_max_points = [
             (area_at(10.0, 20.0, 100.0, 50.0), (109.0, 69.0)),
             (area_at(0.5, -10.25, 3.0, 1.0), (2.5, -10.25)),
@@ -474,7 +486,7 @@ mod tests {
         ];
 
         for (area, (expected_x, expected_y)) in expected_max_points {
-            let max_point = area_max_point(area);
+            let max_point = bottom_right_pixel_inside_area(area);
             assert_eq!(
                 (max_point.x, max_point.y),
                 (expected_x, expected_y),
@@ -505,9 +517,14 @@ mod tests {
         gap: i32,
         expected_area_for_north_east_south_and_west: [(f32, f32, f32, f32); 4],
     ) {
-        for (insert_direction, expected_area) in [DIR_NORTH, DIR_EAST, DIR_SOUTH, DIR_WEST]
-            .into_iter()
-            .zip(expected_area_for_north_east_south_and_west)
+        for (insert_direction, expected_area) in [
+            DIRECTION_NORTH,
+            DIRECTION_EAST,
+            DIRECTION_SOUTH,
+            DIRECTION_WEST,
+        ]
+        .into_iter()
+        .zip(expected_area_for_north_east_south_and_west)
         {
             assert_eq!(
                 area_a_window_inserted_takes(insert_direction, node_area, ratio, gap),
@@ -576,7 +593,7 @@ mod tests {
         let node_area = area_at(-1728.0, 38.5, 1727.0, 1079.0);
 
         assert_eq!(
-            area_a_window_inserted_takes(STACK, node_area, 0.37, 7),
+            area_a_window_inserted_takes(DIRECTION_STACK_INSTEAD_OF_SPLIT, node_area, 0.37, 7),
             Some(x_y_width_height(node_area))
         );
     }

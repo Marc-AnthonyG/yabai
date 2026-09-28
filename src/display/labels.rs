@@ -1,13 +1,13 @@
 use crate::display::manager::DisplayManager;
 use crate::support::handles::DisplayId;
-use crate::support::strings::string_equals;
+use crate::support::strings::are_both_strings_present_and_equal;
 
 pub(crate) struct DisplayLabel {
     pub(crate) display_id: DisplayId,
     pub(crate) label: String,
 }
 
-pub(crate) fn display_manager_get_label_for_display(
+pub(crate) fn label_of_display(
     display_manager: &mut DisplayManager,
     display_id: DisplayId,
 ) -> Option<&mut DisplayLabel> {
@@ -20,14 +20,14 @@ pub(crate) fn display_manager_get_label_for_display(
     None
 }
 
-pub(crate) fn display_manager_get_display_for_label<'display_manager>(
+pub(crate) fn display_label_with_name<'display_manager>(
     display_manager: &'display_manager mut DisplayManager,
     label: &[u8],
 ) -> Option<&'display_manager mut DisplayLabel> {
     let label = String::from_utf8_lossy(label);
 
     for display_label in display_manager.labels.iter_mut() {
-        if string_equals(Some(&label), Some(&display_label.label)) {
+        if are_both_strings_present_and_equal(Some(&label), Some(&display_label.label)) {
             return Some(display_label);
         }
     }
@@ -35,7 +35,7 @@ pub(crate) fn display_manager_get_display_for_label<'display_manager>(
     None
 }
 
-pub(crate) fn display_manager_remove_label_for_display(
+pub(crate) fn remove_label_of_display(
     display_manager: &mut DisplayManager,
     display_id: DisplayId,
 ) -> bool {
@@ -50,12 +50,12 @@ pub(crate) fn display_manager_remove_label_for_display(
     false
 }
 
-pub(crate) fn display_manager_set_label_for_display(
+pub(crate) fn set_label_of_display_removing_it_from_any_other_display(
     display_manager: &mut DisplayManager,
     display_id: DisplayId,
     label: String,
 ) {
-    display_manager_remove_label_for_display(display_manager, display_id);
+    remove_label_of_display(display_manager, display_id);
 
     for index in 0..display_manager.labels.len() {
         let display_label = &display_manager.labels[index];

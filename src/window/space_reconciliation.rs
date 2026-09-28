@@ -1,28 +1,30 @@
-use crate::display::identity::display_manager_active_display_list;
+use crate::display::identity::query_displays_active_for_drawing;
 use crate::display::manager::DisplayManager;
-use crate::display::spaces::{display_space_id, display_space_list};
-use crate::layout::settings::{ViewFlag, ViewType};
+use crate::display::spaces::{query_current_space_of_display, query_spaces_of_display};
+use crate::layout::settings::{ViewFlag, ViewLayout};
 use crate::layout::tree::{
-    view_add_window_node, view_find_window_list, view_remove_window_node, window_node_flush,
+    add_window_to_view_tree, collect_windows_of_view_in_tree_order,
+    move_windows_below_node_into_their_areas, remove_window_from_view_tree,
 };
-use crate::layout::view::view_is_dirty;
+use crate::layout::view::has_view_windows_awaiting_their_areas;
 use crate::mouse::drag::MouseDragState;
-use crate::space::managed_space::{space_is_user, space_is_visible, space_window_list};
+use crate::space::managed_space::{
+    is_space_visible_on_its_display, is_user_space, query_windows_on_space,
+};
 use crate::space::manager::{
-    SpaceManager, space_manager_find_view, space_manager_mark_view_invalid,
-    space_manager_refresh_view,
+    SpaceManager, find_or_create_view_for_space, mark_view_areas_out_of_date,
+    recompute_view_areas_and_move_its_windows_into_them,
 };
 use crate::support::handles::{DisplayId, ROOT_NODE_ID, SpaceId, WindowId};
 use crate::support::layer::{LAYER_BELOW, LAYER_NORMAL};
-use crate::window::layer::window_manager_adjust_layer;
+use crate::window::layer::set_window_layer_unless_explicitly_set;
 use crate::window::manager::{
-    WindowManager, window_manager_add_managed_window, window_manager_find_managed_window,
-    window_manager_find_window, window_manager_remove_managed_window,
-    window_manager_should_manage_window,
+    WindowManager, forget_managed_window, record_managed_window_on_space_updating_its_shadow,
+    should_window_be_managed, space_managing_window, tracked_window_with_id,
 };
-use crate::window::shadow::window_manager_purify_window;
+use crate::window::shadow::apply_shadow_removal_mode_to_window;
 
-pub(crate) fn window_manager_validate_windows_on_space(
+pub(crate) fn untile_windows_no_longer_on_space(
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
@@ -30,7 +32,7 @@ pub(crate) fn window_manager_validate_windows_on_space(
     display_manager: &mut DisplayManager,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    let view_window_list = view_find_window_list(space_manager, space_id);
+    let view_window_list = collect_windows_of_view_in_tree_order(space_manager, space_id);
 
     for index in 0..view_window_list.len() {
         let mut found = false;
@@ -43,7 +45,7 @@ pub(crate) fn window_manager_validate_windows_on_space(
         }
 
         if !found {
-            let Some(window) = window_manager_find_window(window_manager, view_window_list[index])
+            let Some(window) = tracked_window_with_id(window_manager, view_window_list[index])
             else {
                 continue;
             };
@@ -58,7 +60,7 @@ pub(crate) fn window_manager_validate_windows_on_space(
             // This is necessary to make sure that we do not call the AX API for each modification to the tree.
             //
 
-            view_remove_window_node(
+            remove_window_from_view_tree(
                 space_manager,
                 space_id,
                 window,
@@ -66,18 +68,18 @@ pub(crate) fn window_manager_validate_windows_on_space(
                 window_manager,
                 mouse_drag_state,
             );
-            window_manager_adjust_layer(window, LAYER_NORMAL, window_manager);
-            window_manager_remove_managed_window(window_manager, window);
-            window_manager_purify_window(window_manager, window);
+            set_window_layer_unless_explicitly_set(window, LAYER_NORMAL, window_manager);
+            forget_managed_window(window_manager, window);
+            apply_shadow_removal_mode_to_window(window_manager, window);
 
             if let Some(view) = space_manager.view.find_mut(&space_id) {
-                view.set_flag(ViewFlag::IS_DIRTY);
+                view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
         }
     }
 }
 
-pub(crate) fn window_manager_check_for_windows_on_space(
+pub(crate) fn tile_manageable_windows_found_on_space(
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
@@ -86,20 +88,20 @@ pub(crate) fn window_manager_check_for_windows_on_space(
     mouse_drag_state: &mut MouseDragState,
 ) {
     for index in 0..window_list.len() {
-        let window = window_manager_find_window(window_manager, window_list[index]);
+        let window = tracked_window_with_id(window_manager, window_list[index]);
         let Some(window) = window else {
             continue;
         };
-        if !window_manager_should_manage_window(window, window_manager) {
+        if !should_window_be_managed(window, window_manager) {
             continue;
         }
 
-        let existing_view = window_manager_find_managed_window(window_manager, window);
+        let existing_view = space_managing_window(window_manager, window);
         let existing_view_layout = existing_view
             .and_then(|existing_space_id| space_manager.view.find(&existing_space_id))
             .map(|view| view.layout);
         if let Some(existing_space_id) = existing_view
-            && existing_view_layout != Some(ViewType::Float)
+            && existing_view_layout != Some(ViewLayout::Float)
             && existing_space_id != space_id
         {
             //
@@ -112,7 +114,7 @@ pub(crate) fn window_manager_check_for_windows_on_space(
             // This is necessary to make sure that we do not call the AX API for each modification to the tree.
             //
 
-            view_remove_window_node(
+            remove_window_from_view_tree(
                 space_manager,
                 existing_space_id,
                 window,
@@ -120,16 +122,16 @@ pub(crate) fn window_manager_check_for_windows_on_space(
                 window_manager,
                 mouse_drag_state,
             );
-            window_manager_adjust_layer(window, LAYER_NORMAL, window_manager);
-            window_manager_remove_managed_window(window_manager, window);
-            window_manager_purify_window(window_manager, window);
+            set_window_layer_unless_explicitly_set(window, LAYER_NORMAL, window_manager);
+            forget_managed_window(window_manager, window);
+            apply_shadow_removal_mode_to_window(window_manager, window);
             if let Some(view) = space_manager.view.find_mut(&existing_space_id) {
-                view.set_flag(ViewFlag::IS_DIRTY);
+                view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
         }
 
         if existing_view.is_none()
-            || (existing_view_layout != Some(ViewType::Float) && existing_view != Some(space_id))
+            || (existing_view_layout != Some(ViewLayout::Float) && existing_view != Some(space_id))
         {
             //
             // @cleanup
@@ -141,40 +143,46 @@ pub(crate) fn window_manager_check_for_windows_on_space(
             // This is necessary to make sure that we do not call the AX API for each modification to the tree.
             //
 
-            view_add_window_node(
+            add_window_to_view_tree(
                 space_manager,
                 space_id,
                 window,
                 display_manager,
                 window_manager,
             );
-            window_manager_adjust_layer(window, LAYER_BELOW, window_manager);
-            window_manager_add_managed_window(window_manager, window, space_manager, space_id);
+            set_window_layer_unless_explicitly_set(window, LAYER_BELOW, window_manager);
+            record_managed_window_on_space_updating_its_shadow(
+                window_manager,
+                window,
+                space_manager,
+                space_id,
+            );
             if let Some(view) = space_manager.view.find_mut(&space_id) {
-                view.set_flag(ViewFlag::IS_DIRTY);
+                view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
         }
     }
 }
 
-pub(crate) fn window_manager_validate_and_check_for_windows_on_space(
+pub(crate) fn reconcile_space_view_with_windows_on_space(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     space_id: SpaceId,
     display_manager: &mut DisplayManager,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    let view = space_manager_find_view(space_manager, space_id, display_manager, window_manager);
+    let view =
+        find_or_create_view_for_space(space_manager, space_id, display_manager, window_manager);
     if space_manager
         .view
         .find(&view)
-        .is_none_or(|view| view.layout == ViewType::Float)
+        .is_none_or(|view| view.layout == ViewLayout::Float)
     {
         return;
     }
 
-    let window_list = space_window_list(space_id, false, window_manager).unwrap_or_default();
-    window_manager_validate_windows_on_space(
+    let window_list = query_windows_on_space(space_id, false, window_manager).unwrap_or_default();
+    untile_windows_no_longer_on_space(
         window_manager,
         space_manager,
         view,
@@ -182,7 +190,7 @@ pub(crate) fn window_manager_validate_and_check_for_windows_on_space(
         display_manager,
         mouse_drag_state,
     );
-    window_manager_check_for_windows_on_space(
+    tile_manageable_windows_found_on_space(
         window_manager,
         space_manager,
         view,
@@ -200,21 +208,23 @@ pub(crate) fn window_manager_validate_and_check_for_windows_on_space(
     // This is necessary to make sure that we do not call the AX API for each modification to the tree.
     //
 
-    if space_is_visible(view) && view_is_dirty(space_manager, view) {
-        window_node_flush(view, ROOT_NODE_ID, window_manager, space_manager);
+    if is_space_visible_on_its_display(view)
+        && has_view_windows_awaiting_their_areas(space_manager, view)
+    {
+        move_windows_below_node_into_their_areas(view, ROOT_NODE_ID, window_manager, space_manager);
         if let Some(view) = space_manager.view.find_mut(&view) {
-            view.clear_flag(ViewFlag::IS_DIRTY);
+            view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     }
 }
 
-pub(crate) fn window_manager_correct_for_mission_control_changes(
+pub(crate) fn reconcile_every_view_after_mission_control_changes(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     display_manager: &mut DisplayManager,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    let display_list = display_manager_active_display_list();
+    let display_list = query_displays_active_for_drawing();
 
     let animation_duration = window_manager.window_animation_duration;
     window_manager.window_animation_duration = 0.0f32;
@@ -222,14 +232,14 @@ pub(crate) fn window_manager_correct_for_mission_control_changes(
     for index in 0..display_list.len() {
         let display_id = display_list[index];
 
-        let Some(space_list) = display_space_list(display_id) else {
+        let Some(space_list) = query_spaces_of_display(display_id) else {
             continue;
         };
 
-        let space_id = display_space_id(display_id);
+        let space_id = query_current_space_of_display(display_id);
         for inner_index in 0..space_list.len() {
             if space_list[inner_index] == space_id {
-                window_manager_validate_and_check_for_windows_on_space(
+                reconcile_space_view_with_windows_on_space(
                     space_manager,
                     window_manager,
                     space_id,
@@ -237,7 +247,7 @@ pub(crate) fn window_manager_correct_for_mission_control_changes(
                     mouse_drag_state,
                 );
             } else {
-                space_manager_mark_view_invalid(
+                mark_view_areas_out_of_date(
                     space_manager,
                     space_list[inner_index],
                     display_manager,
@@ -250,22 +260,22 @@ pub(crate) fn window_manager_correct_for_mission_control_changes(
     window_manager.window_animation_duration = animation_duration;
 }
 
-pub(crate) fn window_manager_handle_display_add_and_remove(
+pub(crate) fn reconcile_views_after_display_added_or_removed(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     display_id: DisplayId,
     display_manager: &mut DisplayManager,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    let Some(space_list) = display_space_list(display_id) else {
+    let Some(space_list) = query_spaces_of_display(display_id) else {
         return;
     };
 
     for index in 0..space_list.len() {
-        if space_is_user(space_list[index]) {
-            let window_list = space_window_list(space_list[index], false, window_manager);
+        if is_user_space(space_list[index]) {
+            let window_list = query_windows_on_space(space_list[index], false, window_manager);
             if let Some(window_list) = window_list {
-                let view = space_manager_find_view(
+                let view = find_or_create_view_for_space(
                     space_manager,
                     space_list[index],
                     display_manager,
@@ -274,9 +284,9 @@ pub(crate) fn window_manager_handle_display_add_and_remove(
                 if space_manager
                     .view
                     .find(&view)
-                    .is_some_and(|view| view.layout != ViewType::Float)
+                    .is_some_and(|view| view.layout != ViewLayout::Float)
                 {
-                    window_manager_check_for_windows_on_space(
+                    tile_manageable_windows_found_on_space(
                         window_manager,
                         space_manager,
                         view,
@@ -290,12 +300,17 @@ pub(crate) fn window_manager_handle_display_add_and_remove(
         }
     }
 
-    let space_id = display_space_id(display_id);
+    let space_id = query_current_space_of_display(display_id);
     for index in 0..space_list.len() {
         if space_list[index] == space_id {
-            space_manager_refresh_view(space_manager, space_id, display_manager, window_manager);
+            recompute_view_areas_and_move_its_windows_into_them(
+                space_manager,
+                space_id,
+                display_manager,
+                window_manager,
+            );
         } else {
-            space_manager_mark_view_invalid(
+            mark_view_areas_out_of_date(
                 space_manager,
                 space_list[index],
                 display_manager,

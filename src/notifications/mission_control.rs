@@ -4,7 +4,7 @@ use core::ffi::c_void;
 use core::ptr::NonNull;
 use std::sync::Mutex;
 
-use crate::event::queue::{Event, event_loop_post};
+use crate::event::queue::{Event, post_event_to_event_loop};
 use crate::ffi::accessibility::{
     AXObserver, AXObserverAddNotification, AXObserverCreate, AXObserverGetRunLoopSource,
     AXObserverRef, AXObserverRemoveNotification, AXUIElement, AXUIElementCreateApplication,
@@ -30,7 +30,7 @@ unsafe impl Send for MissionControlObserver {}
 pub(crate) static MISSION_CONTROL_OBSERVER: Mutex<Option<MissionControlObserver>> =
     Mutex::new(None);
 
-pub(crate) unsafe extern "C-unwind" fn mission_control_notification_handler(
+pub(crate) unsafe extern "C-unwind" fn handle_mission_control_accessibility_notification_callback(
     _observer: NonNull<AXObserver>,
     _element: NonNull<AXUIElement>,
     notification: NonNull<CFString>,
@@ -42,24 +42,24 @@ pub(crate) unsafe extern "C-unwind" fn mission_control_notification_handler(
         Some(notification),
         Some(as_cftype(kAXExposeShowAllWindows())),
     ) {
-        event_loop_post(Event::MissionControlShowAllWindows);
+        post_event_to_event_loop(Event::MissionControlShowAllWindows);
     } else if CFEqual(
         Some(notification),
         Some(as_cftype(kAXExposeShowFrontWindows())),
     ) {
-        event_loop_post(Event::MissionControlShowFrontWindows);
+        post_event_to_event_loop(Event::MissionControlShowFrontWindows);
     } else if CFEqual(Some(notification), Some(as_cftype(kAXExposeShowDesktop()))) {
-        event_loop_post(Event::MissionControlShowDesktop);
+        post_event_to_event_loop(Event::MissionControlShowDesktop);
     } else if CFEqual(Some(notification), Some(as_cftype(kAXExposeExit()))) {
-        event_loop_post(Event::MissionControlExit);
+        post_event_to_event_loop(Event::MissionControlExit);
     }
 }
 
-pub(crate) fn mission_control_observe() {
+pub(crate) fn start_observing_mission_control_through_the_dock() {
     let mut mission_control_observer = MISSION_CONTROL_OBSERVER.lock().unwrap();
 
     if mission_control_observer.is_none() {
-        let process_id: u32 = workspace_get_dock_pid().0 as u32;
+        let process_id: u32 = find_dock_process_id().0 as u32;
         let element = unsafe { AXUIElementCreateApplication(process_id as libc::pid_t) };
 
         if process_id != 0 {
@@ -68,7 +68,7 @@ pub(crate) fn mission_control_observe() {
             if unsafe {
                 AXObserverCreate(
                     process_id as libc::pid_t,
-                    Some(mission_control_notification_handler),
+                    Some(handle_mission_control_accessibility_notification_callback),
                     NonNull::from(&mut observer_ref),
                 )
             } == kAXErrorSuccess
@@ -118,7 +118,7 @@ pub(crate) fn mission_control_observe() {
     }
 }
 
-pub(crate) fn mission_control_unobserve() {
+pub(crate) fn stop_observing_mission_control_through_the_dock() {
     let Some(mission_control_observer) = MISSION_CONTROL_OBSERVER.lock().unwrap().take() else {
         return;
     };
@@ -143,7 +143,7 @@ pub(crate) fn mission_control_unobserve() {
     });
 }
 
-pub(crate) fn workspace_get_dock_pid() -> ProcessId {
+pub(crate) fn find_dock_process_id() -> ProcessId {
     let list =
         NSRunningApplication::runningApplicationsWithBundleIdentifier(&NSString::from_str(
             "com.apple.dock",

@@ -15,6 +15,6 @@ pub const APPLE_INTERFACE_MENU_BAR_HIDING_CHANGED_NOTIFICATION: &str =
     "AppleInterfaceMenuBarHidingChangedNotification";
 pub const NS_APPLICATION_DOCK_DID_RESTART_NOTIFICATION: &str =
     "NSApplicationDockDidRestartNotification";
-pub const COM_APPLE_DOCK_PREFCHANGED: &str = "com.apple.dock.prefchanged";
+pub const DOCK_PREFERENCES_CHANGED_NOTIFICATION: &str = "com.apple.dock.prefchanged";
 pub const APPLE_COLOR_PREFERENCES_CHANGED_NOTIFICATION: &str =
     "AppleColorPreferencesChangedNotification";

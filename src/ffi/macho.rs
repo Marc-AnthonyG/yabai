@@ -27,12 +27,15 @@ pub struct nlist_64 {
 pub const LC_SYMTAB: u32 = 0x2;
 pub const SEG_LINKEDIT: &[u8] = b"__LINKEDIT";
 
-fn segment_name_is_linkedit(segname: &[c_char; 16]) -> bool {
+fn is_linkedit_segment_name(segname: &[c_char; 16]) -> bool {
     let bytes: &[u8; 16] = unsafe { &*(segname as *const [c_char; 16] as *const [u8; 16]) };
     &bytes[..SEG_LINKEDIT.len()] == SEG_LINKEDIT && bytes[SEG_LINKEDIT.len()] == 0
 }
 
-unsafe fn macho_find_image_header(target_name: &CStr, slide: &mut u64) -> *const mach_header_64 {
+unsafe fn find_loaded_image_header_and_slide(
+    target_name: &CStr,
+    slide: &mut u64,
+) -> *const mach_header_64 {
     let image_count = unsafe { libc::_dyld_image_count() };
 
     for index in 0..image_count {
@@ -50,7 +53,9 @@ unsafe fn macho_find_image_header(target_name: &CStr, slide: &mut u64) -> *const
     core::ptr::null()
 }
 
-unsafe fn macho_find_linkedit_segment(header: *const mach_header_64) -> *const segment_command_64 {
+unsafe fn find_linkedit_segment_of_image(
+    header: *const mach_header_64,
+) -> *const segment_command_64 {
     let mut offset = core::mem::size_of::<mach_header_64>();
 
     for _ in 0..unsafe { (*header).ncmds } {
@@ -58,7 +63,7 @@ unsafe fn macho_find_linkedit_segment(header: *const mach_header_64) -> *const s
 
         if unsafe { (*command).cmd } == LC_SEGMENT_64 {
             let segment = command as *const segment_command_64;
-            if segment_name_is_linkedit(unsafe { &(*segment).segname }) {
+            if is_linkedit_segment_name(unsafe { &(*segment).segname }) {
                 return segment;
             }
         }
@@ -69,7 +74,9 @@ unsafe fn macho_find_linkedit_segment(header: *const mach_header_64) -> *const s
     core::ptr::null()
 }
 
-unsafe fn macho_find_symtab_command(header: *const mach_header_64) -> *const symtab_command {
+unsafe fn find_symbol_table_command_of_image(
+    header: *const mach_header_64,
+) -> *const symtab_command {
     let mut offset = core::mem::size_of::<mach_header_64>();
 
     for _ in 0..unsafe { (*header).ncmds } {
@@ -85,19 +92,22 @@ unsafe fn macho_find_symtab_command(header: *const mach_header_64) -> *const sym
     core::ptr::null()
 }
 
-pub unsafe fn macho_find_symbol(target_image: &CStr, target_symbol: &CStr) -> Option<*mut c_void> {
+pub unsafe fn find_symbol_address_in_loaded_image_symbol_table(
+    target_image: &CStr,
+    target_symbol: &CStr,
+) -> Option<*mut c_void> {
     let mut slide: u64 = 0;
-    let header = unsafe { macho_find_image_header(target_image, &mut slide) };
+    let header = unsafe { find_loaded_image_header_and_slide(target_image, &mut slide) };
     if header.is_null() {
         return None;
     }
 
-    let linkedit_segment = unsafe { macho_find_linkedit_segment(header) };
+    let linkedit_segment = unsafe { find_linkedit_segment_of_image(header) };
     if linkedit_segment.is_null() {
         return None;
     }
 
-    let symtab_command = unsafe { macho_find_symtab_command(header) };
+    let symtab_command = unsafe { find_symbol_table_command_of_image(header) };
     if symtab_command.is_null() {
         return None;
     }

@@ -1,12 +1,12 @@
 use core::ffi::c_void;
 use std::sync::Mutex;
 
-use crate::display::arrangement::display_manager_display_id_arrangement;
+use crate::display::arrangement::query_arrangement_index_of_display;
 use crate::display::manager::DisplayManager;
 use crate::ffi::core_foundation::CGRect;
 use crate::ffi::libsystem::{PROC_PIDPATHINFO_MAXSIZE, proc_name};
 use crate::ffi::skylight::{SLSConnectionGetPID, SLSGetWindowBounds, SLSGetWindowOwner};
-use crate::layout::tree::{WINDOW_NODE_CHILD_STR, WINDOW_NODE_SPLIT_STR, WindowNodeChild};
+use crate::layout::tree::{WINDOW_NODE_CHILD_NAMES, WINDOW_NODE_SPLIT_NAMES, WindowNodeChild};
 use crate::serialise::window::{
     WINDOW_PROPERTY_APP, WINDOW_PROPERTY_CAN_MOVE, WINDOW_PROPERTY_CAN_RESIZE,
     WINDOW_PROPERTY_DISPLAY, WINDOW_PROPERTY_FRAME, WINDOW_PROPERTY_HAS_AX_REFERENCE,
@@ -19,21 +19,25 @@ use crate::serialise::window::{
     WINDOW_PROPERTY_ROOT_WINDOW, WINDOW_PROPERTY_SCRATCHPAD, WINDOW_PROPERTY_SPACE,
     WINDOW_PROPERTY_SPLIT_CHILD, WINDOW_PROPERTY_SPLIT_TYPE, WINDOW_PROPERTY_STACK_INDEX,
     WINDOW_PROPERTY_SUB_LAYER, WINDOW_PROPERTY_SUB_LEVEL, WINDOW_PROPERTY_SUBROLE,
-    WINDOW_PROPERTY_TITLE, window_layer,
+    WINDOW_PROPERTY_TITLE, layer_name_of_window_level,
 };
-use crate::space::lookup::space_manager_mission_control_index;
-use crate::space::managed_space::{space_display_id, space_is_fullscreen};
-use crate::state::process_wide::CONNECTION;
+use crate::space::lookup::query_mission_control_index_of_space;
+use crate::space::managed_space::{is_native_fullscreen_space, query_display_holding_space};
+use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
 use crate::support::handles::{SpaceId, WindowId};
-use crate::support::json::{json_bool, ts_string_escape};
+use crate::support::json::{
+    escape_string_for_json_when_it_needs_escaping, json_literal_for_boolean,
+};
 use crate::support::printf_float_format::format_float_with_decimals_as_printf_does;
 use crate::support::response::Response;
 use crate::window::model::{
-    window_is_sticky, window_level, window_opacity, window_parent, window_property_title_ts,
-    window_shadow, window_space, window_sub_level,
+    is_window_on_more_than_one_space, is_window_shadow_shown_according_to_window_server,
+    query_parent_window_from_window_server, query_space_holding_window,
+    query_window_level_from_window_server, query_window_opacity_from_window_server,
+    query_window_sub_level_from_window_server, query_window_title_from_window_server,
 };
 
-pub(crate) fn window_nonax_serialize(
+pub(crate) fn write_untracked_window_as_json_object(
     response: &mut Response,
     window_id: WindowId,
     flags: u64,
@@ -44,7 +48,7 @@ pub(crate) fn window_nonax_serialize(
         flags |= !flags;
     }
 
-    let connection_id = *CONNECTION.get().unwrap();
+    let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
 
     let mut process_id: Option<libc::pid_t> = None;
     let mut space_id: Option<SpaceId> = None;
@@ -63,15 +67,15 @@ pub(crate) fn window_nonax_serialize(
         || (flags & WINDOW_PROPERTY_SPACE) != 0
         || (flags & WINDOW_PROPERTY_IS_FULLSCREEN) != 0
     {
-        space_id = Some(window_space(window_id));
+        space_id = Some(query_space_holding_window(window_id));
     }
 
     if (flags & WINDOW_PROPERTY_LEVEL) != 0 || (flags & WINDOW_PROPERTY_LAYER) != 0 {
-        level = Some(window_level(window_id));
+        level = Some(query_window_level_from_window_server(window_id));
     }
 
     if (flags & WINDOW_PROPERTY_SUB_LEVEL) != 0 || (flags & WINDOW_PROPERTY_SUB_LAYER) != 0 {
-        sub_level = Some(window_sub_level(window_id));
+        sub_level = Some(query_window_sub_level_from_window_server(window_id));
     }
 
     let mut did_output = false;
@@ -96,9 +100,9 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        static PROCESS_NAME: Mutex<[u8; PROC_PIDPATHINFO_MAXSIZE]> =
+        static PROCESS_NAME_BUFFER: Mutex<[u8; PROC_PIDPATHINFO_MAXSIZE]> =
             Mutex::new([0u8; PROC_PIDPATHINFO_MAXSIZE]);
-        let mut process_name = PROCESS_NAME.lock().unwrap();
+        let mut process_name = PROCESS_NAME_BUFFER.lock().unwrap();
         unsafe {
             proc_name(
                 process_id.unwrap(),
@@ -113,11 +117,14 @@ pub(crate) fn window_nonax_serialize(
             .unwrap_or(process_name.len());
         let application_name = String::from_utf8_lossy(&process_name[..end]).into_owned();
         drop(process_name);
-        let escaped_application_name = ts_string_escape(&application_name);
+        let escaped_application_name =
+            escape_string_for_json_when_it_needs_escaping(&application_name);
 
         response.write(format_args!(
             "\t\"app\":\"{}\"",
-            escaped_application_name.as_deref().unwrap_or(&application_name)
+            escaped_application_name
+                .as_deref()
+                .unwrap_or(&application_name)
         ));
         did_output = true;
     }
@@ -127,8 +134,8 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        let title = window_property_title_ts(window_id);
-        let escaped_title = ts_string_escape(&title);
+        let title = query_window_title_from_window_server(window_id);
+        let escaped_title = escape_string_for_json_when_it_needs_escaping(&title);
 
         response.write(format_args!(
             "\t\"title\":\"{}\"",
@@ -187,10 +194,10 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        let parent_window_id = window_parent(window_id);
+        let parent_window_id = query_parent_window_from_window_server(window_id);
         response.write(format_args!(
             "\t\"root-window\":{}",
-            json_bool(parent_window_id == WindowId(0))
+            json_literal_for_boolean(parent_window_id == WindowId(0))
         ));
         did_output = true;
     }
@@ -200,8 +207,10 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        let display =
-            display_manager_display_id_arrangement(space_display_id(space_id.unwrap()), display_manager);
+        let display = query_arrangement_index_of_display(
+            query_display_holding_space(space_id.unwrap()),
+            display_manager,
+        );
         response.write(format_args!("\t\"display\":{}", display));
         did_output = true;
     }
@@ -211,7 +220,7 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        let space = space_manager_mission_control_index(space_id.unwrap());
+        let space = query_mission_control_index_of_space(space_id.unwrap());
         response.write(format_args!("\t\"space\":{}", space));
         did_output = true;
     }
@@ -239,7 +248,7 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        let layer = window_layer(level.unwrap());
+        let layer = layer_name_of_window_level(level.unwrap());
         response.write(format_args!("\t\"layer\":\"{}\"", layer));
         did_output = true;
     }
@@ -249,7 +258,7 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        let sub_layer = window_layer(sub_level.unwrap());
+        let sub_layer = layer_name_of_window_level(sub_level.unwrap());
         response.write(format_args!("\t\"sub-layer\":\"{}\"", sub_layer));
         did_output = true;
     }
@@ -259,7 +268,7 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        let opacity = window_opacity(window_id);
+        let opacity = query_window_opacity_from_window_server(window_id);
         response.write(format_args!(
             "\t\"opacity\":{}",
             format_float_with_decimals_as_printf_does(opacity as f64, 4)
@@ -274,7 +283,7 @@ pub(crate) fn window_nonax_serialize(
 
         response.write(format_args!(
             "\t\"split-type\":\"{}\"",
-            WINDOW_NODE_SPLIT_STR[0]
+            WINDOW_NODE_SPLIT_NAMES[0]
         ));
         did_output = true;
     }
@@ -286,7 +295,7 @@ pub(crate) fn window_nonax_serialize(
 
         response.write(format_args!(
             "\t\"split-child\":\"{}\"",
-            WINDOW_NODE_CHILD_STR[WindowNodeChild::None as usize]
+            WINDOW_NODE_CHILD_NAMES[WindowNodeChild::None as usize]
         ));
         did_output = true;
     }
@@ -305,7 +314,10 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        response.write(format_args!("\t\"can-move\":{}", json_bool(false)));
+        response.write(format_args!(
+            "\t\"can-move\":{}",
+            json_literal_for_boolean(false)
+        ));
         did_output = true;
     }
 
@@ -314,7 +326,10 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        response.write(format_args!("\t\"can-resize\":{}", json_bool(false)));
+        response.write(format_args!(
+            "\t\"can-resize\":{}",
+            json_literal_for_boolean(false)
+        ));
         did_output = true;
     }
 
@@ -323,7 +338,10 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        response.write(format_args!("\t\"has-focus\":{}", json_bool(false)));
+        response.write(format_args!(
+            "\t\"has-focus\":{}",
+            json_literal_for_boolean(false)
+        ));
         did_output = true;
     }
 
@@ -334,7 +352,7 @@ pub(crate) fn window_nonax_serialize(
 
         response.write(format_args!(
             "\t\"has-shadow\":{}",
-            json_bool(window_shadow(window_id))
+            json_literal_for_boolean(is_window_shadow_shown_according_to_window_server(window_id))
         ));
         did_output = true;
     }
@@ -344,7 +362,10 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        response.write(format_args!("\t\"has-parent-zoom\":{}", json_bool(false)));
+        response.write(format_args!(
+            "\t\"has-parent-zoom\":{}",
+            json_literal_for_boolean(false)
+        ));
         did_output = true;
     }
 
@@ -353,7 +374,10 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        response.write(format_args!("\t\"has-fullscreen-zoom\":{}", json_bool(false)));
+        response.write(format_args!(
+            "\t\"has-fullscreen-zoom\":{}",
+            json_literal_for_boolean(false)
+        ));
         did_output = true;
     }
 
@@ -362,7 +386,10 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        response.write(format_args!("\t\"has-ax-reference\":{}", json_bool(false)));
+        response.write(format_args!(
+            "\t\"has-ax-reference\":{}",
+            json_literal_for_boolean(false)
+        ));
         did_output = true;
     }
 
@@ -371,10 +398,10 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        let is_fullscreen = space_is_fullscreen(space_id.unwrap());
+        let is_fullscreen = is_native_fullscreen_space(space_id.unwrap());
         response.write(format_args!(
             "\t\"is-native-fullscreen\":{}",
-            json_bool(is_fullscreen)
+            json_literal_for_boolean(is_fullscreen)
         ));
         did_output = true;
     }
@@ -384,7 +411,10 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        response.write(format_args!("\t\"is-visible\":{}", json_bool(false)));
+        response.write(format_args!(
+            "\t\"is-visible\":{}",
+            json_literal_for_boolean(false)
+        ));
         did_output = true;
     }
 
@@ -393,7 +423,10 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        response.write(format_args!("\t\"is-minimized\":{}", json_bool(false)));
+        response.write(format_args!(
+            "\t\"is-minimized\":{}",
+            json_literal_for_boolean(false)
+        ));
         did_output = true;
     }
 
@@ -402,7 +435,10 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        response.write(format_args!("\t\"is-hidden\":{}", json_bool(false)));
+        response.write(format_args!(
+            "\t\"is-hidden\":{}",
+            json_literal_for_boolean(false)
+        ));
         did_output = true;
     }
 
@@ -411,7 +447,10 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        response.write(format_args!("\t\"is-floating\":{}", json_bool(false)));
+        response.write(format_args!(
+            "\t\"is-floating\":{}",
+            json_literal_for_boolean(false)
+        ));
         did_output = true;
     }
 
@@ -420,8 +459,11 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        let is_sticky = window_is_sticky(window_id);
-        response.write(format_args!("\t\"is-sticky\":{}", json_bool(is_sticky)));
+        let is_sticky = is_window_on_more_than_one_space(window_id);
+        response.write(format_args!(
+            "\t\"is-sticky\":{}",
+            json_literal_for_boolean(is_sticky)
+        ));
         did_output = true;
     }
 
@@ -430,7 +472,10 @@ pub(crate) fn window_nonax_serialize(
             response.write(format_args!(",\n"));
         }
 
-        response.write(format_args!("\t\"is-grabbed\":{}", json_bool(false)));
+        response.write(format_args!(
+            "\t\"is-grabbed\":{}",
+            json_literal_for_boolean(false)
+        ));
     }
 
     response.write(format_args!("\n}}"));

@@ -2,7 +2,7 @@ use core::ffi::{c_int, c_uint};
 
 use objc2::msg_send;
 
-use crate::display::identity::{display_manager_dock_display_id, display_manager_main_display_id};
+use crate::display::identity::{query_display_holding_the_dock, query_main_display};
 use crate::display::manager::{DisplayManager, ExternalBarMode};
 use crate::ffi::appkit::NSScreen;
 use crate::ffi::carbon_process::{CoreDockGetAutoHideEnabled, CoreDockGetOrientationAndPinning};
@@ -10,14 +10,14 @@ use crate::ffi::core_foundation::{CGFloat, CGPoint, CGRect};
 use crate::ffi::core_graphics::{CGDisplayBounds, CGDisplayIsBuiltin};
 use crate::ffi::foundation::{MainThreadMarker, NSString};
 use crate::ffi::skylight::{SLSGetDockRectWithReason, SLSGetMenuBarAutohideEnabled};
-use crate::state::process_wide::CONNECTION;
+use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
 use crate::support::handles::DisplayId;
-use crate::support::macos_version::workspace_is_macos_bigsur;
+use crate::support::macos_version::is_running_on_macos_big_sur;
 
+#[cfg(target_arch = "x86_64")]
+use crate::display::spaces::query_current_space_of_display;
 #[cfg(target_arch = "aarch64")]
 use crate::ffi::skylight::SLSGetDisplayMenubarHeight;
-#[cfg(target_arch = "x86_64")]
-use crate::display::spaces::display_space_id;
 #[cfg(target_arch = "x86_64")]
 use crate::ffi::skylight::SLSGetRevealedMenuBarBounds;
 
@@ -25,7 +25,7 @@ pub(crate) const DOCK_ORIENTATION_BOTTOM: i32 = 2;
 pub(crate) const DOCK_ORIENTATION_LEFT: i32 = 3;
 pub(crate) const DOCK_ORIENTATION_RIGHT: i32 = 4;
 
-pub(crate) fn display_bounds_constrained(
+pub(crate) fn query_bounds_of_display_left_for_windows(
     display_id: DisplayId,
     ignore_external_bar: bool,
     display_manager: &mut DisplayManager,
@@ -34,9 +34,9 @@ pub(crate) fn display_bounds_constrained(
     let mut effective_external_top_padding: i32 = 0;
 
     if !ignore_external_bar {
-        if (display_manager.mode == ExternalBarMode::Main
-            && display_id == display_manager_main_display_id())
-            || (display_manager.mode == ExternalBarMode::All)
+        if (display_manager.mode == ExternalBarMode::MainDisplayOnly
+            && display_id == query_main_display())
+            || (display_manager.mode == ExternalBarMode::EveryDisplay)
         {
             effective_external_top_padding = display_manager.top_padding;
 
@@ -46,22 +46,22 @@ pub(crate) fn display_bounds_constrained(
         }
     }
 
-    if display_manager_menu_bar_hidden() {
-        let notch_height = workspace_display_notch_height(display_id);
+    if is_menu_bar_set_to_hide_automatically() {
+        let notch_height = query_notch_height_of_display(display_id);
         if notch_height > effective_external_top_padding {
             frame.origin.y += (notch_height - effective_external_top_padding) as f64;
             frame.size.height -= (notch_height - effective_external_top_padding) as f64;
         }
     } else {
-        let menu = display_manager_menu_bar_rect(display_id);
+        let menu = query_menu_bar_bounds_of_display(display_id);
         frame.origin.y += menu.size.height;
         frame.size.height -= menu.size.height;
     }
 
-    if !display_manager_dock_hidden() {
-        if display_id == display_manager_dock_display_id() {
-            let dock = display_manager_dock_rect();
-            match display_manager_dock_orientation() {
+    if !is_dock_set_to_hide_automatically() {
+        if display_id == query_display_holding_the_dock() {
+            let dock = query_dock_bounds();
+            match query_dock_orientation() {
                 DOCK_ORIENTATION_LEFT => {
                     frame.origin.x += dock.size.width;
                     frame.size.width -= dock.size.width;
@@ -80,7 +80,7 @@ pub(crate) fn display_bounds_constrained(
     frame
 }
 
-pub(crate) fn display_center(display_id: DisplayId) -> CGPoint {
+pub(crate) fn query_center_of_display(display_id: DisplayId) -> CGPoint {
     let bounds = CGDisplayBounds(display_id.0);
     CGPoint {
         x: bounds.origin.x + bounds.size.width / 2.0,
@@ -88,14 +88,14 @@ pub(crate) fn display_center(display_id: DisplayId) -> CGPoint {
     }
 }
 
-pub(crate) fn display_manager_menu_bar_hidden() -> bool {
-    let connection_id = *CONNECTION.get().unwrap();
+pub(crate) fn is_menu_bar_set_to_hide_automatically() -> bool {
+    let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
     let mut status: c_int = 0;
     unsafe { SLSGetMenuBarAutohideEnabled(connection_id, &mut status) };
     status != 0
 }
 
-pub(crate) fn display_manager_menu_bar_rect(display_id: DisplayId) -> CGRect {
+pub(crate) fn query_menu_bar_bounds_of_display(display_id: DisplayId) -> CGRect {
     #[cfg(target_arch = "x86_64")]
     let mut bounds = CGRect::ZERO;
     #[cfg(target_arch = "aarch64")]
@@ -103,12 +103,12 @@ pub(crate) fn display_manager_menu_bar_rect(display_id: DisplayId) -> CGRect {
 
     #[cfg(target_arch = "x86_64")]
     {
-        let connection_id = *CONNECTION.get().unwrap();
+        let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
         unsafe {
             SLSGetRevealedMenuBarBounds(
                 &mut bounds,
                 connection_id,
-                display_space_id(display_id).0,
+                query_current_space_of_display(display_id).0,
             )
         };
     }
@@ -136,32 +136,32 @@ pub(crate) fn display_manager_menu_bar_rect(display_id: DisplayId) -> CGRect {
     bounds
 }
 
-pub(crate) fn display_manager_dock_hidden() -> bool {
+pub(crate) fn is_dock_set_to_hide_automatically() -> bool {
     let auto_hide_enabled = unsafe { CoreDockGetAutoHideEnabled() };
     auto_hide_enabled != 0
 }
 
-pub(crate) fn display_manager_dock_orientation() -> i32 {
+pub(crate) fn query_dock_orientation() -> i32 {
     let mut pinning: c_int = 0;
     let mut orientation: c_int = 0;
     unsafe { CoreDockGetOrientationAndPinning(&mut orientation, &mut pinning) };
     orientation
 }
 
-pub(crate) fn display_manager_dock_rect() -> CGRect {
-    let connection_id = *CONNECTION.get().unwrap();
+pub(crate) fn query_dock_bounds() -> CGRect {
+    let connection_id = *SKYLIGHT_CONNECTION_ID.get().unwrap();
     let mut reason: c_int = 0;
     let mut bounds = CGRect::ZERO;
     unsafe { SLSGetDockRectWithReason(connection_id, &mut bounds, &mut reason) };
     bounds
 }
 
-pub(crate) fn workspace_display_notch_height(display_id: DisplayId) -> i32 {
+pub(crate) fn query_notch_height_of_display(display_id: DisplayId) -> i32 {
     if !CGDisplayIsBuiltin(display_id.0) {
         return 0;
     }
 
-    if !workspace_is_macos_bigsur() {
+    if !is_running_on_macos_big_sur() {
         let screen_list = unsafe {
             let main_thread_marker = MainThreadMarker::new_unchecked();
             NSScreen::screens(main_thread_marker)

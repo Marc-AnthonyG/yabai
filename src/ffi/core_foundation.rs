@@ -31,41 +31,42 @@ pub const kCFNumberSInt64Type: CFNumberType = CFNumberType::SInt64Type;
 
 pub const K_CF_STRING_ENCODING_UTF8: CFStringEncoding = 0x0800_0100;
 
-pub struct SendCFRetained<T: ?Sized>(pub CFRetained<T>);
+pub struct CFRetainedAssumedSendAndSync<T: ?Sized>(pub CFRetained<T>);
 
-unsafe impl<T: ?Sized> Send for SendCFRetained<T> {}
-unsafe impl<T: ?Sized> Sync for SendCFRetained<T> {}
+unsafe impl<T: ?Sized> Send for CFRetainedAssumedSendAndSync<T> {}
+unsafe impl<T: ?Sized> Sync for CFRetainedAssumedSendAndSync<T> {}
 
-impl<T: ?Sized> SendCFRetained<T> {
+impl<T: ?Sized> CFRetainedAssumedSendAndSync<T> {
     pub fn as_ref(&self) -> &T {
         &self.0
     }
 }
 
-macro_rules! cfstring_constants {
+macro_rules! define_cached_cfstring_constants {
     ($($accessor_name:ident => $string_value:literal,)*) => {
         $(
             pub fn $accessor_name() -> &'static CFString {
-                static CACHED: OnceLock<SendCFRetained<CFString>> = OnceLock::new();
-                CACHED
-                    .get_or_init(|| SendCFRetained(CFString::from_str($string_value)))
+                static CACHED_CFSTRING: OnceLock<CFRetainedAssumedSendAndSync<CFString>> =
+                    OnceLock::new();
+                CACHED_CFSTRING
+                    .get_or_init(|| CFRetainedAssumedSendAndSync(CFString::from_str($string_value)))
                     .as_ref()
             }
         )*
     };
 }
 
-cfstring_constants! {
-    k_com_apple_window_shadow_density => "com.apple.WindowShadowDensity",
-    k_display_identifier              => "Display Identifier",
-    k_spaces                          => "Spaces",
-    k_id64                            => "id64",
-    k_fence                           => "__fence",
-    k_dock                            => "Dock",
-    k_cgs_window_title                => "kCGSWindowTitle",
-    k_com_apple_expose_awake          => "com.apple.expose.awake",
-    k_com_apple_showdesktop_awake     => "com.apple.showdesktop.awake",
-    k_com_apple_expose_front_awake    => "com.apple.expose.front.awake",
+define_cached_cfstring_constants! {
+    window_shadow_density_option_key                 => "com.apple.WindowShadowDensity",
+    display_identifier_key_of_managed_display_spaces => "Display Identifier",
+    spaces_key_of_managed_display_spaces             => "Spaces",
+    space_id_key_of_managed_space                    => "id64",
+    accessibility_fence_attribute_name               => "__fence",
+    dock_window_owner_name                           => "Dock",
+    window_title_property_key                        => "kCGSWindowTitle",
+    show_all_windows_dock_notification_name          => "com.apple.expose.awake",
+    show_desktop_dock_notification_name              => "com.apple.showdesktop.awake",
+    show_front_windows_dock_notification_name        => "com.apple.expose.front.awake",
 }
 
 pub fn kCFBooleanTrue() -> &'static CFBoolean {
@@ -167,15 +168,7 @@ pub fn as_cftype<T>(object: &T) -> &CFType {
     unsafe { &*((object as *const T).cast::<CFType>()) }
 }
 
-pub fn ts_cfstring_copy(string: &CFString) -> Option<String> {
-    cfstring_to_string(string)
-}
-
-pub fn cfstring_copy(string: &CFString) -> Option<String> {
-    cfstring_to_string(string)
-}
-
-pub fn CFNUM32(number: i32) -> CFRetained<CFNumber> {
+pub fn create_cfnumber_from_i32(number: i32) -> CFRetained<CFNumber> {
     unsafe {
         CFNumberCreate(
             None,
@@ -186,10 +179,10 @@ pub fn CFNUM32(number: i32) -> CFRetained<CFNumber> {
     .unwrap()
 }
 
-pub fn sls_window_disable_shadow(id: u32) {
-    let density = CFNUM32(0);
-    let mut keys: [*const c_void; 1] = [(k_com_apple_window_shadow_density() as *const CFString)
-        .cast::<c_void>()];
+pub fn disable_window_shadow_through_skylight(id: u32) {
+    let density = create_cfnumber_from_i32(0);
+    let mut keys: [*const c_void; 1] =
+        [(window_shadow_density_option_key() as *const CFString).cast::<c_void>()];
     let mut values: [*const c_void; 1] = [(&*density as *const CFNumber).cast::<c_void>()];
     let options = unsafe {
         CFDictionaryCreate(
@@ -205,7 +198,7 @@ pub fn sls_window_disable_shadow(id: u32) {
     unsafe { SLSWindowSetShadowProperties(id, &*options) };
 }
 
-pub fn cfarray_of_cfnumbers<T: Copy>(
+pub fn create_cfarray_of_cfnumbers<T: Copy>(
     values: &[T],
     number_type: CFNumberType,
 ) -> CFRetained<CFArray> {

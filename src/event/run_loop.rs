@@ -3,45 +3,46 @@ use std::sync::mpsc::Receiver;
 use objc2::rc::autoreleasepool;
 
 use crate::event::handlers::application::{
-    event_handler_application_front_switched, event_handler_application_hidden,
-    event_handler_application_launched, event_handler_application_terminated,
-    event_handler_application_visible,
+    handle_application_front_switched_event, handle_application_hidden_event,
+    handle_application_launched_event, handle_application_terminated_event,
+    handle_application_visible_event,
 };
-use crate::event::handlers::daemon_message::event_handler_daemon_message;
+use crate::event::handlers::daemon_message::handle_daemon_message_event;
 use crate::event::handlers::display::{
-    event_handler_display_added, event_handler_display_changed, event_handler_display_moved,
-    event_handler_display_removed, event_handler_display_resized,
+    handle_display_added_event, handle_display_changed_event, handle_display_moved_event,
+    handle_display_removed_event, handle_display_resized_event,
 };
-use crate::event::handlers::insert_feedback::event_handler_insert_feedback_fade_in_step;
-use crate::event::handlers::menu::{event_handler_menu_closed, event_handler_menu_opened};
+use crate::event::handlers::insert_feedback::handle_insert_feedback_fade_in_step_event;
+use crate::event::handlers::menu::{handle_menu_closed_event, handle_menu_opened_event};
 use crate::event::handlers::mission_control::{
-    event_handler_mission_control_check_for_exit, event_handler_mission_control_enter,
-    event_handler_mission_control_exit, event_handler_mission_control_show_all_windows,
-    event_handler_mission_control_show_desktop, event_handler_mission_control_show_front_windows,
+    handle_mission_control_check_for_exit_event, handle_mission_control_enter_event,
+    handle_mission_control_exit_event, handle_mission_control_show_all_windows_event,
+    handle_mission_control_show_desktop_event, handle_mission_control_show_front_windows_event,
 };
 use crate::event::handlers::mouse::{
-    event_handler_mouse_down, event_handler_mouse_dragged, event_handler_mouse_moved,
-    event_handler_mouse_up,
+    handle_mouse_down_event, handle_mouse_dragged_event, handle_mouse_moved_event,
+    handle_mouse_up_event,
 };
 use crate::event::handlers::space::{
-    event_handler_sls_space_created, event_handler_sls_space_destroyed, event_handler_space_changed,
+    handle_skylight_space_created_event, handle_skylight_space_destroyed_event,
+    handle_space_changed_event,
 };
 use crate::event::handlers::system::{
-    event_handler_dock_did_change_pref, event_handler_dock_did_restart,
-    event_handler_menu_bar_hidden_changed, event_handler_system_accent_color_changed,
-    event_handler_system_woke,
+    handle_dock_did_change_preferences_event, handle_dock_did_restart_event,
+    handle_menu_bar_hidden_changed_event, handle_system_accent_color_changed_event,
+    handle_system_woke_event,
 };
 use crate::event::handlers::window::{
-    event_handler_sls_window_destroyed, event_handler_sls_window_ordered,
-    event_handler_window_created, event_handler_window_deminimized, event_handler_window_destroyed,
-    event_handler_window_focused, event_handler_window_minimized, event_handler_window_moved,
-    event_handler_window_resized, event_handler_window_title_changed,
+    handle_skylight_window_destroyed_event, handle_skylight_window_ordered_event,
+    handle_window_created_event, handle_window_deminimized_event, handle_window_destroyed_event,
+    handle_window_focused_event, handle_window_minimized_event, handle_window_moved_event,
+    handle_window_resized_event, handle_window_title_changed_event,
 };
 use crate::event::queue::Event;
-use crate::signal::exec::event_signal_flush;
+use crate::signal::exec::run_commands_of_pending_signals_in_forked_children;
 use crate::state::event_loop_owned::EventLoopOwnedState;
 
-pub(crate) fn event_loop_run(
+pub(crate) fn run_event_loop_flushing_signals_after_each_event(
     event_receiver: Receiver<Event>,
     mut event_loop_owned_state: EventLoopOwnedState,
 ) {
@@ -64,7 +65,7 @@ pub(crate) fn event_loop_run(
 
             loop {
                 match next {
-                    Event::ApplicationLaunched(process) => event_handler_application_launched(
+                    Event::ApplicationLaunched(process) => handle_application_launched_event(
                         process,
                         signal_event,
                         process_manager,
@@ -75,7 +76,7 @@ pub(crate) fn event_loop_run(
                         mouse_drag_state,
                         mission_control_mode,
                     ),
-                    Event::ApplicationTerminated(process) => event_handler_application_terminated(
+                    Event::ApplicationTerminated(process) => handle_application_terminated_event(
                         process,
                         signal_event,
                         process_manager,
@@ -86,7 +87,7 @@ pub(crate) fn event_loop_run(
                         mouse_drag_state,
                     ),
                     Event::ApplicationFrontSwitched(process) => {
-                        event_handler_application_front_switched(
+                        handle_application_front_switched_event(
                             process,
                             signal_event,
                             process_manager,
@@ -98,7 +99,7 @@ pub(crate) fn event_loop_run(
                             mission_control_mode,
                         )
                     }
-                    Event::ApplicationVisible(process_id) => event_handler_application_visible(
+                    Event::ApplicationVisible(process_id) => handle_application_visible_event(
                         process_id,
                         signal_event,
                         process_manager,
@@ -107,7 +108,7 @@ pub(crate) fn event_loop_run(
                         space_manager,
                         signal_storage,
                     ),
-                    Event::ApplicationHidden(process_id) => event_handler_application_hidden(
+                    Event::ApplicationHidden(process_id) => handle_application_hidden_event(
                         process_id,
                         signal_event,
                         process_manager,
@@ -117,7 +118,7 @@ pub(crate) fn event_loop_run(
                         signal_storage,
                         mouse_drag_state,
                     ),
-                    Event::WindowCreated(element_ref) => event_handler_window_created(
+                    Event::WindowCreated(element_ref) => handle_window_created_event(
                         element_ref,
                         signal_event,
                         process_manager,
@@ -128,7 +129,7 @@ pub(crate) fn event_loop_run(
                         mouse_drag_state,
                         mission_control_mode,
                     ),
-                    Event::WindowDestroyed(window_id) => event_handler_window_destroyed(
+                    Event::WindowDestroyed(window_id) => handle_window_destroyed_event(
                         window_id,
                         signal_event,
                         process_manager,
@@ -138,7 +139,7 @@ pub(crate) fn event_loop_run(
                         signal_storage,
                         mouse_drag_state,
                     ),
-                    Event::WindowFocused(window_id) => event_handler_window_focused(
+                    Event::WindowFocused(window_id) => handle_window_focused_event(
                         window_id,
                         signal_event,
                         process_manager,
@@ -148,7 +149,7 @@ pub(crate) fn event_loop_run(
                         signal_storage,
                         mouse_drag_state,
                     ),
-                    Event::WindowMoved(window_id) => event_handler_window_moved(
+                    Event::WindowMoved(window_id) => handle_window_moved_event(
                         window_id,
                         signal_event,
                         process_manager,
@@ -158,7 +159,7 @@ pub(crate) fn event_loop_run(
                         signal_storage,
                         mouse_drag_state,
                     ),
-                    Event::WindowResized(window_id) => event_handler_window_resized(
+                    Event::WindowResized(window_id) => handle_window_resized_event(
                         window_id,
                         signal_event,
                         process_manager,
@@ -168,7 +169,7 @@ pub(crate) fn event_loop_run(
                         signal_storage,
                         mouse_drag_state,
                     ),
-                    Event::WindowMinimized(window_id) => event_handler_window_minimized(
+                    Event::WindowMinimized(window_id) => handle_window_minimized_event(
                         window_id,
                         signal_event,
                         process_manager,
@@ -178,7 +179,7 @@ pub(crate) fn event_loop_run(
                         signal_storage,
                         mouse_drag_state,
                     ),
-                    Event::WindowDeminimized(window_id) => event_handler_window_deminimized(
+                    Event::WindowDeminimized(window_id) => handle_window_deminimized_event(
                         window_id,
                         signal_event,
                         process_manager,
@@ -187,7 +188,7 @@ pub(crate) fn event_loop_run(
                         space_manager,
                         signal_storage,
                     ),
-                    Event::WindowTitleChanged(window_id) => event_handler_window_title_changed(
+                    Event::WindowTitleChanged(window_id) => handle_window_title_changed_event(
                         window_id,
                         signal_event,
                         process_manager,
@@ -196,20 +197,26 @@ pub(crate) fn event_loop_run(
                         space_manager,
                         signal_storage,
                     ),
-                    Event::SlsWindowOrdered(window_id) => {
-                        event_handler_sls_window_ordered(window_id, window_manager, space_manager)
+                    Event::SkylightWindowOrdered(window_id) => {
+                        handle_skylight_window_ordered_event(
+                            window_id,
+                            window_manager,
+                            space_manager,
+                        )
                     }
-                    Event::SlsWindowDestroyed(window_id) => event_handler_sls_window_destroyed(
-                        window_id,
-                        signal_event,
-                        process_manager,
-                        display_manager,
-                        window_manager,
-                        space_manager,
-                        signal_storage,
-                        mouse_drag_state,
-                    ),
-                    Event::SlsSpaceCreated(space_id) => event_handler_sls_space_created(
+                    Event::SkylightWindowDestroyed(window_id) => {
+                        handle_skylight_window_destroyed_event(
+                            window_id,
+                            signal_event,
+                            process_manager,
+                            display_manager,
+                            window_manager,
+                            space_manager,
+                            signal_storage,
+                            mouse_drag_state,
+                        )
+                    }
+                    Event::SkylightSpaceCreated(space_id) => handle_skylight_space_created_event(
                         space_id,
                         signal_event,
                         process_manager,
@@ -218,17 +225,19 @@ pub(crate) fn event_loop_run(
                         space_manager,
                         signal_storage,
                     ),
-                    Event::SlsSpaceDestroyed(space_id) => event_handler_sls_space_destroyed(
-                        space_id,
-                        signal_event,
-                        process_manager,
-                        display_manager,
-                        window_manager,
-                        space_manager,
-                        signal_storage,
-                        mouse_drag_state,
-                    ),
-                    Event::SpaceChanged => event_handler_space_changed(
+                    Event::SkylightSpaceDestroyed(space_id) => {
+                        handle_skylight_space_destroyed_event(
+                            space_id,
+                            signal_event,
+                            process_manager,
+                            display_manager,
+                            window_manager,
+                            space_manager,
+                            signal_storage,
+                            mouse_drag_state,
+                        )
+                    }
+                    Event::SpaceChanged => handle_space_changed_event(
                         signal_event,
                         process_manager,
                         display_manager,
@@ -238,7 +247,7 @@ pub(crate) fn event_loop_run(
                         mouse_drag_state,
                         mission_control_mode,
                     ),
-                    Event::DisplayAdded(display_id) => event_handler_display_added(
+                    Event::DisplayAdded(display_id) => handle_display_added_event(
                         display_id,
                         signal_event,
                         process_manager,
@@ -248,7 +257,7 @@ pub(crate) fn event_loop_run(
                         signal_storage,
                         mouse_drag_state,
                     ),
-                    Event::DisplayRemoved(display_id) => event_handler_display_removed(
+                    Event::DisplayRemoved(display_id) => handle_display_removed_event(
                         display_id,
                         signal_event,
                         process_manager,
@@ -258,7 +267,7 @@ pub(crate) fn event_loop_run(
                         signal_storage,
                         mouse_drag_state,
                     ),
-                    Event::DisplayMoved(display_id) => event_handler_display_moved(
+                    Event::DisplayMoved(display_id) => handle_display_moved_event(
                         display_id,
                         signal_event,
                         process_manager,
@@ -267,7 +276,7 @@ pub(crate) fn event_loop_run(
                         space_manager,
                         signal_storage,
                     ),
-                    Event::DisplayResized(display_id) => event_handler_display_resized(
+                    Event::DisplayResized(display_id) => handle_display_resized_event(
                         display_id,
                         signal_event,
                         process_manager,
@@ -276,7 +285,7 @@ pub(crate) fn event_loop_run(
                         space_manager,
                         signal_storage,
                     ),
-                    Event::DisplayChanged => event_handler_display_changed(
+                    Event::DisplayChanged => handle_display_changed_event(
                         signal_event,
                         process_manager,
                         display_manager,
@@ -289,14 +298,14 @@ pub(crate) fn event_loop_run(
                     Event::MouseDown {
                         event,
                         event_modifier,
-                    } => event_handler_mouse_down(
+                    } => handle_mouse_down_event(
                         event,
                         event_modifier,
                         window_manager,
                         mouse_drag_state,
                         mission_control_mode,
                     ),
-                    Event::MouseUp { event } => event_handler_mouse_up(
+                    Event::MouseUp { event } => handle_mouse_up_event(
                         event,
                         display_manager,
                         window_manager,
@@ -304,7 +313,7 @@ pub(crate) fn event_loop_run(
                         mouse_drag_state,
                         mission_control_mode,
                     ),
-                    Event::MouseDragged { event } => event_handler_mouse_dragged(
+                    Event::MouseDragged { event } => handle_mouse_dragged_event(
                         event,
                         display_manager,
                         window_manager,
@@ -315,7 +324,7 @@ pub(crate) fn event_loop_run(
                     Event::MouseMoved {
                         event,
                         event_modifier,
-                    } => event_handler_mouse_moved(
+                    } => handle_mouse_moved_event(
                         event,
                         event_modifier,
                         display_manager,
@@ -325,7 +334,7 @@ pub(crate) fn event_loop_run(
                         mission_control_mode,
                     ),
                     Event::MissionControlShowAllWindows => {
-                        event_handler_mission_control_show_all_windows(
+                        handle_mission_control_show_all_windows_event(
                             signal_event,
                             process_manager,
                             display_manager,
@@ -336,7 +345,7 @@ pub(crate) fn event_loop_run(
                         )
                     }
                     Event::MissionControlShowFrontWindows => {
-                        event_handler_mission_control_show_front_windows(
+                        handle_mission_control_show_front_windows_event(
                             signal_event,
                             process_manager,
                             display_manager,
@@ -346,7 +355,7 @@ pub(crate) fn event_loop_run(
                             mission_control_mode,
                         )
                     }
-                    Event::MissionControlShowDesktop => event_handler_mission_control_show_desktop(
+                    Event::MissionControlShowDesktop => handle_mission_control_show_desktop_event(
                         signal_event,
                         process_manager,
                         display_manager,
@@ -355,7 +364,7 @@ pub(crate) fn event_loop_run(
                         signal_storage,
                         mission_control_mode,
                     ),
-                    Event::MissionControlEnter => event_handler_mission_control_enter(
+                    Event::MissionControlEnter => handle_mission_control_enter_event(
                         signal_event,
                         process_manager,
                         display_manager,
@@ -365,9 +374,9 @@ pub(crate) fn event_loop_run(
                         mission_control_mode,
                     ),
                     Event::MissionControlCheckForExit => {
-                        event_handler_mission_control_check_for_exit(mission_control_mode)
+                        handle_mission_control_check_for_exit_event(mission_control_mode)
                     }
-                    Event::MissionControlExit => event_handler_mission_control_exit(
+                    Event::MissionControlExit => handle_mission_control_exit_event(
                         signal_event,
                         process_manager,
                         display_manager,
@@ -377,7 +386,7 @@ pub(crate) fn event_loop_run(
                         mouse_drag_state,
                         mission_control_mode,
                     ),
-                    Event::DockDidRestart => event_handler_dock_did_restart(
+                    Event::DockDidRestart => handle_dock_did_restart_event(
                         signal_event,
                         process_manager,
                         display_manager,
@@ -385,18 +394,18 @@ pub(crate) fn event_loop_run(
                         space_manager,
                         signal_storage,
                     ),
-                    Event::MenuOpened(window_id) => event_handler_menu_opened(
+                    Event::MenuOpened(window_id) => handle_menu_opened_event(
                         window_id,
                         window_manager,
                         focus_follows_mouse_suspended_value,
                         is_menu_open,
                     ),
-                    Event::MenuClosed => event_handler_menu_closed(
+                    Event::MenuClosed => handle_menu_closed_event(
                         window_manager,
                         focus_follows_mouse_suspended_value,
                         is_menu_open,
                     ),
-                    Event::MenuBarHiddenChanged => event_handler_menu_bar_hidden_changed(
+                    Event::MenuBarHiddenChanged => handle_menu_bar_hidden_changed_event(
                         signal_event,
                         process_manager,
                         display_manager,
@@ -404,7 +413,7 @@ pub(crate) fn event_loop_run(
                         space_manager,
                         signal_storage,
                     ),
-                    Event::DockDidChangePref => event_handler_dock_did_change_pref(
+                    Event::DockDidChangePreferences => handle_dock_did_change_preferences_event(
                         signal_event,
                         process_manager,
                         display_manager,
@@ -412,7 +421,7 @@ pub(crate) fn event_loop_run(
                         space_manager,
                         signal_storage,
                     ),
-                    Event::SystemWoke => event_handler_system_woke(
+                    Event::SystemWoke => handle_system_woke_event(
                         signal_event,
                         process_manager,
                         display_manager,
@@ -421,12 +430,12 @@ pub(crate) fn event_loop_run(
                         signal_storage,
                     ),
                     Event::SystemAccentColorChanged(accent_color) => {
-                        event_handler_system_accent_color_changed(accent_color, window_manager)
+                        handle_system_accent_color_changed_event(accent_color, window_manager)
                     }
                     Event::InsertFeedbackFadeInStep => {
-                        event_handler_insert_feedback_fade_in_step(space_manager)
+                        handle_insert_feedback_fade_in_step_event(space_manager)
                     }
-                    Event::DaemonMessage(stream) => event_handler_daemon_message(
+                    Event::DaemonMessage(stream) => handle_daemon_message_event(
                         stream,
                         signal_event,
                         process_manager,
@@ -438,7 +447,7 @@ pub(crate) fn event_loop_run(
                     ),
                 }
 
-                event_signal_flush(signal_event, signal_storage);
+                run_commands_of_pending_signals_in_forked_children(signal_event, signal_storage);
 
                 match event_receiver.try_recv() {
                     Ok(next_event) => next = next_event,

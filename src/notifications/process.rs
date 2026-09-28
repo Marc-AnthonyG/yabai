@@ -2,20 +2,24 @@ use core::ffi::{c_ulong, c_void};
 use std::sync::Arc;
 use std::sync::atomic::{Ordering, compiler_fence};
 
-use crate::event::queue::{Event, event_loop_post};
+use crate::event::queue::{Event, post_event_to_event_loop};
 use crate::ffi::carbon_events::{
     EventHandlerCallRef, EventRef, GetEventKind, GetEventParameter, OSStatus,
     kEventAppFrontSwitched, kEventAppLaunched, kEventAppTerminated, kEventParamProcessID, noErr,
     typeProcessSerialNumber,
 };
 use crate::ffi::carbon_process::ProcessSerialNumber;
-use crate::ffi::libsystem::process_is_being_debugged;
-use crate::notifications::workspace::{WORKSPACE_CONTEXT, workspace_application_unobserve};
-use crate::process::manager::{PROCESS_TABLE, process_manager_find_process};
-use crate::process::model::{process_create, process_pid_for_psn};
+use crate::ffi::libsystem::is_process_being_debugged;
+use crate::notifications::workspace::{
+    WORKSPACE_CONTEXT, stop_observing_application_launch_and_activation_policy,
+};
+use crate::process::manager::{PROCESS_TABLE, process_with_process_serial_number};
+use crate::process::model::{
+    create_process_unless_it_is_ignored, query_process_id_of_process_serial_number,
+};
 
 #[allow(non_upper_case_globals)]
-pub(crate) unsafe extern "C-unwind" fn process_handler(
+pub(crate) unsafe extern "C-unwind" fn handle_carbon_application_event_callback(
     _handler_call_ref: EventHandlerCallRef,
     event: EventRef,
     _context: *mut c_void,
@@ -41,7 +45,7 @@ pub(crate) unsafe extern "C-unwind" fn process_handler(
 
     match unsafe { GetEventKind(event) } {
         kEventAppLaunched => {
-            if process_manager_find_process(&process_serial_number).is_some() {
+            if process_with_process_serial_number(&process_serial_number).is_some() {
                 //
                 // NOTE(asmvik): Some garbage applications (e.g Steam) are reported twice with the same PID and PSN for some hecking reason.
                 // It is by definition NOT possible for two processes to exist at the same time with the same PID and PSN.
@@ -51,17 +55,19 @@ pub(crate) unsafe extern "C-unwind" fn process_handler(
                 return noErr;
             }
 
-            let process_id = process_pid_for_psn(process_serial_number);
-            if process_is_being_debugged(process_id.0) {
+            let process_id = query_process_id_of_process_serial_number(process_serial_number);
+            if is_process_being_debugged(process_id.0) {
                 crate::debug!(
                     "{}: process with pid {} is running under a debugger! ignoring..\n",
-                    "process_handler",
+                    "handle_carbon_application_event_callback",
                     process_id.0
                 );
                 return noErr;
             }
 
-            let Some(process) = process_create(process_serial_number, process_id) else {
+            let Some(process) =
+                create_process_unless_it_is_ignored(process_serial_number, process_id)
+            else {
                 return noErr;
             };
 
@@ -70,11 +76,14 @@ pub(crate) unsafe extern "C-unwind" fn process_handler(
                 .unwrap()
                 .lock()
                 .unwrap()
-                .add(process.process_serial_number, Arc::clone(&process));
-            event_loop_post(Event::ApplicationLaunched(process));
+                .add_unless_key_already_present(
+                    process.process_serial_number,
+                    Arc::clone(&process),
+                );
+            post_event_to_event_loop(Event::ApplicationLaunched(process));
         }
         kEventAppTerminated => {
-            let Some(process) = process_manager_find_process(&process_serial_number) else {
+            let Some(process) = process_with_process_serial_number(&process_serial_number) else {
                 return noErr;
             };
 
@@ -85,17 +94,20 @@ pub(crate) unsafe extern "C-unwind" fn process_handler(
                 .lock()
                 .unwrap()
                 .remove(&process_serial_number);
-            workspace_application_unobserve(WORKSPACE_CONTEXT.get().unwrap(), &process);
+            stop_observing_application_launch_and_activation_policy(
+                WORKSPACE_CONTEXT.get().unwrap(),
+                &process,
+            );
             compiler_fence(Ordering::SeqCst);
 
-            event_loop_post(Event::ApplicationTerminated(process));
+            post_event_to_event_loop(Event::ApplicationTerminated(process));
         }
         kEventAppFrontSwitched => {
-            let Some(process) = process_manager_find_process(&process_serial_number) else {
+            let Some(process) = process_with_process_serial_number(&process_serial_number) else {
                 return noErr;
             };
 
-            event_loop_post(Event::ApplicationFrontSwitched(process));
+            post_event_to_event_loop(Event::ApplicationFrontSwitched(process));
         }
         _ => {}
     }

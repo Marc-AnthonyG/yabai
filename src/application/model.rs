@@ -5,13 +5,16 @@ use std::sync::Arc;
 
 use crate::ffi::accessibility::{
     AXObserverRef, AXUIElement, AXUIElementCopyAttributeValue, AXUIElementCreateApplication,
-    AXUIElementRef, ax_window_id, kAXFocusedWindowAttribute, kAXWindowsAttribute,
+    AXUIElementRef, kAXFocusedWindowAttribute, kAXWindowsAttribute,
+    read_window_id_of_accessibility_element,
 };
-use crate::ffi::carbon_process::{IsProcessVisible, ProcessSerialNumber, psn_equals};
+use crate::ffi::carbon_process::{
+    IsProcessVisible, ProcessSerialNumber, is_same_process_serial_number,
+};
 use crate::ffi::core_foundation::{CFArray, CFRetained, CFType, take_create_rule_result};
 use crate::ffi::skylight::{_SLPSGetFrontProcess, SLSGetConnectionIDForPSN};
 use crate::process::model::Process;
-use crate::state::process_wide::CONNECTION;
+use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
 use crate::support::handles::{ProcessId, WindowId};
 
 pub(crate) struct Application {
@@ -35,7 +38,7 @@ impl Drop for Application {
     }
 }
 
-pub(crate) fn application_focused_window(application: &Application) -> WindowId {
+pub(crate) fn read_focused_window_of_application(application: &Application) -> WindowId {
     let mut window_ref: *const CFType = core::ptr::null();
     unsafe {
         AXUIElementCopyAttributeValue(
@@ -48,27 +51,30 @@ pub(crate) fn application_focused_window(application: &Application) -> WindowId 
         return WindowId(0);
     };
 
-    let window_id =
-        ax_window_id(unsafe { &*((&*window_ref as *const CFType).cast::<AXUIElement>()) });
+    let window_id = read_window_id_of_accessibility_element(unsafe {
+        &*((&*window_ref as *const CFType).cast::<AXUIElement>())
+    });
     drop(window_ref);
 
     WindowId(window_id)
 }
 
-pub(crate) fn application_is_frontmost(application: &Application) -> bool {
+pub(crate) fn is_application_frontmost(application: &Application) -> bool {
     let mut process_serial_number = ProcessSerialNumber {
         high_long_of_psn: 0,
         low_long_of_psn: 0,
     };
     unsafe { _SLPSGetFrontProcess(&mut process_serial_number) };
-    psn_equals(&process_serial_number, &application.process_serial_number)
+    is_same_process_serial_number(&process_serial_number, &application.process_serial_number)
 }
 
-pub(crate) fn application_is_hidden(application: &Application) -> bool {
+pub(crate) fn is_application_hidden(application: &Application) -> bool {
     (unsafe { IsProcessVisible(&application.process_serial_number) }) == 0
 }
 
-pub(crate) fn application_window_list(application: &Application) -> Option<CFRetained<CFArray>> {
+pub(crate) fn copy_accessibility_windows_of_application(
+    application: &Application,
+) -> Option<CFRetained<CFArray>> {
     let mut window_list_ref: *const CFType = core::ptr::null();
     unsafe {
         AXUIElementCopyAttributeValue(
@@ -80,7 +86,7 @@ pub(crate) fn application_window_list(application: &Application) -> Option<CFRet
     unsafe { take_create_rule_result(window_list_ref.cast::<CFArray>()) }
 }
 
-pub(crate) fn application_create(process: &Arc<Process>) -> Application {
+pub(crate) fn create_application_for_process(process: &Arc<Process>) -> Application {
     let mut application = Application {
         element_ref: CFRetained::into_raw(unsafe {
             AXUIElementCreateApplication(process.process_id.0)
@@ -97,10 +103,10 @@ pub(crate) fn application_create(process: &Arc<Process>) -> Application {
         ax_retry: false,
     };
 
-    application.is_hidden = application_is_hidden(&application);
+    application.is_hidden = is_application_hidden(&application);
     unsafe {
         SLSGetConnectionIDForPSN(
-            *CONNECTION.get().unwrap(),
+            *SKYLIGHT_CONNECTION_ID.get().unwrap(),
             &mut application.process_serial_number,
             &mut application.connection,
         )
@@ -109,6 +115,6 @@ pub(crate) fn application_create(process: &Arc<Process>) -> Application {
     application
 }
 
-pub(crate) fn application_destroy(application: Application) {
+pub(crate) fn destroy_application_releasing_its_accessibility_element(application: Application) {
     drop(application);
 }

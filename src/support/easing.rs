@@ -1,4 +1,4 @@
-macro_rules! animation_easing_type_list {
+macro_rules! with_every_animation_easing_type {
     ($animation_easing_type_entry:ident) => {
         $animation_easing_type_entry! {
             (EaseInSine, ease_in_sine, 0),
@@ -34,11 +34,11 @@ macro_rules! define_animation_easing_type {
             $($variant = $value),*
         }
 
-        pub static ANIMATION_EASING_TYPE_STR: [&str; EASING_TYPE_COUNT] =
+        pub static ANIMATION_EASING_TYPE_NAMES: [&str; ANIMATION_EASING_TYPE_COUNT] =
             [$(stringify!($function)),*];
 
         impl AnimationEasingType {
-            pub fn apply(self, interpolant: f32) -> f32 {
+            pub fn ease_interpolant(self, interpolant: f32) -> f32 {
                 match self {
                     $(AnimationEasingType::$variant => $function(interpolant)),*
                 }
@@ -54,9 +54,9 @@ macro_rules! define_animation_easing_type {
     };
 }
 
-animation_easing_type_list!(define_animation_easing_type);
+with_every_animation_easing_type!(define_animation_easing_type);
 
-pub const EASING_TYPE_COUNT: usize = 21;
+pub const ANIMATION_EASING_TYPE_COUNT: usize = 21;
 
 pub fn ease_in_sine(interpolant: f32) -> f32 {
     1.0 - (((interpolant as f64 * std::f64::consts::PI) / 2.0) as f32).cos()
@@ -180,11 +180,11 @@ pub fn ease_in_out_circ(interpolant: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{ANIMATION_EASING_TYPE_STR, AnimationEasingType, EASING_TYPE_COUNT};
+    use super::{ANIMATION_EASING_TYPE_COUNT, ANIMATION_EASING_TYPE_NAMES, AnimationEasingType};
 
     const INTERPOLANTS_WHERE_EVERY_C_BUILD_AGREES: [f32; 6] = [0.0, 0.25, 0.3333, 0.5, 0.75, 1.0];
 
-    const C_EASING_RESULT_BITS_IN_ENUM_ORDER: [(&str, [u32; 6]); EASING_TYPE_COUNT] = [
+    const C_EASING_RESULT_BITS_IN_ENUM_ORDER: [(&str, [u32; 6]); ANIMATION_EASING_TYPE_COUNT] = [
         (
             "ease_in_sine",
             [
@@ -320,7 +320,7 @@ mod tests {
             .map(|(name, _)| *name)
             .collect();
 
-        assert_eq!(ANIMATION_EASING_TYPE_STR.to_vec(), c_names);
+        assert_eq!(ANIMATION_EASING_TYPE_NAMES.to_vec(), c_names);
     }
 
     #[test]
@@ -332,7 +332,7 @@ mod tests {
 
             let result_bits: Vec<u32> = INTERPOLANTS_WHERE_EVERY_C_BUILD_AGREES
                 .iter()
-                .map(|interpolant| easing.apply(*interpolant).to_bits())
+                .map(|interpolant| easing.ease_interpolant(*interpolant).to_bits())
                 .collect();
 
             assert_eq!(result_bits, expected_bits.to_vec(), "{name}");
@@ -341,14 +341,14 @@ mod tests {
 
     #[test]
     fn from_index_knows_exactly_the_twenty_one_c_easings() {
-        assert_eq!(EASING_TYPE_COUNT, 21);
-        assert!(AnimationEasingType::from_index(EASING_TYPE_COUNT - 1).is_some());
-        assert!(AnimationEasingType::from_index(EASING_TYPE_COUNT).is_none());
+        assert_eq!(ANIMATION_EASING_TYPE_COUNT, 21);
+        assert!(AnimationEasingType::from_index(ANIMATION_EASING_TYPE_COUNT - 1).is_some());
+        assert!(AnimationEasingType::from_index(ANIMATION_EASING_TYPE_COUNT).is_none());
     }
 
     #[test]
     fn each_easing_index_round_trips_through_its_discriminant() {
-        for index in 0..EASING_TYPE_COUNT {
+        for index in 0..ANIMATION_EASING_TYPE_COUNT {
             let easing = AnimationEasingType::from_index(index)
                 .unwrap_or_else(|| panic!("easing index {index} should exist"));
 

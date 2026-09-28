@@ -15,7 +15,7 @@ use crate::debug;
 use crate::event::queue::{EVENT_SENDER, Event};
 use crate::ffi::appkit::{
     APPLE_COLOR_PREFERENCES_CHANGED_NOTIFICATION,
-    APPLE_INTERFACE_MENU_BAR_HIDING_CHANGED_NOTIFICATION, COM_APPLE_DOCK_PREFCHANGED,
+    APPLE_INTERFACE_MENU_BAR_HIDING_CHANGED_NOTIFICATION, DOCK_PREFERENCES_CHANGED_NOTIFICATION,
     NS_APPLICATION_DOCK_DID_RESTART_NOTIFICATION,
     NS_WORKSPACE_ACTIVE_DISPLAY_DID_CHANGE_NOTIFICATION, NSRunningApplication,
     NSSystemColorsDidChangeNotification, NSWorkspace, NSWorkspaceActiveSpaceDidChangeNotification,
@@ -35,10 +35,9 @@ use crate::notifications::accent_color::{
 use crate::process::model::Process;
 use crate::support::handles::ProcessId;
 use crate::support::macos_version::{
-    _workspace_is_macos_version_bigsur, _workspace_is_macos_version_monterey,
-    _workspace_is_macos_version_sequoia, _workspace_is_macos_version_sonoma,
-    _workspace_is_macos_version_tahoe, _workspace_is_macos_version_ventura,
-    supported_macos_version_list,
+    RUNNING_ON_MACOS_BIG_SUR, RUNNING_ON_MACOS_MONTEREY, RUNNING_ON_MACOS_SEQUOIA,
+    RUNNING_ON_MACOS_SONOMA, RUNNING_ON_MACOS_TAHOE, RUNNING_ON_MACOS_VENTURA,
+    with_every_supported_macos_version,
 };
 
 pub(crate) struct WorkspaceContextIvars {
@@ -87,7 +86,7 @@ define_class!(
                         &NSString::from_str("activationPolicy"),
                         &process,
                     ) {
-                        release_kvo_refcon_on_main_queue(&process);
+                        release_key_value_observation_process_reference_on_main_queue(&process);
                     }
 
                     process.policy.store(
@@ -132,7 +131,7 @@ define_class!(
                         &NSString::from_str("finishedLaunching"),
                         &process,
                     ) {
-                        release_kvo_refcon_on_main_queue(&process);
+                        release_key_value_observation_process_reference_on_main_queue(&process);
                     }
 
                     debug!(
@@ -166,7 +165,7 @@ define_class!(
 
         #[unsafe(method(didChangeDockPref:))]
         fn didChangeDockPref(&self, notification: &NSNotification) {
-            let _ = self.ivars().event_sender.send(Event::DockDidChangePref);
+            let _ = self.ivars().event_sender.send(Event::DockDidChangePreferences);
         }
 
         #[unsafe(method(systemColorsDidChange:))]
@@ -291,7 +290,7 @@ impl WorkspaceContext {
             NSDistributedNotificationCenter::defaultCenter().addObserver_selector_name_object(
                 &this,
                 sel!(didChangeDockPref:),
-                Some(&NSString::from_str(COM_APPLE_DOCK_PREFCHANGED)),
+                Some(&NSString::from_str(DOCK_PREFERENCES_CHANGED_NOTIFICATION)),
                 None,
             );
 
@@ -328,14 +327,14 @@ impl Drop for WorkspaceContext {
     }
 }
 
-pub(crate) fn workspace_event_handler_begin() -> bool {
+pub(crate) fn detect_macos_version_and_start_observing_workspace_notifications() -> bool {
     let version = NSProcessInfo::processInfo().operatingSystemVersion();
-    macro_rules! support_macos_version_assignment {
+    macro_rules! store_whether_running_on_macos_version {
         ($name:ident, $flag_name:ident, $accessor_name:ident, $major_version:literal) => {
             $flag_name.store(version.majorVersion == $major_version, Ordering::Relaxed);
         };
     }
-    supported_macos_version_list!(support_macos_version_assignment);
+    with_every_supported_macos_version!(store_whether_running_on_macos_version);
 
     let workspace_context = WorkspaceContext::alloc();
     if Allocated::as_ptr(&workspace_context).is_null() {
@@ -349,7 +348,7 @@ pub(crate) fn workspace_event_handler_begin() -> bool {
     true
 }
 
-pub(crate) fn workspace_application_destroy_running_ns_application(
+pub(crate) fn release_running_application_removing_its_observations(
     workspace_context: &WorkspaceContext,
     process: &Arc<Process>,
 ) {
@@ -385,7 +384,7 @@ pub(crate) fn workspace_application_destroy_running_ns_application(
                 &NSString::from_str("activationPolicy"),
                 process,
             ) {
-                release_kvo_refcon_on_main_queue(process);
+                release_key_value_observation_process_reference_on_main_queue(process);
             }
 
             if remove_observer_swallowing_exception(
@@ -394,7 +393,7 @@ pub(crate) fn workspace_application_destroy_running_ns_application(
                 &NSString::from_str("finishedLaunching"),
                 process,
             ) {
-                release_kvo_refcon_on_main_queue(process);
+                release_key_value_observation_process_reference_on_main_queue(process);
             }
         }
 
@@ -402,7 +401,7 @@ pub(crate) fn workspace_application_destroy_running_ns_application(
     }
 }
 
-pub(crate) fn workspace_application_observe_finished_launching(
+pub(crate) fn start_observing_application_finished_launching(
     context: &WorkspaceContext,
     process: &Arc<Process>,
 ) {
@@ -420,14 +419,12 @@ pub(crate) fn workspace_application_observe_finished_launching(
     } else {
         debug!(
             "{}: could not subscribe to finished launching changes for {} ({})\n",
-            "workspace_application_observe_finished_launching",
-            process.name,
-            process.process_id.0
+            "start_observing_application_finished_launching", process.name, process.process_id.0
         );
     }
 }
 
-pub(crate) fn workspace_application_observe_activation_policy(
+pub(crate) fn start_observing_application_activation_policy(
     context: &WorkspaceContext,
     process: &Arc<Process>,
 ) {
@@ -445,14 +442,12 @@ pub(crate) fn workspace_application_observe_activation_policy(
     } else {
         debug!(
             "{}: could not subscribe to activation policy changes for {} ({})\n",
-            "workspace_application_observe_activation_policy",
-            process.name,
-            process.process_id.0
+            "start_observing_application_activation_policy", process.name, process.process_id.0
         );
     }
 }
 
-pub(crate) fn workspace_application_unobserve(
+pub(crate) fn stop_observing_application_launch_and_activation_policy(
     workspace_context: &WorkspaceContext,
     process: &Arc<Process>,
 ) {
@@ -464,7 +459,7 @@ pub(crate) fn workspace_application_unobserve(
             &NSString::from_str("activationPolicy"),
             process,
         ) {
-            release_kvo_refcon_on_main_queue(process);
+            release_key_value_observation_process_reference_on_main_queue(process);
         }
 
         if remove_observer_swallowing_exception(
@@ -473,7 +468,7 @@ pub(crate) fn workspace_application_unobserve(
             &NSString::from_str("finishedLaunching"),
             process,
         ) {
-            release_kvo_refcon_on_main_queue(process);
+            release_key_value_observation_process_reference_on_main_queue(process);
         }
     }
 }
@@ -491,7 +486,7 @@ pub(crate) fn remove_observer_swallowing_exception(
     .is_ok()
 }
 
-pub(crate) fn release_kvo_refcon_on_main_queue(process: &Process) {
+pub(crate) fn release_key_value_observation_process_reference_on_main_queue(process: &Process) {
     let refcon = process as *const Process;
     dispatch_after_on_main_queue(0, move || drop(unsafe { Arc::from_raw(refcon) }));
 }

@@ -3,7 +3,7 @@ use std::io::Write;
 #[macro_export]
 macro_rules! debug {
     ($($argument:tt)*) => {{
-        if $crate::support::log::g_verbose() {
+        if $crate::support::log::is_verbose_debug_output_enabled() {
             let _ = std::io::Write::write_fmt(
                 &mut std::io::stdout(),
                 format_args!($($argument)*),
@@ -44,23 +44,25 @@ macro_rules! require {
     }};
 }
 
-pub fn g_verbose() -> bool {
-    crate::state::process_wide::VERBOSE.load(std::sync::atomic::Ordering::Relaxed)
+pub fn is_verbose_debug_output_enabled() -> bool {
+    crate::state::process_wide::VERBOSE_DEBUG_OUTPUT_ENABLED
+        .load(std::sync::atomic::Ordering::Relaxed)
 }
 
-pub fn set_g_verbose(value: bool) {
-    crate::state::process_wide::VERBOSE.store(value, std::sync::atomic::Ordering::Relaxed);
+pub fn set_verbose_debug_output_enabled(value: bool) {
+    crate::state::process_wide::VERBOSE_DEBUG_OUTPUT_ENABLED
+        .store(value, std::sync::atomic::Ordering::Relaxed);
 }
 
-pub fn or_null(value: Option<&str>) -> &str {
+pub fn text_or_printf_null_placeholder(value: Option<&str>) -> &str {
     match value {
         Some(text) => text,
         None => "(null)",
     }
 }
 
-pub fn debug_message(prefix: &str, message: &str) {
-    if !g_verbose() {
+pub fn print_message_arguments_when_verbose(prefix: &str, message: &str) {
+    if !is_verbose_debug_output_enabled() {
         return;
     }
 

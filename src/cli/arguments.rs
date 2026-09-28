@@ -1,43 +1,47 @@
-use crate::cli::client::client_send_message;
+use crate::cli::client::send_message_to_daemon_and_print_its_response;
 use crate::error;
-use crate::scripting_addition::installer::{scripting_addition_load, scripting_addition_uninstall};
-use crate::service::launchctl::{service_restart, service_start, service_stop};
-use crate::service::plist::{service_install, service_uninstall};
-use crate::state::process_wide::CONFIG_FILE;
-use crate::support::log::set_g_verbose;
-use crate::support::strings::string_equals;
+use crate::scripting_addition::installer::{
+    install_and_load_scripting_addition, uninstall_scripting_addition,
+};
+use crate::service::launchctl::{
+    restart_launchd_service, start_launchd_service_installing_it_if_missing, stop_launchd_service,
+};
+use crate::service::plist::{install_launchd_service, uninstall_launchd_service};
+use crate::state::process_wide::CONFIG_FILE_PATH;
+use crate::support::log::set_verbose_debug_output_enabled;
+use crate::support::strings::are_both_strings_present_and_equal;
 
-pub(crate) const SCRPT_ADD_LOAD_OPT: &str = "--load-sa";
-pub(crate) const SCRPT_ADD_UNINSTALL_OPT: &str = "--uninstall-sa";
-pub(crate) const SERVICE_INSTALL_OPT: &str = "--install-service";
-pub(crate) const SERVICE_UNINSTALL_OPT: &str = "--uninstall-service";
-pub(crate) const SERVICE_START_OPT: &str = "--start-service";
-pub(crate) const SERVICE_RESTART_OPT: &str = "--restart-service";
-pub(crate) const SERVICE_STOP_OPT: &str = "--stop-service";
-pub(crate) const CLIENT_OPT_LONG: &str = "--message";
-pub(crate) const CLIENT_OPT_SHRT: &str = "-m";
-pub(crate) const CONFIG_OPT_LONG: &str = "--config";
-pub(crate) const CONFIG_OPT_SHRT: &str = "-c";
-pub(crate) const DEBUG_VERBOSE_OPT_LONG: &str = "--verbose";
-pub(crate) const DEBUG_VERBOSE_OPT_SHRT: &str = "-V";
-pub(crate) const VERSION_OPT_LONG: &str = "--version";
-pub(crate) const VERSION_OPT_SHRT: &str = "-v";
-pub(crate) const HELP_OPT_LONG: &str = "--help";
-pub(crate) const HELP_OPT_SHRT: &str = "-h";
+pub(crate) const LOAD_SCRIPTING_ADDITION_OPTION: &str = "--load-sa";
+pub(crate) const UNINSTALL_SCRIPTING_ADDITION_OPTION: &str = "--uninstall-sa";
+pub(crate) const INSTALL_SERVICE_OPTION: &str = "--install-service";
+pub(crate) const UNINSTALL_SERVICE_OPTION: &str = "--uninstall-service";
+pub(crate) const START_SERVICE_OPTION: &str = "--start-service";
+pub(crate) const RESTART_SERVICE_OPTION: &str = "--restart-service";
+pub(crate) const STOP_SERVICE_OPTION: &str = "--stop-service";
+pub(crate) const SEND_MESSAGE_LONG_OPTION: &str = "--message";
+pub(crate) const SEND_MESSAGE_SHORT_OPTION: &str = "-m";
+pub(crate) const CONFIG_FILE_LONG_OPTION: &str = "--config";
+pub(crate) const CONFIG_FILE_SHORT_OPTION: &str = "-c";
+pub(crate) const VERBOSE_DEBUG_OUTPUT_LONG_OPTION: &str = "--verbose";
+pub(crate) const VERBOSE_DEBUG_OUTPUT_SHORT_OPTION: &str = "-V";
+pub(crate) const PRINT_VERSION_LONG_OPTION: &str = "--version";
+pub(crate) const PRINT_VERSION_SHORT_OPTION: &str = "-v";
+pub(crate) const PRINT_HELP_LONG_OPTION: &str = "--help";
+pub(crate) const PRINT_HELP_SHORT_OPTION: &str = "-h";
 
-pub(crate) const MAJOR: i32 = 7;
-pub(crate) const MINOR: i32 = 1;
-pub(crate) const PATCH: i32 = 25;
+pub(crate) const MAJOR_VERSION: i32 = 7;
+pub(crate) const MINOR_VERSION: i32 = 1;
+pub(crate) const PATCH_VERSION: i32 = 25;
 
-pub(crate) fn parse_arguments(
+pub(crate) fn parse_command_line_exiting_after_a_one_shot_option(
     arguments: &[String],
     arguments_as_given: &[std::ffi::OsString],
 ) -> Option<String> {
     let argument_count = arguments.len();
     let mut config_file: Option<String> = None;
 
-    if (string_equals(Some(&arguments[1]), Some(HELP_OPT_LONG)))
-        || (string_equals(Some(&arguments[1]), Some(HELP_OPT_SHRT)))
+    if (are_both_strings_present_and_equal(Some(&arguments[1]), Some(PRINT_HELP_LONG_OPTION)))
+        || (are_both_strings_present_and_equal(Some(&arguments[1]), Some(PRINT_HELP_SHORT_OPTION)))
     {
         print!(
             "Usage: yabai [option]\n\
@@ -56,62 +60,81 @@ pub(crate) fn parse_arguments(
              --help, -h             Print options to stdout and exit.\n\
              Type `man yabai` for more information, or visit: \
              https://github.com/asmvik/yabai/blob/v{}.{}.{}/doc/yabai.asciidoc\n",
-            MAJOR, MINOR, PATCH
+            MAJOR_VERSION, MINOR_VERSION, PATCH_VERSION
         );
         std::process::exit(libc::EXIT_SUCCESS);
     }
 
-    if (string_equals(Some(&arguments[1]), Some(VERSION_OPT_LONG)))
-        || (string_equals(Some(&arguments[1]), Some(VERSION_OPT_SHRT)))
+    if (are_both_strings_present_and_equal(Some(&arguments[1]), Some(PRINT_VERSION_LONG_OPTION)))
+        || (are_both_strings_present_and_equal(
+            Some(&arguments[1]),
+            Some(PRINT_VERSION_SHORT_OPTION),
+        ))
     {
-        print!("yabai-v{}.{}.{}\n", MAJOR, MINOR, PATCH);
+        print!(
+            "yabai-v{}.{}.{}\n",
+            MAJOR_VERSION, MINOR_VERSION, PATCH_VERSION
+        );
         std::process::exit(libc::EXIT_SUCCESS);
     }
 
-    if (string_equals(Some(&arguments[1]), Some(CLIENT_OPT_LONG)))
-        || (string_equals(Some(&arguments[1]), Some(CLIENT_OPT_SHRT)))
+    if (are_both_strings_present_and_equal(Some(&arguments[1]), Some(SEND_MESSAGE_LONG_OPTION)))
+        || (are_both_strings_present_and_equal(
+            Some(&arguments[1]),
+            Some(SEND_MESSAGE_SHORT_OPTION),
+        ))
     {
-        std::process::exit(client_send_message(&arguments_as_given[1..]));
+        std::process::exit(send_message_to_daemon_and_print_its_response(
+            &arguments_as_given[1..],
+        ));
     }
 
-    if string_equals(Some(&arguments[1]), Some(SCRPT_ADD_UNINSTALL_OPT)) {
-        std::process::exit(scripting_addition_uninstall());
+    if are_both_strings_present_and_equal(
+        Some(&arguments[1]),
+        Some(UNINSTALL_SCRIPTING_ADDITION_OPTION),
+    ) {
+        std::process::exit(uninstall_scripting_addition());
     }
 
-    if string_equals(Some(&arguments[1]), Some(SCRPT_ADD_LOAD_OPT)) {
-        std::process::exit(scripting_addition_load());
+    if are_both_strings_present_and_equal(Some(&arguments[1]), Some(LOAD_SCRIPTING_ADDITION_OPTION))
+    {
+        std::process::exit(install_and_load_scripting_addition());
     }
 
-    if string_equals(Some(&arguments[1]), Some(SERVICE_INSTALL_OPT)) {
-        std::process::exit(service_install());
+    if are_both_strings_present_and_equal(Some(&arguments[1]), Some(INSTALL_SERVICE_OPTION)) {
+        std::process::exit(install_launchd_service());
     }
 
-    if string_equals(Some(&arguments[1]), Some(SERVICE_UNINSTALL_OPT)) {
-        std::process::exit(service_uninstall());
+    if are_both_strings_present_and_equal(Some(&arguments[1]), Some(UNINSTALL_SERVICE_OPTION)) {
+        std::process::exit(uninstall_launchd_service());
     }
 
-    if string_equals(Some(&arguments[1]), Some(SERVICE_START_OPT)) {
-        std::process::exit(service_start());
+    if are_both_strings_present_and_equal(Some(&arguments[1]), Some(START_SERVICE_OPTION)) {
+        std::process::exit(start_launchd_service_installing_it_if_missing());
     }
 
-    if string_equals(Some(&arguments[1]), Some(SERVICE_RESTART_OPT)) {
-        std::process::exit(service_restart());
+    if are_both_strings_present_and_equal(Some(&arguments[1]), Some(RESTART_SERVICE_OPTION)) {
+        std::process::exit(restart_launchd_service());
     }
 
-    if string_equals(Some(&arguments[1]), Some(SERVICE_STOP_OPT)) {
-        std::process::exit(service_stop());
+    if are_both_strings_present_and_equal(Some(&arguments[1]), Some(STOP_SERVICE_OPTION)) {
+        std::process::exit(stop_launchd_service());
     }
 
     let mut index = 1;
     while index < argument_count {
         let option = &arguments[index];
 
-        if (string_equals(Some(option), Some(DEBUG_VERBOSE_OPT_LONG)))
-            || (string_equals(Some(option), Some(DEBUG_VERBOSE_OPT_SHRT)))
-        {
-            set_g_verbose(true);
-        } else if (string_equals(Some(option), Some(CONFIG_OPT_LONG)))
-            || (string_equals(Some(option), Some(CONFIG_OPT_SHRT)))
+        if (are_both_strings_present_and_equal(
+            Some(option),
+            Some(VERBOSE_DEBUG_OUTPUT_LONG_OPTION),
+        )) || (are_both_strings_present_and_equal(
+            Some(option),
+            Some(VERBOSE_DEBUG_OUTPUT_SHORT_OPTION),
+        )) {
+            set_verbose_debug_output_enabled(true);
+        } else if (are_both_strings_present_and_equal(Some(option), Some(CONFIG_FILE_LONG_OPTION)))
+            || (are_both_strings_present_and_equal(Some(option), Some(CONFIG_FILE_SHORT_OPTION)))
         {
             let value = if index < argument_count - 1 {
                 index += 1;
@@ -122,7 +145,7 @@ pub(crate) fn parse_arguments(
             let Some(value) = value else {
                 error!(
                     "yabai: option '{}|{}' requires an argument!\n",
-                    CONFIG_OPT_LONG, CONFIG_OPT_SHRT
+                    CONFIG_FILE_LONG_OPTION, CONFIG_FILE_SHORT_OPTION
                 );
             };
             config_file = Some(value.clone());
@@ -146,7 +169,8 @@ pub(crate) fn store_config_file_path_from_command_line() {
 
     let mut config_file: Option<String> = None;
     if argument_count > 1 {
-        config_file = parse_arguments(&arguments, &arguments_as_given);
+        config_file =
+            parse_command_line_exiting_after_a_one_shot_option(&arguments, &arguments_as_given);
     }
-    let _ = CONFIG_FILE.set(config_file.unwrap_or_default());
+    let _ = CONFIG_FILE_PATH.set(config_file.unwrap_or_default());
 }

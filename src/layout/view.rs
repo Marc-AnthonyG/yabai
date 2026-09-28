@@ -1,20 +1,23 @@
-use crate::display::bounds::display_bounds_constrained;
+use crate::display::bounds::query_bounds_of_display_left_for_windows;
 use crate::display::manager::DisplayManager;
 use crate::ffi::CFStringOwned;
-use crate::ffi::core_foundation::{SendCFRetained, take_create_rule_result};
+use crate::ffi::core_foundation::{CFRetainedAssumedSendAndSync, take_create_rule_result};
 use crate::ffi::skylight::SLSSpaceCopyName;
 use crate::layout::area::area_from_cgrect;
-use crate::layout::insertion::insert_feedback_destroy;
-use crate::layout::settings::{ViewFlag, ViewType};
+use crate::layout::insertion::destroy_insert_feedback_of_node;
+use crate::layout::settings::{ViewFlag, ViewLayout};
 use crate::layout::tree::{
-    WindowNode, WindowNodeSplit, window_node_destroy, window_node_flush, window_node_update,
+    WindowNode, WindowNodeSplit, free_node_subtree_unmanaging_its_windows,
+    move_windows_below_node_into_their_areas, recompute_areas_below_node_redrawing_insert_feedback,
 };
 use crate::mouse::drag::MouseDragState;
-use crate::space::managed_space::{space_display_id, space_is_user, space_is_visible};
+use crate::space::managed_space::{
+    is_space_visible_on_its_display, is_user_space, query_display_holding_space,
+};
 use crate::space::manager::SpaceManager;
-use crate::state::process_wide::CONNECTION;
+use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
 use crate::support::handles::{NodeId, ROOT_NODE_ID, SpaceId, WindowId};
-use crate::window::manager::{WindowManager, window_manager_remove_managed_window};
+use crate::window::manager::{WindowManager, forget_managed_window};
 
 pub(crate) struct View {
     pub(crate) uuid: Option<CFStringOwned>,
@@ -22,7 +25,7 @@ pub(crate) struct View {
     pub(crate) nodes: Vec<Option<WindowNode>>,
     pub(crate) free_node_ids: Vec<NodeId>,
     pub(crate) insertion_point: WindowId,
-    pub(crate) layout: ViewType,
+    pub(crate) layout: ViewLayout,
     pub(crate) split_type: WindowNodeSplit,
     pub(crate) top_padding: i32,
     pub(crate) bottom_padding: i32,
@@ -54,7 +57,7 @@ impl View {
             .and_then(|slot| slot.as_mut())
     }
 
-    pub(crate) fn allocate_node(&mut self) -> NodeId {
+    pub(crate) fn allocate_empty_node_reusing_a_freed_id(&mut self) -> NodeId {
         match self.free_node_ids.pop() {
             Some(node_id) => {
                 self.nodes[node_id.0 as usize] = Some(WindowNode::default());
@@ -67,7 +70,7 @@ impl View {
         }
     }
 
-    pub(crate) fn check_flag(&self, flag: ViewFlag) -> bool {
+    pub(crate) fn has_flag(&self, flag: ViewFlag) -> bool {
         (self.flags & flag.0) != 0
     }
 
@@ -80,23 +83,29 @@ impl View {
     }
 }
 
-pub(crate) fn view_is_invalid(space_manager: &mut SpaceManager, space_id: SpaceId) -> bool {
+pub(crate) fn has_view_out_of_date_areas(
+    space_manager: &mut SpaceManager,
+    space_id: SpaceId,
+) -> bool {
     let Some(view) = space_manager.view.find(&space_id) else {
         return false;
     };
 
-    !view.check_flag(ViewFlag::IS_VALID)
+    !view.has_flag(ViewFlag::AREAS_ARE_UP_TO_DATE)
 }
 
-pub(crate) fn view_is_dirty(space_manager: &mut SpaceManager, space_id: SpaceId) -> bool {
+pub(crate) fn has_view_windows_awaiting_their_areas(
+    space_manager: &mut SpaceManager,
+    space_id: SpaceId,
+) -> bool {
     let Some(view) = space_manager.view.find(&space_id) else {
         return false;
     };
 
-    view.check_flag(ViewFlag::IS_DIRTY)
+    view.has_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS)
 }
 
-pub(crate) fn view_flush(
+pub(crate) fn move_view_windows_into_their_areas_or_defer_until_space_is_visible(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     window_manager: &mut WindowManager,
@@ -105,17 +114,22 @@ pub(crate) fn view_flush(
         return;
     }
 
-    if space_is_visible(space_id) {
-        window_node_flush(space_id, ROOT_NODE_ID, window_manager, space_manager);
+    if is_space_visible_on_its_display(space_id) {
+        move_windows_below_node_into_their_areas(
+            space_id,
+            ROOT_NODE_ID,
+            window_manager,
+            space_manager,
+        );
         if let Some(view) = space_manager.view.find_mut(&space_id) {
-            view.clear_flag(ViewFlag::IS_DIRTY);
+            view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     } else if let Some(view) = space_manager.view.find_mut(&space_id) {
-        view.set_flag(ViewFlag::IS_DIRTY);
+        view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
     }
 }
 
-pub(crate) fn view_update(
+pub(crate) fn recompute_view_areas_from_display_bounds_and_padding(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     display_manager: &mut DisplayManager,
@@ -125,14 +139,14 @@ pub(crate) fn view_update(
         return;
     }
 
-    let display_id = space_display_id(space_id);
-    let frame = display_bounds_constrained(display_id, false, display_manager);
+    let display_id = query_display_holding_space(space_id);
+    let frame = query_bounds_of_display_left_for_windows(display_id, false, display_manager);
 
     {
         let Some(view) = space_manager.view.find_mut(&space_id) else {
             return;
         };
-        let enable_padding = view.check_flag(ViewFlag::ENABLE_PADDING);
+        let enable_padding = view.has_flag(ViewFlag::PADDING_IS_ENABLED);
         let top_padding = view.top_padding;
         let bottom_padding = view.bottom_padding;
         let left_padding = view.left_padding;
@@ -149,15 +163,20 @@ pub(crate) fn view_update(
         }
     }
 
-    window_node_update(space_manager, space_id, ROOT_NODE_ID, window_manager);
+    recompute_areas_below_node_redrawing_insert_feedback(
+        space_manager,
+        space_id,
+        ROOT_NODE_ID,
+        window_manager,
+    );
 
     if let Some(view) = space_manager.view.find_mut(&space_id) {
-        view.set_flag(ViewFlag::IS_VALID);
-        view.set_flag(ViewFlag::IS_DIRTY);
+        view.set_flag(ViewFlag::AREAS_ARE_UP_TO_DATE);
+        view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
     }
 }
 
-pub(crate) fn view_create(
+pub(crate) fn create_view_for_space_from_global_settings(
     space_id: SpaceId,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
@@ -169,7 +188,7 @@ pub(crate) fn view_create(
         nodes: vec![Some(WindowNode::default())],
         free_node_ids: Vec::new(),
         insertion_point: WindowId(0),
-        layout: ViewType::Default,
+        layout: ViewLayout::Default,
         split_type: WindowNodeSplit::None,
         top_padding: 0,
         bottom_padding: 0,
@@ -182,49 +201,61 @@ pub(crate) fn view_create(
 
     view.space_id = space_id;
     view.uuid = unsafe {
-        take_create_rule_result(SLSSpaceCopyName(*CONNECTION.get().unwrap(), space_id.0))
+        take_create_rule_result(SLSSpaceCopyName(
+            *SKYLIGHT_CONNECTION_ID.get().unwrap(),
+            space_id.0,
+        ))
     }
-    .map(SendCFRetained);
+    .map(CFRetainedAssumedSendAndSync);
 
-    view.set_flag(ViewFlag::ENABLE_PADDING);
-    view.set_flag(ViewFlag::ENABLE_GAP);
+    view.set_flag(ViewFlag::PADDING_IS_ENABLED);
+    view.set_flag(ViewFlag::WINDOW_GAP_IS_ENABLED);
 
-    if space_is_user(view.space_id) {
-        if !view.check_flag(ViewFlag::LAYOUT) {
+    if is_user_space(view.space_id) {
+        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_LAYOUT) {
             view.layout = space_manager.layout;
         }
-        if !view.check_flag(ViewFlag::TOP_PADDING) {
+        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_TOP_PADDING) {
             view.top_padding = space_manager.top_padding;
         }
-        if !view.check_flag(ViewFlag::BOTTOM_PADDING) {
+        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_BOTTOM_PADDING) {
             view.bottom_padding = space_manager.bottom_padding;
         }
-        if !view.check_flag(ViewFlag::LEFT_PADDING) {
+        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_LEFT_PADDING) {
             view.left_padding = space_manager.left_padding;
         }
-        if !view.check_flag(ViewFlag::RIGHT_PADDING) {
+        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_RIGHT_PADDING) {
             view.right_padding = space_manager.right_padding;
         }
-        if !view.check_flag(ViewFlag::WINDOW_GAP) {
+        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_WINDOW_GAP) {
             view.window_gap = space_manager.window_gap;
         }
-        if !view.check_flag(ViewFlag::AUTO_BALANCE) {
+        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_AUTO_BALANCE) {
             view.auto_balance = space_manager.auto_balance;
         }
-        if !view.check_flag(ViewFlag::SPLIT_TYPE) {
+        if !view.has_flag(ViewFlag::OVERRIDES_GLOBAL_SPLIT_TYPE) {
             view.split_type = space_manager.split_type;
         }
-        space_manager.view.add(space_id, view);
-        view_update(space_manager, space_id, display_manager, window_manager);
+        space_manager
+            .view
+            .add_unless_key_already_present(space_id, view);
+        recompute_view_areas_from_display_bounds_and_padding(
+            space_manager,
+            space_id,
+            display_manager,
+            window_manager,
+        );
     } else {
-        view.layout = ViewType::Float;
-        space_manager.view.add(space_id, view);
+        view.layout = ViewLayout::Float;
+        space_manager
+            .view
+            .add_unless_key_already_present(space_id, view);
     }
 
     space_id
 }
 
-pub(crate) fn view_clear(
+pub(crate) fn clear_view_tree_unmanaging_every_window(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     display_manager: &mut DisplayManager,
@@ -240,10 +271,22 @@ pub(crate) fn view_clear(
     };
 
     if let Some(left) = left {
-        window_node_destroy(space_id, left, window_manager, space_manager, mouse_drag_state);
+        free_node_subtree_unmanaging_its_windows(
+            space_id,
+            left,
+            window_manager,
+            space_manager,
+            mouse_drag_state,
+        );
     }
     if let Some(right) = right {
-        window_node_destroy(space_id, right, window_manager, space_manager, mouse_drag_state);
+        free_node_subtree_unmanaging_its_windows(
+            space_id,
+            right,
+            window_manager,
+            space_manager,
+            mouse_drag_state,
+        );
     }
 
     let window_ids = match space_manager.view.find(&space_id) {
@@ -255,23 +298,28 @@ pub(crate) fn view_clear(
     };
 
     for window_id in window_ids {
-        window_manager_remove_managed_window(window_manager, window_id);
+        forget_managed_window(window_manager, window_id);
     }
 
-    insert_feedback_destroy(space_id, ROOT_NODE_ID, window_manager, space_manager);
+    destroy_insert_feedback_of_node(space_id, ROOT_NODE_ID, window_manager, space_manager);
     if let Some(view) = space_manager.view.find_mut(&space_id) {
         *view.node_mut(ROOT_NODE_ID) = WindowNode::default();
     }
-    view_update(space_manager, space_id, display_manager, window_manager);
+    recompute_view_areas_from_display_bounds_and_padding(
+        space_manager,
+        space_id,
+        display_manager,
+        window_manager,
+    );
 }
 
-pub(crate) fn view_destroy(
+pub(crate) fn free_view_tree_and_release_its_uuid(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     window_manager: &mut WindowManager,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    window_node_destroy(
+    free_node_subtree_unmanaging_its_windows(
         space_id,
         ROOT_NODE_ID,
         window_manager,

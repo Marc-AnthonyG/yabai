@@ -1,19 +1,19 @@
-use crate::display::identity::display_manager_active_display_list;
+use crate::display::identity::query_displays_active_for_drawing;
 use crate::display::manager::DisplayManager;
-use crate::serialise::display::display_serialize;
+use crate::serialise::display::write_display_as_json_object;
 use crate::support::response::Response;
 
-pub(crate) fn display_manager_query_displays(
+pub(crate) fn write_every_display_as_json_array(
     response: &mut Response,
     flags: u64,
     display_manager: &mut DisplayManager,
 ) -> bool {
-    let display_list = display_manager_active_display_list();
+    let display_list = query_displays_active_for_drawing();
     let count = display_list.len() as i32;
 
     response.write(format_args!("["));
     for index in 0..count {
-        display_serialize(
+        write_display_as_json_object(
             response,
             display_list[index as usize],
             flags,

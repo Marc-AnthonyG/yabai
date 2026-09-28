@@ -1,14 +1,16 @@
-use crate::display::bounds::display_bounds_constrained;
+use crate::display::bounds::query_bounds_of_display_left_for_windows;
 use crate::display::manager::DisplayManager;
-use crate::display::spaces::display_space_id;
-use crate::layout::settings::{ViewFlag, window_node_get_gap};
-use crate::space::manager::{SpaceManager, space_manager_find_view};
+use crate::display::spaces::query_current_space_of_display;
+use crate::layout::settings::{ViewFlag, effective_window_gap_of_view};
+use crate::space::manager::{SpaceManager, find_or_create_view_for_space};
 use crate::support::handles::WindowId;
-use crate::window::animation::{WindowCapture, window_manager_animate_window};
-use crate::window::manager::{WindowManager, WindowOpError, window_manager_find_managed_window};
-use crate::window::model::window_display_id;
+use crate::window::animation::{
+    WindowWithTargetFrame, move_window_to_its_target_frame_animating_if_enabled,
+};
+use crate::window::manager::{WindowManager, WindowOperationOutcome, space_managing_window};
+use crate::window::model::query_display_holding_window;
 
-pub(crate) fn window_manager_apply_grid(
+pub(crate) fn place_floating_window_on_display_grid(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     window_id: WindowId,
@@ -19,20 +21,20 @@ pub(crate) fn window_manager_apply_grid(
     width: u32,
     height: u32,
     display_manager: &mut DisplayManager,
-) -> WindowOpError {
+) -> WindowOperationOutcome {
     let mut x = x;
     let mut y = y;
     let mut width = width;
     let mut height = height;
 
-    let view = window_manager_find_managed_window(window_manager, window_id);
+    let view = space_managing_window(window_manager, window_id);
     if view.is_some() {
-        return WindowOpError::InvalidSrcView;
+        return WindowOperationOutcome::InvalidSourceView;
     }
 
-    let display_id = window_display_id(window_id);
+    let display_id = query_display_holding_window(window_id);
     if display_id.0 == 0 {
-        return WindowOpError::InvalidSrcView;
+        return WindowOperationOutcome::InvalidSourceView;
     }
 
     if x >= columns {
@@ -54,18 +56,18 @@ pub(crate) fn window_manager_apply_grid(
         height = rows.wrapping_sub(y);
     }
 
-    let mut bounds = display_bounds_constrained(display_id, false, display_manager);
-    let display_view = space_manager_find_view(
+    let mut bounds = query_bounds_of_display_left_for_windows(display_id, false, display_manager);
+    let display_view = find_or_create_view_for_space(
         space_manager,
-        display_space_id(display_id),
+        query_current_space_of_display(display_id),
         display_manager,
         window_manager,
     );
 
     if let Some(view) = space_manager.view.find(&display_view) {
-        let enable_gap = view.check_flag(ViewFlag::ENABLE_GAP);
+        let enable_gap = view.has_flag(ViewFlag::WINDOW_GAP_IS_ENABLED);
 
-        if view.check_flag(ViewFlag::ENABLE_PADDING) {
+        if view.has_flag(ViewFlag::PADDING_IS_ENABLED) {
             bounds.origin.x += view.left_padding as f64;
             bounds.size.width -= (view.left_padding + view.right_padding) as f64;
             bounds.origin.y += view.top_padding as f64;
@@ -73,7 +75,7 @@ pub(crate) fn window_manager_apply_grid(
         }
 
         if enable_gap {
-            let gap = window_node_get_gap(space_manager, display_view);
+            let gap = effective_window_gap_of_view(space_manager, display_view);
 
             if x > 0 {
                 bounds.origin.x += gap as f64;
@@ -103,8 +105,8 @@ pub(crate) fn window_manager_apply_grid(
     let frame_width = column_width * width as f32;
     let frame_height = row_height * height as f32;
 
-    window_manager_animate_window(
-        WindowCapture {
+    move_window_to_its_target_frame_animating_if_enabled(
+        WindowWithTargetFrame {
             window_id,
             x: frame_x,
             y: frame_y,
@@ -113,5 +115,5 @@ pub(crate) fn window_manager_apply_grid(
         },
         window_manager,
     );
-    WindowOpError::Success
+    WindowOperationOutcome::Success
 }

@@ -1,16 +1,19 @@
 use crate::message::common_arguments::{
-    ARGUMENT_COMMON_SEL_EAST, ARGUMENT_COMMON_SEL_FIRST, ARGUMENT_COMMON_SEL_LAST,
-    ARGUMENT_COMMON_SEL_MOUSE, ARGUMENT_COMMON_SEL_NEXT, ARGUMENT_COMMON_SEL_NORTH,
-    ARGUMENT_COMMON_SEL_PREV, ARGUMENT_COMMON_SEL_RECENT, ARGUMENT_COMMON_SEL_SOUTH,
-    ARGUMENT_COMMON_SEL_WEST,
+    ARGUMENT_COMMON_SELECTOR_EAST, ARGUMENT_COMMON_SELECTOR_FIRST, ARGUMENT_COMMON_SELECTOR_LAST,
+    ARGUMENT_COMMON_SELECTOR_MOUSE, ARGUMENT_COMMON_SELECTOR_NEXT, ARGUMENT_COMMON_SELECTOR_NORTH,
+    ARGUMENT_COMMON_SELECTOR_PREVIOUS, ARGUMENT_COMMON_SELECTOR_RECENT,
+    ARGUMENT_COMMON_SELECTOR_SOUTH, ARGUMENT_COMMON_SELECTOR_WEST,
 };
 use crate::message::domain::window::{
     ARGUMENT_WINDOW_SCRATCHPAD_RECOVER, ARGUMENT_WINDOW_TOGGLE_EXPOSE,
-    ARGUMENT_WINDOW_TOGGLE_FLOAT, ARGUMENT_WINDOW_TOGGLE_FULLSC, ARGUMENT_WINDOW_TOGGLE_NATIVE,
-    ARGUMENT_WINDOW_TOGGLE_PARENT, ARGUMENT_WINDOW_TOGGLE_PIP, ARGUMENT_WINDOW_TOGGLE_SHADOW,
+    ARGUMENT_WINDOW_TOGGLE_FLOAT, ARGUMENT_WINDOW_TOGGLE_NATIVE, ARGUMENT_WINDOW_TOGGLE_PARENT,
+    ARGUMENT_WINDOW_TOGGLE_PICTURE_IN_PICTURE, ARGUMENT_WINDOW_TOGGLE_SHADOW,
     ARGUMENT_WINDOW_TOGGLE_SPLIT, ARGUMENT_WINDOW_TOGGLE_STICKY, ARGUMENT_WINDOW_TOGGLE_WINDOWED,
+    ARGUMENT_WINDOW_TOGGLE_ZOOM_FULLSCREEN,
 };
-use crate::message::token::{Token, TokenType, token_equals, token_to_value};
+use crate::message::token::{
+    Token, TokenValueType, is_token_equal_to, parse_token_into_typed_value,
+};
 use crate::support::response::{FailurePiece, Response};
 
 #[derive(Clone, Copy)]
@@ -21,25 +24,25 @@ pub(crate) enum LabelType {
 }
 
 pub(crate) const RESERVED_DISPLAY_IDENTIFIERS: [&str; 10] = [
-    ARGUMENT_COMMON_SEL_NORTH,
-    ARGUMENT_COMMON_SEL_EAST,
-    ARGUMENT_COMMON_SEL_SOUTH,
-    ARGUMENT_COMMON_SEL_WEST,
-    ARGUMENT_COMMON_SEL_PREV,
-    ARGUMENT_COMMON_SEL_NEXT,
-    ARGUMENT_COMMON_SEL_FIRST,
-    ARGUMENT_COMMON_SEL_LAST,
-    ARGUMENT_COMMON_SEL_RECENT,
-    ARGUMENT_COMMON_SEL_MOUSE,
+    ARGUMENT_COMMON_SELECTOR_NORTH,
+    ARGUMENT_COMMON_SELECTOR_EAST,
+    ARGUMENT_COMMON_SELECTOR_SOUTH,
+    ARGUMENT_COMMON_SELECTOR_WEST,
+    ARGUMENT_COMMON_SELECTOR_PREVIOUS,
+    ARGUMENT_COMMON_SELECTOR_NEXT,
+    ARGUMENT_COMMON_SELECTOR_FIRST,
+    ARGUMENT_COMMON_SELECTOR_LAST,
+    ARGUMENT_COMMON_SELECTOR_RECENT,
+    ARGUMENT_COMMON_SELECTOR_MOUSE,
 ];
 
 pub(crate) const RESERVED_SPACE_IDENTIFIERS: [&str; 6] = [
-    ARGUMENT_COMMON_SEL_PREV,
-    ARGUMENT_COMMON_SEL_NEXT,
-    ARGUMENT_COMMON_SEL_FIRST,
-    ARGUMENT_COMMON_SEL_LAST,
-    ARGUMENT_COMMON_SEL_RECENT,
-    ARGUMENT_COMMON_SEL_MOUSE,
+    ARGUMENT_COMMON_SELECTOR_PREVIOUS,
+    ARGUMENT_COMMON_SELECTOR_NEXT,
+    ARGUMENT_COMMON_SELECTOR_FIRST,
+    ARGUMENT_COMMON_SELECTOR_LAST,
+    ARGUMENT_COMMON_SELECTOR_RECENT,
+    ARGUMENT_COMMON_SELECTOR_MOUSE,
 ];
 
 pub(crate) const RESERVED_WINDOW_IDENTIFIERS: [&str; 11] = [
@@ -48,30 +51,30 @@ pub(crate) const RESERVED_WINDOW_IDENTIFIERS: [&str; 11] = [
     ARGUMENT_WINDOW_TOGGLE_SHADOW,
     ARGUMENT_WINDOW_TOGGLE_SPLIT,
     ARGUMENT_WINDOW_TOGGLE_PARENT,
-    ARGUMENT_WINDOW_TOGGLE_FULLSC,
+    ARGUMENT_WINDOW_TOGGLE_ZOOM_FULLSCREEN,
     ARGUMENT_WINDOW_TOGGLE_WINDOWED,
     ARGUMENT_WINDOW_TOGGLE_NATIVE,
     ARGUMENT_WINDOW_TOGGLE_EXPOSE,
-    ARGUMENT_WINDOW_TOGGLE_PIP,
+    ARGUMENT_WINDOW_TOGGLE_PICTURE_IN_PICTURE,
     ARGUMENT_WINDOW_SCRATCHPAD_RECOVER,
 ];
 
-pub(crate) fn parse_label(
+pub(crate) fn parse_label_refusing_numbers_and_reserved_words(
     response: &mut Response,
     message_bytes: &[u8],
     token: Token,
     label_type: LabelType,
     label: &mut Option<String>,
 ) -> bool {
-    let value = token_to_value(token, message_bytes);
+    let value = parse_token_into_typed_value(token, message_bytes);
 
-    if matches!(value.type_of_value, TokenType::Invalid) {
+    if matches!(value.type_of_value, TokenValueType::Invalid) {
         *label = None;
         return true;
     }
 
-    if !matches!(value.type_of_value, TokenType::String) {
-        response.fail_pieces(&[
+    if !matches!(value.type_of_value, TokenValueType::String) {
+        response.write_failure_pieces_unless_silent(&[
             FailurePiece::Text("'"),
             FailurePiece::Bytes(token.bytes(message_bytes)),
             FailurePiece::Text("' cannot be used as a label.\n"),
@@ -82,8 +85,8 @@ pub(crate) fn parse_label(
     match label_type {
         LabelType::Display => {
             for index in 0..RESERVED_DISPLAY_IDENTIFIERS.len() {
-                if token_equals(token, message_bytes, RESERVED_DISPLAY_IDENTIFIERS[index]) {
-                    response.fail_pieces(&[
+                if is_token_equal_to(token, message_bytes, RESERVED_DISPLAY_IDENTIFIERS[index]) {
+                    response.write_failure_pieces_unless_silent(&[
                         FailurePiece::Text("'"),
                         FailurePiece::Bytes(token.bytes(message_bytes)),
                         FailurePiece::Text(
@@ -96,8 +99,8 @@ pub(crate) fn parse_label(
         }
         LabelType::Space => {
             for index in 0..RESERVED_SPACE_IDENTIFIERS.len() {
-                if token_equals(token, message_bytes, RESERVED_SPACE_IDENTIFIERS[index]) {
-                    response.fail_pieces(&[
+                if is_token_equal_to(token, message_bytes, RESERVED_SPACE_IDENTIFIERS[index]) {
+                    response.write_failure_pieces_unless_silent(&[
                         FailurePiece::Text("'"),
                         FailurePiece::Bytes(token.bytes(message_bytes)),
                         FailurePiece::Text(
@@ -110,8 +113,8 @@ pub(crate) fn parse_label(
         }
         LabelType::Window => {
             for index in 0..RESERVED_WINDOW_IDENTIFIERS.len() {
-                if token_equals(token, message_bytes, RESERVED_WINDOW_IDENTIFIERS[index]) {
-                    response.fail_pieces(&[
+                if is_token_equal_to(token, message_bytes, RESERVED_WINDOW_IDENTIFIERS[index]) {
+                    response.write_failure_pieces_unless_silent(&[
                         FailurePiece::Text("'"),
                         FailurePiece::Bytes(token.bytes(message_bytes)),
                         FailurePiece::Text(
@@ -134,7 +137,7 @@ mod tests {
     use std::io::Read;
     use std::os::unix::net::UnixStream;
 
-    use super::{LabelType, parse_label};
+    use super::{LabelType, parse_label_refusing_numbers_and_reserved_words};
     use crate::message::token::MessageCursor;
     use crate::support::response::Response;
 
@@ -147,13 +150,19 @@ mod tests {
     fn parse_the_label_argument(argument: &str, label_type: LabelType) -> ParsedLabel {
         let mut message = argument.as_bytes().to_vec();
         message.extend_from_slice(b"\0\0");
-        let token = MessageCursor::new(&mut message).get_token();
+        let token = MessageCursor::new(&mut message).take_next_token();
         let (daemon_side, mut client_side) = UnixStream::pair().expect("a connected socket pair");
         let mut label = Some("old".to_string());
 
         let accepted = {
             let mut response = Response::to_client(daemon_side);
-            parse_label(&mut response, &message, token, label_type, &mut label)
+            parse_label_refusing_numbers_and_reserved_words(
+                &mut response,
+                &message,
+                token,
+                label_type,
+                &mut label,
+            )
         };
         let mut response_bytes = Vec::new();
         client_side

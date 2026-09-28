@@ -4,3 +4,5 @@
 /src/osax/loader_bin.c
 /src/osax/payload_bin.c
 /target
+.claude/worktrees
+

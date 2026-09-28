@@ -3,37 +3,38 @@
 use std::ffi::CString;
 
 use crate::display::manager::DisplayManager;
-use crate::display::spaces::display_space_id;
+use crate::display::spaces::query_current_space_of_display;
 use crate::ffi::accessibility::{AXUIElementSetAttributeValue, kAXFullscreenAttribute};
 use crate::ffi::core_foundation::{as_cftype, kCFBooleanTrue};
 use crate::mouse::drag::MouseDragState;
 use crate::process::manager::ProcessManager;
-use crate::space::focus::space_manager_focus_space;
-use crate::space::managed_space::space_is_fullscreen;
+use crate::space::focus::focus_space_through_the_scripting_addition_or_dock_swipes;
+use crate::space::managed_space::is_native_fullscreen_space;
 use crate::space::manager::SpaceManager;
 use crate::state::mission_control_mode::MissionControlMode;
-use crate::support::arithmetic::in_range_ii;
+use crate::support::arithmetic::is_within_range_including_both_bounds;
 use crate::support::handles::WindowId;
-use crate::support::regex::{RegexMatch, regex_match};
-use crate::support::strings::{string_copy, string_equals};
-use crate::window::floating_and_sticky::{
-    window_manager_make_window_floating, window_manager_make_window_sticky,
-};
-use crate::window::grid::window_manager_apply_grid;
-use crate::window::layer::window_manager_set_window_layer;
-use crate::window::manager::{WindowManager, window_manager_is_window_eligible};
+use crate::support::regex::{RegexMatch, match_subject_against_optional_regex};
+use crate::support::strings::{are_both_strings_present_and_equal, copy_into_owned_string};
+use crate::window::floating_and_sticky::{set_whether_window_floats, set_whether_window_is_sticky};
+use crate::window::grid::place_floating_window_on_display_grid;
+use crate::window::layer::set_window_layer_for_it_and_its_child_windows;
+use crate::window::manager::{WindowManager, is_window_eligible_for_management};
 use crate::window::model::{
-    WindowRuleFlag, window_check_rule_flag, window_clear_rule_flag, window_is_fullscreen,
-    window_role_ts, window_set_rule_flag, window_space, window_subrole_ts, window_title_ts,
+    WindowRuleFlag, clear_window_rule_flag,
+    is_window_in_native_fullscreen_according_to_accessibility, is_window_rule_flag_set,
+    query_space_holding_window, set_window_rule_flag, window_role_as_string,
+    window_subrole_as_string, window_title_as_string,
 };
-use crate::window::opacity::window_manager_set_opacity;
+use crate::window::opacity::apply_opacity_to_window_through_scripting_addition;
 use crate::window::rule::{
-    RULE_PROP_OFF, RULE_PROP_ON, Rule, RuleEffects, RuleEffectsFlag, RuleFlag, rule_combine_effects,
+    RULE_PROPERTY_OFF, RULE_PROPERTY_ON, Rule, RuleEffects, RuleEffectsFlag, RuleFlag,
+    combine_rule_effects_into_accumulated_effects,
 };
-use crate::window::scratchpad::window_manager_set_scratchpad_for_window;
-use crate::window::send_to_space::window_manager_send_window_to_space;
+use crate::window::scratchpad::assign_window_to_scratchpad_making_it_float;
+use crate::window::send_to_space::send_window_to_space;
 
-pub(crate) fn window_manager_rule_matches_window(
+pub(crate) fn is_window_matched_by_rule(
     rule: &Rule,
     window_id: WindowId,
     window_title: &str,
@@ -53,49 +54,59 @@ pub(crate) fn window_manager_rule_matches_window(
     };
     let application_name = CString::new(application.name.as_bytes()).unwrap();
 
-    let regex_match_app = if RuleFlag(rule.flags).contains(RuleFlag::APP_EXCLUDE) {
+    let regex_match_app = if RuleFlag(rule.flags).contains(RuleFlag::APPLICATION_PATTERN_IS_NEGATED)
+    {
         RegexMatch::Yes
     } else {
         RegexMatch::No
     };
-    if regex_match(rule.app_regex.as_ref(), &application_name) == regex_match_app {
+    if match_subject_against_optional_regex(rule.app_regex.as_ref(), &application_name)
+        == regex_match_app
+    {
         return false;
     }
 
     let window_title = CString::new(window_title).unwrap();
-    let regex_match_title = if RuleFlag(rule.flags).contains(RuleFlag::TITLE_EXCLUDE) {
+    let regex_match_title = if RuleFlag(rule.flags).contains(RuleFlag::TITLE_PATTERN_IS_NEGATED) {
         RegexMatch::Yes
     } else {
         RegexMatch::No
     };
-    if regex_match(rule.title_regex.as_ref(), &window_title) == regex_match_title {
+    if match_subject_against_optional_regex(rule.title_regex.as_ref(), &window_title)
+        == regex_match_title
+    {
         return false;
     }
 
     let window_role = CString::new(window_role).unwrap();
-    let regex_match_role = if RuleFlag(rule.flags).contains(RuleFlag::ROLE_EXCLUDE) {
+    let regex_match_role = if RuleFlag(rule.flags).contains(RuleFlag::ROLE_PATTERN_IS_NEGATED) {
         RegexMatch::Yes
     } else {
         RegexMatch::No
     };
-    if regex_match(rule.role_regex.as_ref(), &window_role) == regex_match_role {
+    if match_subject_against_optional_regex(rule.role_regex.as_ref(), &window_role)
+        == regex_match_role
+    {
         return false;
     }
 
     let window_subrole = CString::new(window_subrole).unwrap();
-    let regex_match_subrole = if RuleFlag(rule.flags).contains(RuleFlag::SUBROLE_EXCLUDE) {
+    let regex_match_subrole = if RuleFlag(rule.flags).contains(RuleFlag::SUBROLE_PATTERN_IS_NEGATED)
+    {
         RegexMatch::Yes
     } else {
         RegexMatch::No
     };
-    if regex_match(rule.subrole_regex.as_ref(), &window_subrole) == regex_match_subrole {
+    if match_subject_against_optional_regex(rule.subrole_regex.as_ref(), &window_subrole)
+        == regex_match_subrole
+    {
         return false;
     }
 
     true
 }
 
-pub(crate) fn window_manager_apply_manage_rule_effects_to_window(
+pub(crate) fn apply_manage_effect_of_rule_to_window(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     window_id: WindowId,
@@ -103,11 +114,11 @@ pub(crate) fn window_manager_apply_manage_rule_effects_to_window(
     display_manager: &mut DisplayManager,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    if effects.manage == RULE_PROP_ON {
+    if effects.manage == RULE_PROPERTY_ON {
         if let Some(window) = window_manager.window.find_mut(&window_id) {
-            window_set_rule_flag(window, WindowRuleFlag::MANAGED);
+            set_window_rule_flag(window, WindowRuleFlag::MANAGE_FORCED_ON);
         }
-        window_manager_make_window_floating(
+        set_whether_window_floats(
             space_manager,
             window_manager,
             window_id,
@@ -116,11 +127,11 @@ pub(crate) fn window_manager_apply_manage_rule_effects_to_window(
             display_manager,
             mouse_drag_state,
         );
-    } else if effects.manage == RULE_PROP_OFF {
+    } else if effects.manage == RULE_PROPERTY_OFF {
         if let Some(window) = window_manager.window.find_mut(&window_id) {
-            window_clear_rule_flag(window, WindowRuleFlag::MANAGED);
+            clear_window_rule_flag(window, WindowRuleFlag::MANAGE_FORCED_ON);
         }
-        window_manager_make_window_floating(
+        set_whether_window_floats(
             space_manager,
             window_manager,
             window_id,
@@ -132,7 +143,7 @@ pub(crate) fn window_manager_apply_manage_rule_effects_to_window(
     }
 }
 
-pub(crate) fn window_manager_apply_rule_effects_to_window(
+pub(crate) fn apply_effects_other_than_manage_of_rule_to_window(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     window_id: WindowId,
@@ -146,15 +157,17 @@ pub(crate) fn window_manager_apply_rule_effects_to_window(
         let window_is_in_native_fullscreen = window_manager
             .window
             .find(&window_id)
-            .is_some_and(window_is_fullscreen);
+            .is_some_and(is_window_in_native_fullscreen_according_to_accessibility);
 
-        if !window_is_in_native_fullscreen && !space_is_fullscreen(window_space(window_id)) {
+        if !window_is_in_native_fullscreen
+            && !is_native_fullscreen_space(query_space_holding_window(window_id))
+        {
             let space_id = if effects.space_id.0 != 0 {
                 effects.space_id
             } else {
-                display_space_id(effects.display_id)
+                query_current_space_of_display(effects.display_id)
             };
-            window_manager_send_window_to_space(
+            send_window_to_space(
                 space_manager,
                 window_manager,
                 window_id,
@@ -164,16 +177,21 @@ pub(crate) fn window_manager_apply_rule_effects_to_window(
                 display_manager,
                 mouse_drag_state,
             );
-            if RuleEffectsFlag(effects.flags).contains(RuleEffectsFlag::FOLLOW_SPACE)
-                || effects.fullscreen == RULE_PROP_ON
+            if RuleEffectsFlag(effects.flags)
+                .contains(RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE)
+                || effects.fullscreen == RULE_PROPERTY_ON
             {
-                space_manager_focus_space(space_id, window_manager, mission_control_mode);
+                focus_space_through_the_scripting_addition_or_dock_swipes(
+                    space_id,
+                    window_manager,
+                    mission_control_mode,
+                );
             }
         }
     }
 
-    if effects.sticky == RULE_PROP_ON {
-        window_manager_make_window_sticky(
+    if effects.sticky == RULE_PROPERTY_ON {
+        set_whether_window_is_sticky(
             space_manager,
             window_manager,
             window_id,
@@ -181,8 +199,8 @@ pub(crate) fn window_manager_apply_rule_effects_to_window(
             display_manager,
             mouse_drag_state,
         );
-    } else if effects.sticky == RULE_PROP_OFF {
-        window_manager_make_window_sticky(
+    } else if effects.sticky == RULE_PROPERTY_OFF {
+        set_whether_window_is_sticky(
             space_manager,
             window_manager,
             window_id,
@@ -192,32 +210,36 @@ pub(crate) fn window_manager_apply_rule_effects_to_window(
         );
     }
 
-    if effects.mff == RULE_PROP_ON {
+    if effects.mff == RULE_PROPERTY_ON {
         if let Some(window) = window_manager.window.find_mut(&window_id) {
-            window_set_rule_flag(window, WindowRuleFlag::MFF);
-            window_set_rule_flag(window, WindowRuleFlag::MFF_VALUE);
+            set_window_rule_flag(window, WindowRuleFlag::OVERRIDES_MOUSE_FOLLOWS_FOCUS);
+            set_window_rule_flag(window, WindowRuleFlag::MOUSE_FOLLOWS_FOCUS_OVERRIDE_IS_ON);
         }
-    } else if effects.mff == RULE_PROP_OFF {
+    } else if effects.mff == RULE_PROPERTY_OFF {
         if let Some(window) = window_manager.window.find_mut(&window_id) {
-            window_set_rule_flag(window, WindowRuleFlag::MFF);
-            window_clear_rule_flag(window, WindowRuleFlag::MFF_VALUE);
+            set_window_rule_flag(window, WindowRuleFlag::OVERRIDES_MOUSE_FOLLOWS_FOCUS);
+            clear_window_rule_flag(window, WindowRuleFlag::MOUSE_FOLLOWS_FOCUS_OVERRIDE_IS_ON);
         }
     }
 
-    if RuleEffectsFlag(effects.flags).contains(RuleEffectsFlag::LAYER) {
-        window_manager_set_window_layer(window_id, effects.layer, window_manager);
+    if RuleEffectsFlag(effects.flags).contains(RuleEffectsFlag::LAYER_IS_SET) {
+        set_window_layer_for_it_and_its_child_windows(window_id, effects.layer, window_manager);
     }
 
-    if RuleEffectsFlag(effects.flags).contains(RuleEffectsFlag::OPACITY)
-        && in_range_ii(effects.opacity, 0.0f32, 1.0f32)
+    if RuleEffectsFlag(effects.flags).contains(RuleEffectsFlag::OPACITY_IS_SET)
+        && is_within_range_including_both_bounds(effects.opacity, 0.0f32, 1.0f32)
     {
         if let Some(window) = window_manager.window.find_mut(&window_id) {
             window.opacity = effects.opacity;
         }
-        window_manager_set_opacity(window_manager, window_id, effects.opacity);
+        apply_opacity_to_window_through_scripting_addition(
+            window_manager,
+            window_id,
+            effects.opacity,
+        );
     }
 
-    if effects.fullscreen == RULE_PROP_ON {
+    if effects.fullscreen == RULE_PROPERTY_ON {
         if let Some(window) = window_manager.window.find_mut(&window_id) {
             let window_element_ref = window.element_ref;
             unsafe {
@@ -227,13 +249,13 @@ pub(crate) fn window_manager_apply_rule_effects_to_window(
                     as_cftype(kCFBooleanTrue()),
                 )
             };
-            window_set_rule_flag(window, WindowRuleFlag::FULLSCREEN);
+            set_window_rule_flag(window, WindowRuleFlag::NATIVE_FULLSCREEN_REQUESTED);
         }
     }
 
     if let Some(effects_scratchpad) = effects.scratchpad.as_deref() {
-        let scratchpad = string_copy(effects_scratchpad);
-        window_manager_set_scratchpad_for_window(
+        let scratchpad = copy_into_owned_string(effects_scratchpad);
+        assign_window_to_scratchpad_making_it_float(
             window_manager,
             window_id,
             scratchpad,
@@ -245,7 +267,7 @@ pub(crate) fn window_manager_apply_rule_effects_to_window(
     }
 
     if effects.grid[0] != 0 && effects.grid[1] != 0 {
-        window_manager_apply_grid(
+        place_floating_window_on_display_grid(
             space_manager,
             window_manager,
             window_id,
@@ -260,7 +282,7 @@ pub(crate) fn window_manager_apply_rule_effects_to_window(
     }
 }
 
-pub(crate) fn window_manager_apply_manage_rules_to_window(
+pub(crate) fn apply_manage_effect_of_matching_rules_to_window(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     window_id: WindowId,
@@ -278,7 +300,7 @@ pub(crate) fn window_manager_apply_manage_rules_to_window(
 
     for index in 0..rules.len() {
         if one_shot_rules || !RuleFlag(rules[index].flags).contains(RuleFlag::ONE_SHOT) {
-            if window_manager_rule_matches_window(
+            if is_window_matched_by_rule(
                 &rules[index],
                 window_id,
                 window_title,
@@ -286,25 +308,28 @@ pub(crate) fn window_manager_apply_manage_rules_to_window(
                 window_subrole,
                 window_manager,
             ) {
-                if rules[index].effects.manage == RULE_PROP_ON {
+                if rules[index].effects.manage == RULE_PROPERTY_ON {
                     if rules[index].role_regex.is_none()
-                        && !string_equals(Some(window_role), Some("AXWindow"))
+                        && !are_both_strings_present_and_equal(Some(window_role), Some("AXWindow"))
                     {
                         continue;
                     }
                     if rules[index].subrole_regex.is_none()
-                        && !string_equals(Some(window_subrole), Some("AXStandardWindow"))
+                        && !are_both_strings_present_and_equal(
+                            Some(window_subrole),
+                            Some("AXStandardWindow"),
+                        )
                     {
                         continue;
                     }
                 }
 
                 matched = true;
-                rule_combine_effects(&rules[index].effects, &mut effects);
+                combine_rule_effects_into_accumulated_effects(&rules[index].effects, &mut effects);
 
                 if RuleFlag(rules[index].flags).contains(RuleFlag::ONE_SHOT) {
                     let mut rule_flags = RuleFlag(rules[index].flags);
-                    rule_flags.insert(RuleFlag::ONE_SHOT_REMOVE);
+                    rule_flags.insert(RuleFlag::ONE_SHOT_DUE_FOR_REMOVAL);
                     rules[index].flags = rule_flags.0;
                 }
             }
@@ -314,7 +339,7 @@ pub(crate) fn window_manager_apply_manage_rules_to_window(
     window_manager.rules = rules;
 
     if matched {
-        window_manager_apply_manage_rule_effects_to_window(
+        apply_manage_effect_of_rule_to_window(
             space_manager,
             window_manager,
             window_id,
@@ -325,7 +350,7 @@ pub(crate) fn window_manager_apply_manage_rules_to_window(
     }
 }
 
-pub(crate) fn window_manager_apply_rules_to_window(
+pub(crate) fn apply_effects_other_than_manage_of_matching_rules_to_window(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     window_id: WindowId,
@@ -345,7 +370,7 @@ pub(crate) fn window_manager_apply_rules_to_window(
 
     for index in 0..rules.len() {
         if one_shot_rules || !RuleFlag(rules[index].flags).contains(RuleFlag::ONE_SHOT) {
-            if window_manager_rule_matches_window(
+            if is_window_matched_by_rule(
                 &rules[index],
                 window_id,
                 window_title,
@@ -353,29 +378,35 @@ pub(crate) fn window_manager_apply_rules_to_window(
                 window_subrole,
                 window_manager,
             ) {
-                let window_is_managed_by_rule = window_manager
-                    .window
-                    .find(&window_id)
-                    .is_some_and(|window| window_check_rule_flag(window, WindowRuleFlag::MANAGED));
+                let window_is_managed_by_rule =
+                    window_manager
+                        .window
+                        .find(&window_id)
+                        .is_some_and(|window| {
+                            is_window_rule_flag_set(window, WindowRuleFlag::MANAGE_FORCED_ON)
+                        });
                 if !window_is_managed_by_rule {
                     if rules[index].role_regex.is_none()
-                        && !string_equals(Some(window_role), Some("AXWindow"))
+                        && !are_both_strings_present_and_equal(Some(window_role), Some("AXWindow"))
                     {
                         continue;
                     }
                     if rules[index].subrole_regex.is_none()
-                        && !string_equals(Some(window_subrole), Some("AXStandardWindow"))
+                        && !are_both_strings_present_and_equal(
+                            Some(window_subrole),
+                            Some("AXStandardWindow"),
+                        )
                     {
                         continue;
                     }
                 }
 
                 matched = true;
-                rule_combine_effects(&rules[index].effects, &mut effects);
+                combine_rule_effects_into_accumulated_effects(&rules[index].effects, &mut effects);
 
                 if RuleFlag(rules[index].flags).contains(RuleFlag::ONE_SHOT) {
                     let mut rule_flags = RuleFlag(rules[index].flags);
-                    rule_flags.insert(RuleFlag::ONE_SHOT_REMOVE);
+                    rule_flags.insert(RuleFlag::ONE_SHOT_DUE_FOR_REMOVAL);
                     rules[index].flags = rule_flags.0;
                 }
             }
@@ -385,7 +416,7 @@ pub(crate) fn window_manager_apply_rules_to_window(
     window_manager.rules = rules;
 
     if matched {
-        window_manager_apply_rule_effects_to_window(
+        apply_effects_other_than_manage_of_rule_to_window(
             space_manager,
             window_manager,
             window_id,
@@ -398,7 +429,7 @@ pub(crate) fn window_manager_apply_rules_to_window(
     }
 }
 
-pub(crate) fn rule_reapply_all(
+pub(crate) fn reapply_every_rule_except_one_shot_rules_to_every_root_window(
     process_manager: &mut ProcessManager,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
@@ -412,11 +443,11 @@ pub(crate) fn rule_reapply_all(
         };
 
         if window.is_root {
-            let window_title = window_title_ts(window);
-            let window_role = window_role_ts(window);
-            let window_subrole = window_subrole_ts(window);
+            let window_title = window_title_as_string(window);
+            let window_role = window_role_as_string(window);
+            let window_subrole = window_subrole_as_string(window);
 
-            window_manager_apply_manage_rules_to_window(
+            apply_manage_effect_of_matching_rules_to_window(
                 space_manager,
                 window_manager,
                 window_id,
@@ -428,11 +459,11 @@ pub(crate) fn rule_reapply_all(
                 mouse_drag_state,
             );
 
-            if window_manager_is_window_eligible(window_id, window_manager) {
+            if is_window_eligible_for_management(window_id, window_manager) {
                 if let Some(window) = window_manager.window.find_mut(&window_id) {
                     window.is_eligible = true;
                 }
-                window_manager_apply_rules_to_window(
+                apply_effects_other_than_manage_of_matching_rules_to_window(
                     space_manager,
                     window_manager,
                     window_id,
@@ -450,7 +481,7 @@ pub(crate) fn rule_reapply_all(
     }
 }
 
-pub(crate) fn rule_reapply_by_index(
+pub(crate) fn reapply_rule_at_index_to_every_root_window(
     index: i32,
     process_manager: &mut ProcessManager,
     display_manager: &mut DisplayManager,
@@ -463,7 +494,7 @@ pub(crate) fn rule_reapply_by_index(
         if rule_index as i32 == index {
             if !RuleFlag(window_manager.rules[rule_index].flags).contains(RuleFlag::ONE_SHOT) {
                 let rule = std::mem::take(&mut window_manager.rules[rule_index]);
-                rule_apply(
+                apply_rule_to_every_matching_root_window(
                     &rule,
                     process_manager,
                     display_manager,
@@ -481,7 +512,7 @@ pub(crate) fn rule_reapply_by_index(
     false
 }
 
-pub(crate) fn rule_reapply_by_label(
+pub(crate) fn reapply_rule_with_label_to_every_root_window(
     label: &[u8],
     process_manager: &mut ProcessManager,
     display_manager: &mut DisplayManager,
@@ -493,13 +524,13 @@ pub(crate) fn rule_reapply_by_label(
     let label = String::from_utf8_lossy(label);
 
     for rule_index in 0..window_manager.rules.len() {
-        if string_equals(
+        if are_both_strings_present_and_equal(
             window_manager.rules[rule_index].label.as_deref(),
             Some(&*label),
         ) {
             if !RuleFlag(window_manager.rules[rule_index].flags).contains(RuleFlag::ONE_SHOT) {
                 let rule = std::mem::take(&mut window_manager.rules[rule_index]);
-                rule_apply(
+                apply_rule_to_every_matching_root_window(
                     &rule,
                     process_manager,
                     display_manager,
@@ -517,7 +548,7 @@ pub(crate) fn rule_reapply_by_label(
     false
 }
 
-pub(crate) fn rule_apply(
+pub(crate) fn apply_rule_to_every_matching_root_window(
     rule: &Rule,
     process_manager: &mut ProcessManager,
     display_manager: &mut DisplayManager,
@@ -532,11 +563,11 @@ pub(crate) fn rule_apply(
         };
 
         if window.is_root {
-            let window_title = window_title_ts(window);
-            let window_role = window_role_ts(window);
-            let window_subrole = window_subrole_ts(window);
+            let window_title = window_title_as_string(window);
+            let window_role = window_role_as_string(window);
+            let window_subrole = window_subrole_as_string(window);
 
-            if window_manager_rule_matches_window(
+            if is_window_matched_by_rule(
                 rule,
                 window_id,
                 &window_title,
@@ -544,7 +575,7 @@ pub(crate) fn rule_apply(
                 &window_subrole,
                 window_manager,
             ) {
-                window_manager_apply_manage_rule_effects_to_window(
+                apply_manage_effect_of_rule_to_window(
                     space_manager,
                     window_manager,
                     window_id,
@@ -553,11 +584,11 @@ pub(crate) fn rule_apply(
                     mouse_drag_state,
                 );
 
-                if window_manager_is_window_eligible(window_id, window_manager) {
+                if is_window_eligible_for_management(window_id, window_manager) {
                     if let Some(window) = window_manager.window.find_mut(&window_id) {
                         window.is_eligible = true;
                     }
-                    window_manager_apply_rule_effects_to_window(
+                    apply_effects_other_than_manage_of_rule_to_window(
                         space_manager,
                         window_manager,
                         window_id,

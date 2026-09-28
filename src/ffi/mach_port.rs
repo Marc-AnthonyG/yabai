@@ -102,22 +102,25 @@ pub fn mach_task_self() -> libc::mach_port_t {
 }
 
 #[repr(C, packed(4))]
-struct MachSendMessage {
+struct MachMessageWithOneOutOfLineDescriptor {
     header: mach_msg_header_t,
     descriptor_count: mach_msg_size_t,
     descriptor: mach_msg_ool_descriptor_t,
 }
 
-const _: () = assert!(core::mem::size_of::<MachSendMessage>() == 44);
-const _: () = assert!(core::mem::offset_of!(MachSendMessage, descriptor_count) == 24);
-const _: () = assert!(core::mem::offset_of!(MachSendMessage, descriptor) == 28);
+const _: () = assert!(core::mem::size_of::<MachMessageWithOneOutOfLineDescriptor>() == 44);
+const _: () =
+    assert!(core::mem::offset_of!(MachMessageWithOneOutOfLineDescriptor, descriptor_count) == 24);
+const _: () =
+    assert!(core::mem::offset_of!(MachMessageWithOneOutOfLineDescriptor, descriptor) == 28);
 
-pub fn mach_send(port: libc::mach_port_t, data: *mut c_void, size: u32) {
-    let mut message = MachSendMessage {
+pub fn send_bytes_out_of_line_to_mach_port(port: libc::mach_port_t, data: *mut c_void, size: u32) {
+    let mut message = MachMessageWithOneOutOfLineDescriptor {
         header: mach_msg_header_t {
             msgh_bits: (MACH_MSG_TYPE_COPY_SEND & MACH_MSGH_BITS_REMOTE_MASK)
                 | MACH_MSGH_BITS_COMPLEX,
-            msgh_size: core::mem::size_of::<MachSendMessage>() as mach_msg_size_t,
+            msgh_size: core::mem::size_of::<MachMessageWithOneOutOfLineDescriptor>()
+                as mach_msg_size_t,
             msgh_remote_port: port,
             msgh_local_port: 0,
             msgh_voucher_port: 0,
@@ -138,7 +141,7 @@ pub fn mach_send(port: libc::mach_port_t, data: *mut c_void, size: u32) {
         mach_msg(
             (&raw mut message).cast::<mach_msg_header_t>(),
             MACH_SEND_MSG,
-            core::mem::size_of::<MachSendMessage>() as mach_msg_size_t,
+            core::mem::size_of::<MachMessageWithOneOutOfLineDescriptor>() as mach_msg_size_t,
             0,
             0,
             0,

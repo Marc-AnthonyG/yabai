@@ -5,7 +5,7 @@ use crate::signal::definition::{SIGNAL_TYPE_COUNT, Signal};
 use crate::signal::queue::PendingSignal;
 use crate::space::manager::SpaceManager;
 use crate::state::mission_control_mode::MissionControlMode;
-use crate::window::manager::{FfmMode, WindowManager};
+use crate::window::manager::{FocusFollowsMouseMode, WindowManager};
 
 pub struct EventLoopOwnedState {
     pub signal_event: [Vec<Signal>; SIGNAL_TYPE_COUNT],
@@ -16,7 +16,7 @@ pub struct EventLoopOwnedState {
     pub signal_storage: Vec<PendingSignal>,
     pub mouse_drag_state: MouseDragState,
     pub mission_control_mode: MissionControlMode,
-    pub focus_follows_mouse_suspended_value: FfmMode,
+    pub focus_follows_mouse_suspended_value: FocusFollowsMouseMode,
     pub is_menu_open: i32,
 }
 

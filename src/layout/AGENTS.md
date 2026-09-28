@@ -19,7 +19,7 @@ preview, a SkyLight overlay window drawn as a ghost of that frame.
   feedback slot is dropped.
 - Areas are `f32` (decision 30). The truncations and the `+ 0.5` rounding in the split arithmetic
   place windows to the pixel and are observable (decision 3).
-- The name tables for view type, split, child, auto-balance and insertion point are the CLI and
+- The name tables for view layout, split, child, auto-balance and insertion point are the CLI and
   query spellings; each index is the enum discriminant (decision 31).
 - The preview (decision 53) is computed by one pure function from the node's area, the insert
   direction, the node's ratio or the global split ratio, and the view's gap, with the same split

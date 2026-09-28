@@ -8,71 +8,88 @@ use std::sync::atomic::Ordering;
 use objc2::msg_send;
 
 use crate::application::model::{
-    Application, application_create, application_destroy, application_focused_window,
+    Application, create_application_for_process,
+    destroy_application_releasing_its_accessibility_element, read_focused_window_of_application,
 };
 use crate::debug;
 use crate::display::manager::DisplayManager;
-use crate::event::queue::{Event, event_loop_post};
+use crate::event::queue::{Event, post_event_to_event_loop};
 use crate::ffi::appkit::NSRunningApplication;
-use crate::ffi::carbon_core::{read_os_freq, read_os_timer};
+use crate::ffi::carbon_core::{read_system_clock_in_nanoseconds, system_clock_ticks_per_second};
 use crate::ffi::carbon_events::GetCurrentEventTime;
-use crate::ffi::core_foundation::{CFType, k_fence, take_create_rule_result};
+use crate::ffi::core_foundation::{
+    CFType, accessibility_fence_attribute_name, take_create_rule_result,
+};
 use crate::ffi::dispatch::{NSEC_PER_SEC, dispatch_after_on_main_queue};
 use crate::ffi::foundation::NSString;
 use crate::ffi::skylight::SLSSpaceSetFrontPSN;
-use crate::layout::settings::{ViewFlag, ViewType};
+use crate::layout::settings::{ViewFlag, ViewLayout};
 use crate::layout::tree::{
-    view_add_window_node_with_insertion_point, view_remove_window_node, window_node_flush,
+    add_window_to_view_tree_preferring_insertion_point, move_windows_below_node_into_their_areas,
+    remove_window_from_view_tree,
 };
-use crate::layout::view::view_is_dirty;
+use crate::layout::view::has_view_windows_awaiting_their_areas;
 use crate::mouse::drag::MouseDragState;
-use crate::notifications::application::{application_observe, application_unobserve};
-use crate::notifications::window::{update_window_notifications, window_unobserve};
-use crate::notifications::workspace::{
-    WORKSPACE_CONTEXT, release_kvo_refcon_on_main_queue, remove_observer_swallowing_exception,
-    workspace_application_observe_activation_policy,
-    workspace_application_observe_finished_launching,
+use crate::notifications::application::{
+    start_observing_application_notifications_reporting_whether_all_registered,
+    stop_observing_application_notifications,
 };
-use crate::process::active_space::process_manager_active_space_for_psn;
-use crate::process::manager::{ProcessManager, process_manager_find_process};
-use crate::process::model::{Process, process_destroy};
+use crate::notifications::window::{
+    request_skylight_notifications_for_windows_that_need_them, stop_observing_window_notifications,
+};
+use crate::notifications::workspace::{
+    WORKSPACE_CONTEXT, release_key_value_observation_process_reference_on_main_queue,
+    remove_observer_swallowing_exception, start_observing_application_activation_policy,
+    start_observing_application_finished_launching,
+};
+use crate::process::active_space::query_space_of_first_window_owned_by_connection;
+use crate::process::manager::{ProcessManager, process_with_process_serial_number};
+use crate::process::model::{Process, destroy_process_releasing_its_running_application};
 use crate::process::running_application::{
-    workspace_application_create_running_ns_application,
-    workspace_application_is_finished_launching, workspace_application_is_observable,
+    copy_running_application_of_process, has_process_finished_launching,
+    is_process_observable_refreshing_its_activation_policy,
 };
 use crate::signal::definition::{SIGNAL_TYPE_COUNT, Signal, SignalType};
-use crate::signal::queue::{PendingSignal, SignalContext, event_signal_push};
-use crate::space::focus::space_manager_focus_space_using_gesture;
-use crate::space::lookup::space_manager_cursor_space;
-use crate::space::managed_space::{space_display_id, space_is_visible};
-use crate::space::manager::{SpaceManager, space_manager_find_view};
+use crate::signal::queue::{
+    PendingSignal, SignalContext, queue_pending_signal_for_its_subscribers,
+};
+use crate::space::focus::focus_space_with_synthesized_dock_swipes;
+use crate::space::lookup::query_current_space_of_display_under_the_cursor;
+use crate::space::managed_space::{is_space_visible_on_its_display, query_display_holding_space};
+use crate::space::manager::{SpaceManager, find_or_create_view_for_space};
 use crate::state::mission_control_mode::MissionControlMode;
-use crate::state::process_wide::{CONNECTION, LAST_CMD_TAB_TIME, PENDING_WINDOW_FOCUS};
+use crate::state::process_wide::{
+    LAST_COMMAND_TAB_TIME, SKYLIGHT_CONNECTION_ID, WINDOW_FOCUS_NOTIFICATION_IS_PENDING,
+};
 use crate::support::handles::{ProcessId, ROOT_NODE_ID, SpaceId, WindowId};
 use crate::support::layer::{LAYER_BELOW, LAYER_NORMAL};
-use crate::support::log::or_null;
-use crate::support::macos_version::{workspace_is_macos_sequoia, workspace_is_macos_tahoe};
+use crate::support::log::text_or_printf_null_placeholder;
+use crate::support::macos_version::{is_running_on_macos_sequoia, is_running_on_macos_tahoe};
 use crate::window::discovery::{
-    window_manager_add_application_windows, window_manager_add_existing_application_windows,
+    track_existing_windows_of_application_including_those_on_inactive_spaces,
+    track_untracked_windows_of_application_applying_one_shot_rules,
 };
-use crate::window::focus::window_did_receive_focus;
-use crate::window::layer::window_manager_adjust_layer;
+use crate::window::focus::respond_to_window_receiving_focus;
+use crate::window::layer::set_window_layer_unless_explicitly_set;
 use crate::window::manager::{
-    WindowManager, WindowOriginMode, window_manager_add_application,
-    window_manager_add_lost_focused_event, window_manager_add_lost_front_switched_event,
-    window_manager_add_managed_window, window_manager_find_application,
-    window_manager_find_application_windows, window_manager_find_lost_front_switched_event,
-    window_manager_find_managed_window, window_manager_find_window,
-    window_manager_is_window_eligible, window_manager_remove_application,
-    window_manager_remove_lost_front_switched_event, window_manager_remove_managed_window,
-    window_manager_remove_window, window_manager_should_manage_window,
+    WindowManager, WindowOriginDisplayMode,
+    forget_front_switched_event_that_arrived_before_application_was_tracked, forget_managed_window,
+    has_front_switched_event_arrived_before_application_was_tracked,
+    is_window_eligible_for_management, record_focused_event_that_arrived_before_window_was_tracked,
+    record_front_switched_event_that_arrived_before_application_was_tracked,
+    record_managed_window_on_space_updating_its_shadow, should_window_be_managed,
+    space_managing_window, start_tracking_application, stop_tracking_application,
+    stop_tracking_window, tracked_application_with_process_id, tracked_window_with_id,
+    tracked_windows_of_application,
 };
-use crate::window::model::{window_destroy, window_space};
-use crate::window::opacity::window_manager_set_window_opacity;
-use crate::window::scratchpad::window_manager_remove_scratchpad_for_window;
-use crate::window::shadow::window_manager_purify_window;
+use crate::window::model::{
+    destroy_window_releasing_its_accessibility_element, query_space_holding_window,
+};
+use crate::window::opacity::set_window_opacity_unless_disabled_or_fixed_by_rule;
+use crate::window::scratchpad::remove_window_from_its_scratchpad;
+use crate::window::shadow::apply_shadow_removal_mode_to_window;
 
-pub(crate) fn event_handler_application_launched(
+pub(crate) fn handle_application_launched_event(
     process: Arc<Process>,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
     process_manager: &mut ProcessManager,
@@ -86,33 +103,36 @@ pub(crate) fn event_handler_application_launched(
     if process.terminated.load(Ordering::Relaxed) {
         debug!(
             "{}: {} ({}) terminated during launch\n",
-            "EVENT_HANDLER_APPLICATION_LAUNCHED", process.name, process.process_id.0
+            "handle_application_launched_event", process.name, process.process_id.0
         );
-        window_manager_remove_lost_front_switched_event(window_manager, process.process_id);
+        forget_front_switched_event_that_arrived_before_application_was_tracked(
+            window_manager,
+            process.process_id,
+        );
         return;
     }
 
     if process.ns_application.load(Ordering::Acquire).is_null() {
         debug!(
             "{}: {} ({}) missing ns_application. fetching..\n",
-            "EVENT_HANDLER_APPLICATION_LAUNCHED", process.name, process.process_id.0
+            "handle_application_launched_event", process.name, process.process_id.0
         );
         process.ns_application.store(
-            workspace_application_create_running_ns_application(&process),
+            copy_running_application_of_process(&process),
             Ordering::Release,
         );
 
         if process.ns_application.load(Ordering::Acquire).is_null() {
             debug!(
                 "{}: {} ({}) unable to fetch ns_application..\n",
-                "EVENT_HANDLER_APPLICATION_LAUNCHED", process.name, process.process_id.0
+                "handle_application_launched_event", process.name, process.process_id.0
             );
 
             let process_serial_number = process.process_serial_number;
             dispatch_after_on_main_queue((0.1f32 * NSEC_PER_SEC as f32) as i64, move || {
-                let process = process_manager_find_process(&process_serial_number);
+                let process = process_with_process_serial_number(&process_serial_number);
                 if let Some(process) = process {
-                    event_loop_post(Event::ApplicationLaunched(process));
+                    post_event_to_event_loop(Event::ApplicationLaunched(process));
                 }
             });
 
@@ -120,22 +140,19 @@ pub(crate) fn event_handler_application_launched(
         }
     }
 
-    if !workspace_application_is_finished_launching(&process) {
+    if !has_process_finished_launching(&process) {
         debug!(
             "{}: {} ({}) is not finished launching, subscribing to finishedLaunching changes\n",
-            "EVENT_HANDLER_APPLICATION_LAUNCHED", process.name, process.process_id.0
+            "handle_application_launched_event", process.name, process.process_id.0
         );
-        workspace_application_observe_finished_launching(
-            WORKSPACE_CONTEXT.get().unwrap(),
-            &process,
-        );
+        start_observing_application_finished_launching(WORKSPACE_CONTEXT.get().unwrap(), &process);
 
         //
         // NOTE(asmvik): Do this again in case of race-conditions between the previous check and key-value observation subscription.
         // Not actually sure if this can happen in practice..
         //
 
-        if workspace_application_is_finished_launching(&process) {
+        if has_process_finished_launching(&process) {
             let ns_application = process.ns_application.load(Ordering::Acquire);
             let application = unsafe { ns_application.cast::<NSRunningApplication>().as_ref() };
             if let Some(application) = application {
@@ -149,7 +166,7 @@ pub(crate) fn event_handler_application_launched(
                         &key_path,
                         &process,
                     ) {
-                        release_kvo_refcon_on_main_queue(&process);
+                        release_key_value_observation_process_reference_on_main_queue(&process);
                     }
                 }
             }
@@ -158,19 +175,19 @@ pub(crate) fn event_handler_application_launched(
         }
     }
 
-    if !workspace_application_is_observable(&process) {
+    if !is_process_observable_refreshing_its_activation_policy(&process) {
         debug!(
             "{}: {} ({}) is not observable, subscribing to activationPolicy changes\n",
-            "EVENT_HANDLER_APPLICATION_LAUNCHED", process.name, process.process_id.0
+            "handle_application_launched_event", process.name, process.process_id.0
         );
-        workspace_application_observe_activation_policy(WORKSPACE_CONTEXT.get().unwrap(), &process);
+        start_observing_application_activation_policy(WORKSPACE_CONTEXT.get().unwrap(), &process);
 
         //
         // NOTE(asmvik): Do this again in case of race-conditions between the previous check and key-value observation subscription.
         // Not actually sure if this can happen in practice..
         //
 
-        if workspace_application_is_observable(&process) {
+        if is_process_observable_refreshing_its_activation_policy(&process) {
             let ns_application = process.ns_application.load(Ordering::Acquire);
             let application = unsafe { ns_application.cast::<NSRunningApplication>().as_ref() };
             if let Some(application) = application {
@@ -184,7 +201,7 @@ pub(crate) fn event_handler_application_launched(
                         &key_path,
                         &process,
                     ) {
-                        release_kvo_refcon_on_main_queue(&process);
+                        release_key_value_observation_process_reference_on_main_queue(&process);
                     }
                 }
             }
@@ -198,20 +215,21 @@ pub(crate) fn event_handler_application_launched(
     // simply ignore the event..
     //
 
-    let application = window_manager_find_application(window_manager, process.process_id);
+    let application = tracked_application_with_process_id(window_manager, process.process_id);
     let mut application: Application = match application {
         Some(_) => return,
-        None => application_create(&process),
+        None => create_application_for_process(&process),
     };
 
-    if !application_observe(&mut application) {
+    if !start_observing_application_notifications_reporting_whether_all_registered(&mut application)
+    {
         let ax_retry = application.ax_retry;
 
-        application_unobserve(&mut application);
-        application_destroy(application);
+        stop_observing_application_notifications(&mut application);
+        destroy_application_releasing_its_accessibility_element(application);
         debug!(
             "{}: could not observe notifications for {} ({}) ({})\n",
-            "EVENT_HANDLER_APPLICATION_LAUNCHED",
+            "handle_application_launched_event",
             process.name,
             process.process_id.0,
             ax_retry as i32
@@ -220,9 +238,9 @@ pub(crate) fn event_handler_application_launched(
         if ax_retry {
             let process_serial_number = process.process_serial_number;
             dispatch_after_on_main_queue((0.1f32 * NSEC_PER_SEC as f32) as i64, move || {
-                let process = process_manager_find_process(&process_serial_number);
+                let process = process_with_process_serial_number(&process_serial_number);
                 if let Some(process) = process {
-                    event_loop_post(Event::ApplicationLaunched(process));
+                    post_event_to_event_loop(Event::ApplicationLaunched(process));
                 }
             });
         }
@@ -230,17 +248,23 @@ pub(crate) fn event_handler_application_launched(
         return;
     }
 
-    if window_manager_find_lost_front_switched_event(window_manager, process.process_id) {
-        event_loop_post(Event::ApplicationFrontSwitched(Arc::clone(&process)));
-        window_manager_remove_lost_front_switched_event(window_manager, process.process_id);
+    if has_front_switched_event_arrived_before_application_was_tracked(
+        window_manager,
+        process.process_id,
+    ) {
+        post_event_to_event_loop(Event::ApplicationFrontSwitched(Arc::clone(&process)));
+        forget_front_switched_event_that_arrived_before_application_was_tracked(
+            window_manager,
+            process.process_id,
+        );
     }
 
     debug!(
         "{}: {} ({})\n",
-        "EVENT_HANDLER_APPLICATION_LAUNCHED", process.name, process.process_id.0
+        "handle_application_launched_event", process.name, process.process_id.0
     );
-    window_manager_add_application(window_manager, application);
-    event_signal_push(
+    start_tracking_application(window_manager, application);
+    queue_pending_signal_for_its_subscribers(
         SignalType::ApplicationLaunched,
         SignalContext::Application(process.process_id),
         signal_event,
@@ -251,7 +275,7 @@ pub(crate) fn event_handler_application_launched(
         signal_storage,
     );
 
-    let window_list = window_manager_add_application_windows(
+    let window_list = track_untracked_windows_of_application_applying_one_shot_rules(
         space_manager,
         window_manager,
         process.process_id,
@@ -263,15 +287,16 @@ pub(crate) fn event_handler_application_launched(
     let mut prev_window_id = window_manager.focused_window_id;
 
     let mut space_id = SpaceId(0);
-    let default_origin = window_manager.window_origin_mode == WindowOriginMode::Default;
+    let default_origin = window_manager.window_origin_display_mode
+        == WindowOriginDisplayMode::DisplayTheWindowOpenedOn;
 
     if !default_origin {
-        if window_manager.window_origin_mode == WindowOriginMode::Focused {
+        if window_manager.window_origin_display_mode == WindowOriginDisplayMode::FocusedDisplay {
             space_id = space_manager.current_space_id;
         } else
         /* if (g_window_manager.window_origin_mode == WINDOW_ORIGIN_CURSOR) */
         {
-            space_id = space_manager_cursor_space();
+            space_id = query_current_space_of_display_under_the_cursor();
         }
     }
 
@@ -280,17 +305,21 @@ pub(crate) fn event_handler_application_launched(
     for index in 0..window_list.len() {
         let window_id = window_list[index];
 
-        if window_manager_should_manage_window(window_id, window_manager)
-            && window_manager_find_managed_window(window_manager, window_id).is_none()
+        if should_window_be_managed(window_id, window_manager)
+            && space_managing_window(window_manager, window_id).is_none()
         {
             if default_origin {
-                space_id = window_space(window_id);
+                space_id = query_space_holding_window(window_id);
             }
 
-            let view =
-                space_manager_find_view(space_manager, space_id, display_manager, window_manager);
+            let view = find_or_create_view_for_space(
+                space_manager,
+                space_id,
+                display_manager,
+                window_manager,
+            );
             let view_layout = space_manager.view.find(&view).map(|view| view.layout);
-            if view_layout.is_some_and(|view_layout| view_layout != ViewType::Float) {
+            if view_layout.is_some_and(|view_layout| view_layout != ViewLayout::Float) {
                 //
                 // @cleanup
                 //
@@ -301,8 +330,8 @@ pub(crate) fn event_handler_application_launched(
                 // This is necessary to make sure that we do not call the AX API for each modification to the tree.
                 //
 
-                window_manager_adjust_layer(window_id, LAYER_BELOW, window_manager);
-                view_add_window_node_with_insertion_point(
+                set_window_layer_unless_explicitly_set(window_id, LAYER_BELOW, window_manager);
+                add_window_to_view_tree_preferring_insertion_point(
                     space_manager,
                     view,
                     window_id,
@@ -310,10 +339,15 @@ pub(crate) fn event_handler_application_launched(
                     display_manager,
                     window_manager,
                 );
-                window_manager_add_managed_window(window_manager, window_id, space_manager, view);
+                record_managed_window_on_space_updating_its_shadow(
+                    window_manager,
+                    window_id,
+                    space_manager,
+                    view,
+                );
 
                 if let Some(view) = space_manager.view.find_mut(&view) {
-                    view.set_flag(ViewFlag::IS_DIRTY);
+                    view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
                 }
                 view_list.push(view);
 
@@ -321,8 +355,8 @@ pub(crate) fn event_handler_application_launched(
             }
         }
 
-        if window_manager_is_window_eligible(window_id, window_manager) {
-            event_signal_push(
+        if is_window_eligible_for_management(window_id, window_manager) {
+            queue_pending_signal_for_its_subscribers(
                 SignalType::WindowCreated,
                 SignalContext::Window(window_id),
                 signal_event,
@@ -346,25 +380,25 @@ pub(crate) fn event_handler_application_launched(
 
     for index in 0..view_list.len() {
         let view = view_list[index];
-        if !space_is_visible(view) {
+        if !is_space_visible_on_its_display(view) {
             continue;
         }
-        if !view_is_dirty(space_manager, view) {
+        if !has_view_windows_awaiting_their_areas(space_manager, view) {
             continue;
         }
 
-        window_node_flush(view, ROOT_NODE_ID, window_manager, space_manager);
+        move_windows_below_node_into_their_areas(view, ROOT_NODE_ID, window_manager, space_manager);
         if let Some(view) = space_manager.view.find_mut(&view) {
-            view.clear_flag(ViewFlag::IS_DIRTY);
+            view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     }
 
-    if workspace_is_macos_sequoia() || workspace_is_macos_tahoe() {
-        update_window_notifications(window_manager, space_manager);
+    if is_running_on_macos_sequoia() || is_running_on_macos_tahoe() {
+        request_skylight_notifications_for_windows_that_need_them(window_manager, space_manager);
     }
 }
 
-pub(crate) fn event_handler_application_terminated(
+pub(crate) fn handle_application_terminated_event(
     process: Arc<Process>,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
     process_manager: &mut ProcessManager,
@@ -374,21 +408,21 @@ pub(crate) fn event_handler_application_terminated(
     signal_storage: &mut Vec<PendingSignal>,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    let application = window_manager_find_application(window_manager, process.process_id);
+    let application = tracked_application_with_process_id(window_manager, process.process_id);
 
     match application {
         None => {
             debug!(
                 "{}: {} ({}) (not observed)\n",
-                "EVENT_HANDLER_APPLICATION_TERMINATED", process.name, process.process_id.0
+                "handle_application_terminated_event", process.name, process.process_id.0
             );
         }
         Some(application) => {
             debug!(
                 "{}: {} ({})\n",
-                "EVENT_HANDLER_APPLICATION_TERMINATED", process.name, process.process_id.0
+                "handle_application_terminated_event", process.name, process.process_id.0
             );
-            event_signal_push(
+            queue_pending_signal_for_its_subscribers(
                 SignalType::ApplicationTerminated,
                 SignalContext::Application(application),
                 signal_event,
@@ -405,7 +439,7 @@ pub(crate) fn event_handler_application_terminated(
                 }
             }
 
-            let window_list = window_manager_find_application_windows(window_manager, application);
+            let window_list = tracked_windows_of_application(window_manager, application);
 
             let mut view_list: Vec<SpaceId> = Vec::new();
 
@@ -423,7 +457,7 @@ pub(crate) fn event_handler_application_terminated(
                     continue;
                 }
 
-                let view = window_manager_find_managed_window(window_manager, window_id);
+                let view = space_managing_window(window_manager, window_id);
                 if let Some(view) = view {
                     //
                     // @cleanup
@@ -435,7 +469,7 @@ pub(crate) fn event_handler_application_terminated(
                     // This is necessary to make sure that we do not call the AX API for each modification to the tree.
                     //
 
-                    view_remove_window_node(
+                    remove_window_from_view_tree(
                         space_manager,
                         view,
                         window_id,
@@ -443,10 +477,10 @@ pub(crate) fn event_handler_application_terminated(
                         window_manager,
                         mouse_drag_state,
                     );
-                    window_manager_remove_managed_window(window_manager, window_id);
+                    forget_managed_window(window_manager, window_id);
 
                     if let Some(view) = space_manager.view.find_mut(&view) {
-                        view.set_flag(ViewFlag::IS_DIRTY);
+                        view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
                     }
                     view_list.push(view);
                 }
@@ -463,7 +497,7 @@ pub(crate) fn event_handler_application_terminated(
                     .find(&window_id)
                     .is_some_and(|window| window.is_eligible);
                 if is_eligible {
-                    event_signal_push(
+                    queue_pending_signal_for_its_subscribers(
                         SignalType::WindowDestroyed,
                         SignalContext::Window(window_id),
                         signal_event,
@@ -475,7 +509,7 @@ pub(crate) fn event_handler_application_terminated(
                     );
                 }
 
-                window_manager_remove_scratchpad_for_window(
+                remove_window_from_its_scratchpad(
                     window_manager,
                     window_id,
                     false,
@@ -484,17 +518,17 @@ pub(crate) fn event_handler_application_terminated(
                     space_manager,
                     mouse_drag_state,
                 );
-                let window = window_manager_remove_window(window_manager, window_id);
+                let window = stop_tracking_window(window_manager, window_id);
                 if let Some(mut window) = window {
-                    window_unobserve(&mut window, window_manager);
-                    window_destroy(window);
+                    stop_observing_window_notifications(&mut window, window_manager);
+                    destroy_window_releasing_its_accessibility_element(window);
                 }
             }
 
-            let application_record = window_manager_remove_application(window_manager, application);
+            let application_record = stop_tracking_application(window_manager, application);
             if let Some(mut application_record) = application_record {
-                application_unobserve(&mut application_record);
-                application_destroy(application_record);
+                stop_observing_application_notifications(&mut application_record);
+                destroy_application_releasing_its_accessibility_element(application_record);
             }
 
             //
@@ -508,29 +542,37 @@ pub(crate) fn event_handler_application_terminated(
 
             for index in 0..view_list.len() {
                 let view = view_list[index];
-                if !space_is_visible(view) {
+                if !is_space_visible_on_its_display(view) {
                     continue;
                 }
-                if !view_is_dirty(space_manager, view) {
+                if !has_view_windows_awaiting_their_areas(space_manager, view) {
                     continue;
                 }
 
-                window_node_flush(view, ROOT_NODE_ID, window_manager, space_manager);
+                move_windows_below_node_into_their_areas(
+                    view,
+                    ROOT_NODE_ID,
+                    window_manager,
+                    space_manager,
+                );
                 if let Some(view) = space_manager.view.find_mut(&view) {
-                    view.clear_flag(ViewFlag::IS_DIRTY);
+                    view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
                 }
             }
 
-            if workspace_is_macos_sequoia() || workspace_is_macos_tahoe() {
-                update_window_notifications(window_manager, space_manager);
+            if is_running_on_macos_sequoia() || is_running_on_macos_tahoe() {
+                request_skylight_notifications_for_windows_that_need_them(
+                    window_manager,
+                    space_manager,
+                );
             }
         }
     }
 
-    process_destroy(process);
+    destroy_process_releasing_its_running_application(process);
 }
 
-pub(crate) fn event_handler_application_front_switched(
+pub(crate) fn handle_application_front_switched_event(
     process: Arc<Process>,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
     process_manager: &mut ProcessManager,
@@ -541,10 +583,13 @@ pub(crate) fn event_handler_application_front_switched(
     mouse_drag_state: &mut MouseDragState,
     mission_control_mode: &mut MissionControlMode,
 ) {
-    let application = window_manager_find_application(window_manager, process.process_id);
+    let application = tracked_application_with_process_id(window_manager, process.process_id);
 
     let Some(application) = application else {
-        window_manager_add_lost_front_switched_event(window_manager, process.process_id);
+        record_front_switched_event_that_arrived_before_application_was_tracked(
+            window_manager,
+            process.process_id,
+        );
         return;
     };
 
@@ -553,11 +598,11 @@ pub(crate) fn event_handler_application_front_switched(
             .application
             .find(&application)
             .map_or(0, |application| application.connection);
-        let psn_space_id = process_manager_active_space_for_psn(application_connection);
+        let psn_space_id = query_space_of_first_window_owned_by_connection(application_connection);
 
-        let last_cmd_tab_time = LAST_CMD_TAB_TIME.load(Ordering::Relaxed);
-        let delta_time = (read_os_timer() as f32 - last_cmd_tab_time as f32)
-            * (1000.0f32 / read_os_freq() as f32);
+        let last_cmd_tab_time = LAST_COMMAND_TAB_TIME.load(Ordering::Relaxed);
+        let delta_time = (read_system_clock_in_nanoseconds() as f32 - last_cmd_tab_time as f32)
+            * (1000.0f32 / system_clock_ticks_per_second() as f32);
         if delta_time > 1500.0f32 {
             let application_element_ref = window_manager
                 .application
@@ -568,7 +613,7 @@ pub(crate) fn event_handler_application_front_switched(
                 unsafe {
                     crate::ffi::accessibility::AXUIElementCopyAttributeValue(
                         &*application_element_ref,
-                        k_fence(),
+                        accessibility_fence_attribute_name(),
                         NonNull::from(&mut dummy),
                     )
                 };
@@ -576,17 +621,17 @@ pub(crate) fn event_handler_application_front_switched(
             }
         }
 
-        if PENDING_WINDOW_FOCUS.load(Ordering::Relaxed) == false {
-            if psn_space_id.0 != 0 && !space_is_visible(psn_space_id) {
+        if WINDOW_FOCUS_NOTIFICATION_IS_PENDING.load(Ordering::Relaxed) == false {
+            if psn_space_id.0 != 0 && !is_space_visible_on_its_display(psn_space_id) {
                 unsafe {
                     SLSSpaceSetFrontPSN(
-                        *CONNECTION.get().unwrap(),
+                        *SKYLIGHT_CONNECTION_ID.get().unwrap(),
                         psn_space_id.0,
                         process.process_serial_number,
                     )
                 };
-                space_manager_focus_space_using_gesture(
-                    space_display_id(psn_space_id),
+                focus_space_with_synthesized_dock_swipes(
+                    query_display_holding_space(psn_space_id),
                     psn_space_id,
                     window_manager,
                 );
@@ -595,9 +640,9 @@ pub(crate) fn event_handler_application_front_switched(
     }
 
     let deactivated_application =
-        window_manager_find_application(window_manager, process_manager.front_process_id);
+        tracked_application_with_process_id(window_manager, process_manager.front_process_id);
     if let Some(deactivated_application) = deactivated_application {
-        event_signal_push(
+        queue_pending_signal_for_its_subscribers(
             SignalType::ApplicationDeactivated,
             SignalContext::Application(deactivated_application),
             signal_event,
@@ -611,9 +656,9 @@ pub(crate) fn event_handler_application_front_switched(
 
     debug!(
         "{}: {} ({})\n",
-        "EVENT_HANDLER_APPLICATION_FRONT_SWITCHED", process.name, process.process_id.0
+        "handle_application_front_switched_event", process.name, process.process_id.0
     );
-    event_signal_push(
+    queue_pending_signal_for_its_subscribers(
         SignalType::ApplicationActivated,
         SignalContext::Application(application),
         signal_event,
@@ -626,7 +671,7 @@ pub(crate) fn event_handler_application_front_switched(
     process_manager.switch_event_time = unsafe { GetCurrentEventTime() };
     process_manager.last_front_process_id = process_manager.front_process_id;
     process_manager.front_process_id = process.process_id;
-    event_signal_push(
+    queue_pending_signal_for_its_subscribers(
         SignalType::ApplicationFrontSwitched,
         SignalContext::None,
         signal_event,
@@ -645,10 +690,10 @@ pub(crate) fn event_handler_application_front_switched(
                 .map(|application| Arc::clone(&application.name));
             debug!(
                 "{}: {} has windows that are not yet resolved\n",
-                "EVENT_HANDLER_APPLICATION_FRONT_SWITCHED",
-                or_null(application_name.as_deref())
+                "handle_application_front_switched_event",
+                text_or_printf_null_placeholder(application_name.as_deref())
             );
-            window_manager_add_existing_application_windows(
+            track_existing_windows_of_application_including_those_on_inactive_spaces(
                 space_manager,
                 window_manager,
                 application,
@@ -665,13 +710,13 @@ pub(crate) fn event_handler_application_front_switched(
     let application_focused_window_id = window_manager
         .application
         .find(&application)
-        .map_or(WindowId(0), application_focused_window);
+        .map_or(WindowId(0), read_focused_window_of_application);
     if application_focused_window_id.0 == 0 {
         let focused_window =
-            window_manager_find_window(window_manager, window_manager.focused_window_id);
+            tracked_window_with_id(window_manager, window_manager.focused_window_id);
         if let Some(focused_window) = focused_window {
             let normal_window_opacity = window_manager.normal_window_opacity;
-            window_manager_set_window_opacity(
+            set_window_opacity_unless_disabled_or_fixed_by_rule(
                 window_manager,
                 focused_window,
                 normal_window_opacity,
@@ -691,25 +736,28 @@ pub(crate) fn event_handler_application_front_switched(
         return;
     }
 
-    let window = window_manager_find_window(window_manager, application_focused_window_id);
+    let window = tracked_window_with_id(window_manager, application_focused_window_id);
     let Some(window) = window else {
         let focused_window =
-            window_manager_find_window(window_manager, window_manager.focused_window_id);
+            tracked_window_with_id(window_manager, window_manager.focused_window_id);
         if let Some(focused_window) = focused_window {
             let normal_window_opacity = window_manager.normal_window_opacity;
-            window_manager_set_window_opacity(
+            set_window_opacity_unless_disabled_or_fixed_by_rule(
                 window_manager,
                 focused_window,
                 normal_window_opacity,
             );
         }
 
-        window_manager_add_lost_focused_event(window_manager, application_focused_window_id);
+        record_focused_event_that_arrived_before_window_was_tracked(
+            window_manager,
+            application_focused_window_id,
+        );
         return;
     };
 
-    window_did_receive_focus(window_manager, mouse_drag_state, window, space_manager);
-    event_signal_push(
+    respond_to_window_receiving_focus(window_manager, mouse_drag_state, window, space_manager);
+    queue_pending_signal_for_its_subscribers(
         SignalType::WindowFocused,
         SignalContext::Window(window),
         signal_event,
@@ -719,10 +767,10 @@ pub(crate) fn event_handler_application_front_switched(
         space_manager,
         signal_storage,
     );
-    PENDING_WINDOW_FOCUS.store(false, Ordering::Release);
+    WINDOW_FOCUS_NOTIFICATION_IS_PENDING.store(false, Ordering::Release);
 }
 
-pub(crate) fn event_handler_application_visible(
+pub(crate) fn handle_application_visible_event(
     process_id: ProcessId,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
     process_manager: &mut ProcessManager,
@@ -731,7 +779,7 @@ pub(crate) fn event_handler_application_visible(
     space_manager: &mut SpaceManager,
     signal_storage: &mut Vec<PendingSignal>,
 ) {
-    let application = window_manager_find_application(window_manager, process_id);
+    let application = tracked_application_with_process_id(window_manager, process_id);
     let Some(application) = application else {
         return;
     };
@@ -742,14 +790,14 @@ pub(crate) fn event_handler_application_visible(
         .map(|application| Arc::clone(&application.name));
     debug!(
         "{}: {}\n",
-        "EVENT_HANDLER_APPLICATION_VISIBLE",
-        or_null(application_name.as_deref())
+        "handle_application_visible_event",
+        text_or_printf_null_placeholder(application_name.as_deref())
     );
     if let Some(application) = window_manager.application.find_mut(&application) {
         application.is_hidden = false;
     }
 
-    let window_list = window_manager_find_application_windows(window_manager, application);
+    let window_list = tracked_windows_of_application(window_manager, application);
     let mut prev_window_id = window_manager.last_window_id;
 
     let mut view_list: Vec<SpaceId> = Vec::new();
@@ -757,19 +805,19 @@ pub(crate) fn event_handler_application_visible(
     for index in 0..window_list.len() {
         let window_id = window_list[index];
 
-        if window_manager_should_manage_window(window_id, window_manager)
-            && window_manager_find_managed_window(window_manager, window_id).is_none()
+        if should_window_be_managed(window_id, window_manager)
+            && space_managing_window(window_manager, window_id).is_none()
         {
-            let view = space_manager_find_view(
+            let view = find_or_create_view_for_space(
                 space_manager,
-                window_space(window_id),
+                query_space_holding_window(window_id),
                 display_manager,
                 window_manager,
             );
             let Some(view_layout) = space_manager.view.find(&view).map(|view| view.layout) else {
                 continue;
             };
-            if view_layout == ViewType::Float {
+            if view_layout == ViewLayout::Float {
                 continue;
             }
 
@@ -783,8 +831,8 @@ pub(crate) fn event_handler_application_visible(
             // This is necessary to make sure that we do not call the AX API for each modification to the tree.
             //
 
-            window_manager_adjust_layer(window_id, LAYER_BELOW, window_manager);
-            view_add_window_node_with_insertion_point(
+            set_window_layer_unless_explicitly_set(window_id, LAYER_BELOW, window_manager);
+            add_window_to_view_tree_preferring_insertion_point(
                 space_manager,
                 view,
                 window_id,
@@ -792,10 +840,15 @@ pub(crate) fn event_handler_application_visible(
                 display_manager,
                 window_manager,
             );
-            window_manager_add_managed_window(window_manager, window_id, space_manager, view);
+            record_managed_window_on_space_updating_its_shadow(
+                window_manager,
+                window_id,
+                space_manager,
+                view,
+            );
 
             if let Some(view) = space_manager.view.find_mut(&view) {
-                view.set_flag(ViewFlag::IS_DIRTY);
+                view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
             view_list.push(view);
 
@@ -814,20 +867,20 @@ pub(crate) fn event_handler_application_visible(
 
     for index in 0..view_list.len() {
         let view = view_list[index];
-        if !space_is_visible(view) {
+        if !is_space_visible_on_its_display(view) {
             continue;
         }
-        if !view_is_dirty(space_manager, view) {
+        if !has_view_windows_awaiting_their_areas(space_manager, view) {
             continue;
         }
 
-        window_node_flush(view, ROOT_NODE_ID, window_manager, space_manager);
+        move_windows_below_node_into_their_areas(view, ROOT_NODE_ID, window_manager, space_manager);
         if let Some(view) = space_manager.view.find_mut(&view) {
-            view.clear_flag(ViewFlag::IS_DIRTY);
+            view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     }
 
-    event_signal_push(
+    queue_pending_signal_for_its_subscribers(
         SignalType::ApplicationVisible,
         SignalContext::Application(application),
         signal_event,
@@ -839,7 +892,7 @@ pub(crate) fn event_handler_application_visible(
     );
 }
 
-pub(crate) fn event_handler_application_hidden(
+pub(crate) fn handle_application_hidden_event(
     process_id: ProcessId,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
     process_manager: &mut ProcessManager,
@@ -849,7 +902,7 @@ pub(crate) fn event_handler_application_hidden(
     signal_storage: &mut Vec<PendingSignal>,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    let application = window_manager_find_application(window_manager, process_id);
+    let application = tracked_application_with_process_id(window_manager, process_id);
     let Some(application) = application else {
         return;
     };
@@ -860,21 +913,21 @@ pub(crate) fn event_handler_application_hidden(
         .map(|application| Arc::clone(&application.name));
     debug!(
         "{}: {}\n",
-        "EVENT_HANDLER_APPLICATION_HIDDEN",
-        or_null(application_name.as_deref())
+        "handle_application_hidden_event",
+        text_or_printf_null_placeholder(application_name.as_deref())
     );
     if let Some(application) = window_manager.application.find_mut(&application) {
         application.is_hidden = true;
     }
 
-    let window_list = window_manager_find_application_windows(window_manager, application);
+    let window_list = tracked_windows_of_application(window_manager, application);
 
     let mut view_list: Vec<SpaceId> = Vec::new();
 
     for index in 0..window_list.len() {
         let window_id = window_list[index];
 
-        let view = window_manager_find_managed_window(window_manager, window_id);
+        let view = space_managing_window(window_manager, window_id);
         if let Some(view) = view {
             //
             // @cleanup
@@ -886,8 +939,8 @@ pub(crate) fn event_handler_application_hidden(
             // This is necessary to make sure that we do not call the AX API for each modification to the tree.
             //
 
-            window_manager_adjust_layer(window_id, LAYER_NORMAL, window_manager);
-            view_remove_window_node(
+            set_window_layer_unless_explicitly_set(window_id, LAYER_NORMAL, window_manager);
+            remove_window_from_view_tree(
                 space_manager,
                 view,
                 window_id,
@@ -895,11 +948,11 @@ pub(crate) fn event_handler_application_hidden(
                 window_manager,
                 mouse_drag_state,
             );
-            window_manager_remove_managed_window(window_manager, window_id);
-            window_manager_purify_window(window_manager, window_id);
+            forget_managed_window(window_manager, window_id);
+            apply_shadow_removal_mode_to_window(window_manager, window_id);
 
             if let Some(view) = space_manager.view.find_mut(&view) {
-                view.set_flag(ViewFlag::IS_DIRTY);
+                view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
             }
             view_list.push(view);
         }
@@ -916,20 +969,20 @@ pub(crate) fn event_handler_application_hidden(
 
     for index in 0..view_list.len() {
         let view = view_list[index];
-        if !space_is_visible(view) {
+        if !is_space_visible_on_its_display(view) {
             continue;
         }
-        if !view_is_dirty(space_manager, view) {
+        if !has_view_windows_awaiting_their_areas(space_manager, view) {
             continue;
         }
 
-        window_node_flush(view, ROOT_NODE_ID, window_manager, space_manager);
+        move_windows_below_node_into_their_areas(view, ROOT_NODE_ID, window_manager, space_manager);
         if let Some(view) = space_manager.view.find_mut(&view) {
-            view.clear_flag(ViewFlag::IS_DIRTY);
+            view.clear_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
         }
     }
 
-    event_signal_push(
+    queue_pending_signal_for_its_subscribers(
         SignalType::ApplicationHidden,
         SignalContext::Application(application),
         signal_event,

@@ -2,30 +2,35 @@ use std::collections::VecDeque;
 
 use crate::display::manager::DisplayManager;
 use crate::layout::area::{
-    Area, area_distance_in_direction, area_is_in_direction, area_make_pair, area_max_point,
+    Area, bottom_right_pixel_inside_area, distance_from_source_area_to_target_area_in_direction,
+    divide_area_into_two_by_split_ratio_and_gap,
+    is_target_area_in_direction_of_source_area_and_facing_it,
 };
 use crate::layout::feedback_window::FeedbackWindow;
 use crate::layout::insertion::{
-    WindowInsertionPoint, insert_feedback_destroy, insert_feedback_show,
+    WindowInsertionPoint, destroy_insert_feedback_of_node, show_insert_feedback_of_node,
 };
 use crate::layout::settings::{
-    ViewType, window_node_get_child, window_node_get_gap, window_node_get_ratio,
-    window_node_get_split,
+    ViewLayout, effective_child_for_new_window_in_node, effective_ratio_of_node,
+    effective_split_of_node, effective_window_gap_of_view,
 };
-use crate::layout::view::{View, view_update};
+use crate::layout::view::{View, recompute_view_areas_from_display_bounds_and_padding};
 use crate::mouse::drag::MouseDragState;
-use crate::space::managed_space::space_window_list;
+use crate::space::managed_space::query_windows_on_space;
 use crate::space::manager::SpaceManager;
-use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, STACK};
-use crate::support::handles::{NodeId, ROOT_NODE_ID, SpaceId, WindowId};
-use crate::window::animation::{WindowCapture, window_manager_animate_window_list};
-use crate::window::manager::{
-    WindowManager, window_manager_find_window, window_manager_remove_managed_window,
+use crate::support::direction::{
+    DIRECTION_EAST, DIRECTION_NORTH, DIRECTION_SOUTH, DIRECTION_STACK_INSTEAD_OF_SPLIT,
+    DIRECTION_WEST,
 };
-use crate::window::screen_lookup::window_manager_find_rank_of_window_in_list;
+use crate::support::handles::{NodeId, ROOT_NODE_ID, SpaceId, WindowId};
+use crate::window::animation::{
+    WindowWithTargetFrame, move_windows_to_their_target_frames_animating_if_enabled,
+};
+use crate::window::manager::{WindowManager, forget_managed_window, tracked_window_with_id};
+use crate::window::screen_lookup::rank_of_window_in_list;
 
 #[derive(Clone, Copy)]
-pub(crate) struct BalanceNode {
+pub(crate) struct LeafCountsPerSplitAxis {
     pub(crate) y_count: i32,
     pub(crate) x_count: i32,
 }
@@ -39,33 +44,33 @@ pub(crate) enum WindowNodeChild {
     First = 2,
 }
 
-pub(crate) static WINDOW_NODE_CHILD_STR: [&str; 3] = ["none", "second_child", "first_child"];
+pub(crate) static WINDOW_NODE_CHILD_NAMES: [&str; 3] = ["none", "second_child", "first_child"];
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u32)]
 pub(crate) enum WindowNodeSplit {
     #[default]
     None = 0,
-    Y = 1,
-    X = 2,
+    Vertical = 1,
+    Horizontal = 2,
     Auto = 3,
 }
 
-pub(crate) static WINDOW_NODE_SPLIT_STR: [&str; 4] = ["none", "vertical", "horizontal", "auto"];
+pub(crate) static WINDOW_NODE_SPLIT_NAMES: [&str; 4] = ["none", "vertical", "horizontal", "auto"];
 
 pub(crate) fn window_node_split_and_child_placing_a_window_inserted_in_direction(
     insert_direction: i32,
 ) -> Option<(WindowNodeSplit, WindowNodeChild)> {
     match insert_direction {
-        DIR_NORTH => Some((WindowNodeSplit::X, WindowNodeChild::First)),
-        DIR_EAST => Some((WindowNodeSplit::Y, WindowNodeChild::Second)),
-        DIR_SOUTH => Some((WindowNodeSplit::X, WindowNodeChild::Second)),
-        DIR_WEST => Some((WindowNodeSplit::Y, WindowNodeChild::First)),
+        DIRECTION_NORTH => Some((WindowNodeSplit::Horizontal, WindowNodeChild::First)),
+        DIRECTION_EAST => Some((WindowNodeSplit::Vertical, WindowNodeChild::Second)),
+        DIRECTION_SOUTH => Some((WindowNodeSplit::Horizontal, WindowNodeChild::Second)),
+        DIRECTION_WEST => Some((WindowNodeSplit::Vertical, WindowNodeChild::First)),
         _ => None,
     }
 }
 
-pub(crate) const NODE_MAX_WINDOW_COUNT: usize = 32;
+pub(crate) const MOST_WINDOWS_A_NODE_CAN_HOLD: usize = 32;
 
 #[derive(Default)]
 pub(crate) struct WindowNode {
@@ -74,8 +79,8 @@ pub(crate) struct WindowNode {
     pub(crate) left: Option<NodeId>,
     pub(crate) right: Option<NodeId>,
     pub(crate) zoom: Option<NodeId>,
-    pub(crate) window_list: [WindowId; NODE_MAX_WINDOW_COUNT],
-    pub(crate) window_order: [WindowId; NODE_MAX_WINDOW_COUNT],
+    pub(crate) window_list: [WindowId; MOST_WINDOWS_A_NODE_CAN_HOLD],
+    pub(crate) window_order: [WindowId; MOST_WINDOWS_A_NODE_CAN_HOLD],
     pub(crate) window_count: i32,
     pub(crate) ratio: f32,
     pub(crate) split: WindowNodeSplit,
@@ -84,14 +89,14 @@ pub(crate) struct WindowNode {
     pub(crate) feedback_window: Option<FeedbackWindow>,
 }
 
-pub(crate) fn area_make_pair_for_node(
+pub(crate) fn divide_node_area_between_its_children(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     node_id: NodeId,
 ) {
-    let split = window_node_get_split(space_manager, space_id, node_id);
-    let ratio = window_node_get_ratio(space_id, node_id, space_manager);
-    let gap = window_node_get_gap(space_manager, space_id);
+    let split = effective_split_of_node(space_manager, space_id, node_id);
+    let ratio = effective_ratio_of_node(space_id, node_id, space_manager);
+    let gap = effective_window_gap_of_view(space_manager, space_id);
 
     let Some(view) = space_manager.view.find_mut(&space_id) else {
         return;
@@ -101,7 +106,8 @@ pub(crate) fn area_make_pair_for_node(
     let left = node.left;
     let right = node.right;
 
-    let (left_area, right_area) = area_make_pair(split, gap, ratio, parent_area);
+    let (left_area, right_area) =
+        divide_area_into_two_by_split_ratio_and_gap(split, gap, ratio, parent_area);
 
     if let Some(left) = left {
         view.node_mut(left).area = left_area;
@@ -115,7 +121,7 @@ pub(crate) fn area_make_pair_for_node(
     node.ratio = ratio;
 }
 
-pub(crate) fn window_node_is_occupied(
+pub(crate) fn is_node_holding_any_window(
     space_id: SpaceId,
     node_id: NodeId,
     space_manager: &mut SpaceManager,
@@ -127,7 +133,7 @@ pub(crate) fn window_node_is_occupied(
     view.node(node_id).window_count != 0
 }
 
-pub(crate) fn window_node_is_intermediate(
+pub(crate) fn is_node_below_the_root(
     space_id: SpaceId,
     node_id: NodeId,
     space_manager: &mut SpaceManager,
@@ -139,7 +145,7 @@ pub(crate) fn window_node_is_intermediate(
     view.node(node_id).parent.is_some()
 }
 
-pub(crate) fn window_node_is_leaf(
+pub(crate) fn is_leaf_node(
     space_id: SpaceId,
     node_id: NodeId,
     space_manager: &mut SpaceManager,
@@ -152,7 +158,7 @@ pub(crate) fn window_node_is_leaf(
     node.left.is_none() && node.right.is_none()
 }
 
-pub(crate) fn window_node_is_left_child(
+pub(crate) fn is_node_the_left_child_of_its_parent(
     space_id: SpaceId,
     node_id: NodeId,
     space_manager: &mut SpaceManager,
@@ -167,7 +173,7 @@ pub(crate) fn window_node_is_left_child(
     }
 }
 
-pub(crate) fn window_node_is_right_child(
+pub(crate) fn is_node_the_right_child_of_its_parent(
     space_id: SpaceId,
     node_id: NodeId,
     space_manager: &mut SpaceManager,
@@ -182,7 +188,7 @@ pub(crate) fn window_node_is_right_child(
     }
 }
 
-pub(crate) fn window_node_equalize(
+pub(crate) fn reset_split_ratios_below_node_to_the_global_ratio(
     space_id: SpaceId,
     node_id: NodeId,
     axis_flag: u32,
@@ -197,10 +203,15 @@ pub(crate) fn window_node_equalize(
     };
 
     if let Some(left) = left {
-        window_node_equalize(space_id, left, axis_flag, space_manager);
+        reset_split_ratios_below_node_to_the_global_ratio(space_id, left, axis_flag, space_manager);
     }
     if let Some(right) = right {
-        window_node_equalize(space_id, right, axis_flag, space_manager);
+        reset_split_ratios_below_node_to_the_global_ratio(
+            space_id,
+            right,
+            axis_flag,
+            space_manager,
+        );
     }
 
     let split_ratio = space_manager.split_ratio;
@@ -209,43 +220,50 @@ pub(crate) fn window_node_equalize(
     };
     let node = view.node_mut(node_id);
 
-    if (axis_flag & WindowNodeSplit::Y as u32) != 0 && node.split == WindowNodeSplit::Y {
+    if (axis_flag & WindowNodeSplit::Vertical as u32) != 0
+        && node.split == WindowNodeSplit::Vertical
+    {
         node.ratio = split_ratio;
     }
 
-    if (axis_flag & WindowNodeSplit::X as u32) != 0 && node.split == WindowNodeSplit::X {
+    if (axis_flag & WindowNodeSplit::Horizontal as u32) != 0
+        && node.split == WindowNodeSplit::Horizontal
+    {
         node.ratio = split_ratio;
     }
 }
 
-pub(crate) fn balance_node_add(first: BalanceNode, second: BalanceNode) -> BalanceNode {
-    BalanceNode {
+pub(crate) fn add_leaf_counts_per_split_axis(
+    first: LeafCountsPerSplitAxis,
+    second: LeafCountsPerSplitAxis,
+) -> LeafCountsPerSplitAxis {
+    LeafCountsPerSplitAxis {
         y_count: first.y_count + second.y_count,
         x_count: first.x_count + second.x_count,
     }
 }
 
-pub(crate) fn window_node_balance(
+pub(crate) fn balance_split_ratios_below_node_giving_each_leaf_an_equal_share(
     space_id: SpaceId,
     node_id: NodeId,
     axis_flag: u32,
     space_manager: &mut SpaceManager,
-) -> BalanceNode {
-    if window_node_is_leaf(space_id, node_id, space_manager) {
+) -> LeafCountsPerSplitAxis {
+    if is_leaf_node(space_id, node_id, space_manager) {
         let Some(view) = space_manager.view.find(&space_id) else {
-            return BalanceNode {
+            return LeafCountsPerSplitAxis {
                 y_count: 0,
                 x_count: 0,
             };
         };
         let parent = view.node(node_id).parent;
-        return BalanceNode {
+        return LeafCountsPerSplitAxis {
             y_count: match parent {
-                Some(parent) => (view.node(parent).split == WindowNodeSplit::Y) as i32,
+                Some(parent) => (view.node(parent).split == WindowNodeSplit::Vertical) as i32,
                 None => 0,
             },
             x_count: match parent {
-                Some(parent) => (view.node(parent).split == WindowNodeSplit::X) as i32,
+                Some(parent) => (view.node(parent).split == WindowNodeSplit::Horizontal) as i32,
                 None => 0,
             },
         };
@@ -257,7 +275,7 @@ pub(crate) fn window_node_balance(
             (node.left, node.right)
         }
         None => {
-            return BalanceNode {
+            return LeafCountsPerSplitAxis {
                 y_count: 0,
                 x_count: 0,
             };
@@ -265,35 +283,45 @@ pub(crate) fn window_node_balance(
     };
 
     let left_leafs = match left {
-        Some(left) => window_node_balance(space_id, left, axis_flag, space_manager),
-        None => BalanceNode {
+        Some(left) => balance_split_ratios_below_node_giving_each_leaf_an_equal_share(
+            space_id,
+            left,
+            axis_flag,
+            space_manager,
+        ),
+        None => LeafCountsPerSplitAxis {
             y_count: 0,
             x_count: 0,
         },
     };
     let right_leafs = match right {
-        Some(right) => window_node_balance(space_id, right, axis_flag, space_manager),
-        None => BalanceNode {
+        Some(right) => balance_split_ratios_below_node_giving_each_leaf_an_equal_share(
+            space_id,
+            right,
+            axis_flag,
+            space_manager,
+        ),
+        None => LeafCountsPerSplitAxis {
             y_count: 0,
             x_count: 0,
         },
     };
-    let mut total_leafs = balance_node_add(left_leafs, right_leafs);
+    let mut total_leafs = add_leaf_counts_per_split_axis(left_leafs, right_leafs);
 
     let Some(view) = space_manager.view.find_mut(&space_id) else {
         return total_leafs;
     };
     let node = view.node_mut(node_id);
 
-    if (axis_flag & WindowNodeSplit::Y as u32) != 0 {
-        if node.split == WindowNodeSplit::Y {
+    if (axis_flag & WindowNodeSplit::Vertical as u32) != 0 {
+        if node.split == WindowNodeSplit::Vertical {
             node.ratio = left_leafs.y_count as f32 / total_leafs.y_count as f32;
             total_leafs.y_count -= 1;
         }
     }
 
-    if (axis_flag & WindowNodeSplit::X as u32) != 0 {
-        if node.split == WindowNodeSplit::X {
+    if (axis_flag & WindowNodeSplit::Horizontal as u32) != 0 {
+        if node.split == WindowNodeSplit::Horizontal {
             node.ratio = left_leafs.x_count as f32 / total_leafs.x_count as f32;
             total_leafs.x_count -= 1;
         }
@@ -302,14 +330,14 @@ pub(crate) fn window_node_balance(
     let parent = node.parent;
     if let Some(parent) = parent {
         let parent_split = view.node(parent).split;
-        total_leafs.y_count += (parent_split == WindowNodeSplit::Y) as i32;
-        total_leafs.x_count += (parent_split == WindowNodeSplit::X) as i32;
+        total_leafs.y_count += (parent_split == WindowNodeSplit::Vertical) as i32;
+        total_leafs.x_count += (parent_split == WindowNodeSplit::Horizontal) as i32;
     }
 
     total_leafs
 }
 
-pub(crate) fn window_node_split(
+pub(crate) fn split_leaf_node_to_hold_a_new_window(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     node_id: NodeId,
@@ -321,8 +349,8 @@ pub(crate) fn window_node_split(
         let Some(view) = space_manager.view.find_mut(&space_id) else {
             return;
         };
-        let left = view.allocate_node();
-        let right = view.allocate_node();
+        let left = view.allocate_empty_node_reusing_a_freed_id();
+        let right = view.allocate_empty_node_reusing_a_freed_id();
 
         let node = view.node(node_id);
         let zoom = if !window_zoom_persist {
@@ -338,7 +366,9 @@ pub(crate) fn window_node_split(
         (left, right, zoom)
     };
 
-    if window_node_get_child(space_id, node_id, space_manager) == WindowNodeChild::Second {
+    if effective_child_for_new_window_in_node(space_id, node_id, space_manager)
+        == WindowNodeChild::Second
+    {
         let Some(view) = space_manager.view.find_mut(&space_id) else {
             return;
         };
@@ -396,25 +426,25 @@ pub(crate) fn window_node_split(
         node.zoom = None;
     }
 
-    area_make_pair_for_node(space_manager, space_id, node_id);
+    divide_node_area_between_its_children(space_manager, space_id, node_id);
 }
 
-pub(crate) fn window_node_update(
+pub(crate) fn recompute_areas_below_node_redrawing_insert_feedback(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     node_id: NodeId,
     window_manager: &mut WindowManager,
 ) {
-    if window_node_is_leaf(space_id, node_id, space_manager) {
+    if is_leaf_node(space_id, node_id, space_manager) {
         let insert_direction = match space_manager.view.find(&space_id) {
             Some(view) => view.node(node_id).insert_direction,
             None => return,
         };
         if insert_direction != 0 {
-            insert_feedback_show(space_id, node_id, window_manager, space_manager);
+            show_insert_feedback_of_node(space_id, node_id, window_manager, space_manager);
         }
     } else {
-        area_make_pair_for_node(space_manager, space_id, node_id);
+        divide_node_area_between_its_children(space_manager, space_id, node_id);
 
         let (left, right) = match space_manager.view.find(&space_id) {
             Some(view) => {
@@ -425,15 +455,25 @@ pub(crate) fn window_node_update(
         };
 
         if let Some(left) = left {
-            window_node_update(space_manager, space_id, left, window_manager);
+            recompute_areas_below_node_redrawing_insert_feedback(
+                space_manager,
+                space_id,
+                left,
+                window_manager,
+            );
         }
         if let Some(right) = right {
-            window_node_update(space_manager, space_id, right, window_manager);
+            recompute_areas_below_node_redrawing_insert_feedback(
+                space_manager,
+                space_id,
+                right,
+                window_manager,
+            );
         }
     }
 }
 
-pub(crate) fn window_node_destroy(
+pub(crate) fn free_node_subtree_unmanaging_its_windows(
     space_id: SpaceId,
     node_id: NodeId,
     window_manager: &mut WindowManager,
@@ -444,7 +484,7 @@ pub(crate) fn window_node_destroy(
     let Some(view) = space_manager.view.find(&space_id) else {
         return;
     };
-    window_node_collect_subtree_post_order(view, node_id, &mut node_ids);
+    collect_node_subtree_in_post_order(view, node_id, &mut node_ids);
 
     for node_id in node_ids {
         let window_ids = match space_manager.view.find(&space_id) {
@@ -456,15 +496,21 @@ pub(crate) fn window_node_destroy(
         };
 
         for window_id in window_ids {
-            window_manager_remove_managed_window(window_manager, window_id);
+            forget_managed_window(window_manager, window_id);
         }
 
-        insert_feedback_destroy(space_id, node_id, window_manager, space_manager);
-        view_free_node(space_id, node_id, window_manager, space_manager, mouse_drag_state);
+        destroy_insert_feedback_of_node(space_id, node_id, window_manager, space_manager);
+        free_node_scrubbing_every_reference_to_it(
+            space_id,
+            node_id,
+            window_manager,
+            space_manager,
+            mouse_drag_state,
+        );
     }
 }
 
-pub(crate) fn window_node_clear_zoom(
+pub(crate) fn clear_zoom_of_node_subtree(
     space_id: SpaceId,
     node_id: NodeId,
     space_manager: &mut SpaceManager,
@@ -477,24 +523,24 @@ pub(crate) fn window_node_clear_zoom(
     let left = node.left;
     let right = node.right;
 
-    if !window_node_is_leaf(space_id, node_id, space_manager) {
+    if !is_leaf_node(space_id, node_id, space_manager) {
         if let Some(left) = left {
-            window_node_clear_zoom(space_id, left, space_manager);
+            clear_zoom_of_node_subtree(space_id, left, space_manager);
         }
         if let Some(right) = right {
-            window_node_clear_zoom(space_id, right, space_manager);
+            clear_zoom_of_node_subtree(space_id, right, space_manager);
         }
     }
 }
 
-pub(crate) fn window_node_capture_windows(
+pub(crate) fn collect_windows_below_node_with_their_target_areas(
     space_id: SpaceId,
     node_id: NodeId,
-    window_list: &mut Vec<WindowCapture>,
+    window_list: &mut Vec<WindowWithTargetFrame>,
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
 ) {
-    if window_node_is_leaf(space_id, node_id, space_manager) {
+    if is_leaf_node(space_id, node_id, space_manager) {
         let (window_count, node_window_list, area) = match space_manager.view.find(&space_id) {
             Some(view) => {
                 let node = view.node(node_id);
@@ -508,8 +554,8 @@ pub(crate) fn window_node_capture_windows(
         };
 
         for index in 0..window_count as usize {
-            if window_manager_find_window(window_manager, node_window_list[index]).is_some() {
-                window_list.push(WindowCapture {
+            if tracked_window_with_id(window_manager, node_window_list[index]).is_some() {
+                window_list.push(WindowWithTargetFrame {
                     window_id: node_window_list[index],
                     x: area.x,
                     y: area.y,
@@ -528,10 +574,16 @@ pub(crate) fn window_node_capture_windows(
         };
 
         if let Some(left) = left {
-            window_node_capture_windows(space_id, left, window_list, window_manager, space_manager);
+            collect_windows_below_node_with_their_target_areas(
+                space_id,
+                left,
+                window_list,
+                window_manager,
+                space_manager,
+            );
         }
         if let Some(right) = right {
-            window_node_capture_windows(
+            collect_windows_below_node_with_their_target_areas(
                 space_id,
                 right,
                 window_list,
@@ -542,14 +594,14 @@ pub(crate) fn window_node_capture_windows(
     }
 }
 
-pub(crate) fn window_node_flush(
+pub(crate) fn move_windows_below_node_into_their_areas(
     space_id: SpaceId,
     node_id: NodeId,
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
 ) {
-    let mut window_list: Vec<WindowCapture> = Vec::new();
-    window_node_capture_windows(
+    let mut window_list: Vec<WindowWithTargetFrame> = Vec::new();
+    collect_windows_below_node_with_their_target_areas(
         space_id,
         node_id,
         &mut window_list,
@@ -557,11 +609,11 @@ pub(crate) fn window_node_flush(
         space_manager,
     );
     if !window_list.is_empty() {
-        window_manager_animate_window_list(&window_list, window_manager);
+        move_windows_to_their_target_frames_animating_if_enabled(&window_list, window_manager);
     }
 }
 
-pub(crate) fn window_node_contains_window(
+pub(crate) fn is_window_in_node(
     space_id: SpaceId,
     node_id: NodeId,
     window_id: WindowId,
@@ -581,7 +633,7 @@ pub(crate) fn window_node_contains_window(
     false
 }
 
-pub(crate) fn window_node_index_of_window(
+pub(crate) fn stack_index_of_window_in_node(
     space_id: SpaceId,
     node_id: NodeId,
     window_id: WindowId,
@@ -601,7 +653,7 @@ pub(crate) fn window_node_index_of_window(
     0
 }
 
-pub(crate) fn window_node_swap_window_list(
+pub(crate) fn swap_windows_between_nodes_clearing_their_zoom(
     a_space_id: SpaceId,
     a_node_id: NodeId,
     b_space_id: SpaceId,
@@ -657,13 +709,13 @@ pub(crate) fn window_node_swap_window_list(
     }
 }
 
-pub(crate) fn window_node_find_first_leaf(
+pub(crate) fn first_leaf_below_node(
     space_id: SpaceId,
     root_node_id: NodeId,
     space_manager: &mut SpaceManager,
 ) -> NodeId {
     let mut node_id = root_node_id;
-    while !window_node_is_leaf(space_id, node_id, space_manager) {
+    while !is_leaf_node(space_id, node_id, space_manager) {
         node_id = match space_manager.view.find(&space_id) {
             Some(view) => match view.node(node_id).left {
                 Some(left) => left,
@@ -675,13 +727,13 @@ pub(crate) fn window_node_find_first_leaf(
     node_id
 }
 
-pub(crate) fn window_node_find_last_leaf(
+pub(crate) fn last_leaf_below_node(
     space_id: SpaceId,
     root_node_id: NodeId,
     space_manager: &mut SpaceManager,
 ) -> NodeId {
     let mut node_id = root_node_id;
-    while !window_node_is_leaf(space_id, node_id, space_manager) {
+    while !is_leaf_node(space_id, node_id, space_manager) {
         node_id = match space_manager.view.find(&space_id) {
             Some(view) => match view.node(node_id).right {
                 Some(right) => right,
@@ -693,7 +745,7 @@ pub(crate) fn window_node_find_last_leaf(
     node_id
 }
 
-pub(crate) fn window_node_find_prev_leaf(
+pub(crate) fn previous_leaf_in_tree_order(
     space_id: SpaceId,
     node_id: NodeId,
     space_manager: &mut SpaceManager,
@@ -706,8 +758,8 @@ pub(crate) fn window_node_find_prev_leaf(
         return None;
     };
 
-    if window_node_is_left_child(space_id, node_id, space_manager) {
-        return window_node_find_prev_leaf(space_id, parent, space_manager);
+    if is_node_the_left_child_of_its_parent(space_id, node_id, space_manager) {
+        return previous_leaf_in_tree_order(space_id, parent, space_manager);
     }
 
     let parent_left = match space_manager.view.find(&space_id) {
@@ -718,7 +770,7 @@ pub(crate) fn window_node_find_prev_leaf(
         return None;
     };
 
-    if window_node_is_leaf(space_id, parent_left, space_manager) {
+    if is_leaf_node(space_id, parent_left, space_manager) {
         return Some(parent_left);
     }
 
@@ -730,14 +782,14 @@ pub(crate) fn window_node_find_prev_leaf(
         return None;
     };
 
-    Some(window_node_find_last_leaf(
+    Some(last_leaf_below_node(
         space_id,
         parent_left_right,
         space_manager,
     ))
 }
 
-pub(crate) fn window_node_find_next_leaf(
+pub(crate) fn next_leaf_in_tree_order(
     space_id: SpaceId,
     node_id: NodeId,
     space_manager: &mut SpaceManager,
@@ -750,8 +802,8 @@ pub(crate) fn window_node_find_next_leaf(
         return None;
     };
 
-    if window_node_is_right_child(space_id, node_id, space_manager) {
-        return window_node_find_next_leaf(space_id, parent, space_manager);
+    if is_node_the_right_child_of_its_parent(space_id, node_id, space_manager) {
+        return next_leaf_in_tree_order(space_id, parent, space_manager);
     }
 
     let parent_right = match space_manager.view.find(&space_id) {
@@ -762,7 +814,7 @@ pub(crate) fn window_node_find_next_leaf(
         return None;
     };
 
-    if window_node_is_leaf(space_id, parent_right, space_manager) {
+    if is_leaf_node(space_id, parent_right, space_manager) {
         return Some(parent_right);
     }
 
@@ -774,14 +826,14 @@ pub(crate) fn window_node_find_next_leaf(
         return None;
     };
 
-    Some(window_node_find_first_leaf(
+    Some(first_leaf_below_node(
         space_id,
         parent_right_left,
         space_manager,
     ))
 }
 
-pub(crate) fn window_node_rotate(
+pub(crate) fn rotate_node_subtree_by_degrees(
     space_id: SpaceId,
     node_id: NodeId,
     degrees: i32,
@@ -793,8 +845,8 @@ pub(crate) fn window_node_rotate(
         };
         let node = view.node_mut(node_id);
 
-        if (degrees == 90 && node.split == WindowNodeSplit::Y)
-            || (degrees == 270 && node.split == WindowNodeSplit::X)
+        if (degrees == 90 && node.split == WindowNodeSplit::Vertical)
+            || (degrees == 270 && node.split == WindowNodeSplit::Horizontal)
             || (degrees == 180)
         {
             let temporary = node.left;
@@ -804,33 +856,33 @@ pub(crate) fn window_node_rotate(
         }
 
         if degrees != 180 {
-            if node.split == WindowNodeSplit::X {
-                node.split = WindowNodeSplit::Y;
-            } else if node.split == WindowNodeSplit::Y {
-                node.split = WindowNodeSplit::X;
+            if node.split == WindowNodeSplit::Horizontal {
+                node.split = WindowNodeSplit::Vertical;
+            } else if node.split == WindowNodeSplit::Vertical {
+                node.split = WindowNodeSplit::Horizontal;
             }
         }
 
         (node.left, node.right)
     };
 
-    if !window_node_is_leaf(space_id, node_id, space_manager) {
+    if !is_leaf_node(space_id, node_id, space_manager) {
         if let Some(left) = left {
-            window_node_rotate(space_id, left, degrees, space_manager);
+            rotate_node_subtree_by_degrees(space_id, left, degrees, space_manager);
         }
         if let Some(right) = right {
-            window_node_rotate(space_id, right, degrees, space_manager);
+            rotate_node_subtree_by_degrees(space_id, right, degrees, space_manager);
         }
     }
 }
 
-pub(crate) fn window_node_mirror(
+pub(crate) fn mirror_node_subtree_along_axis(
     space_id: SpaceId,
     node_id: NodeId,
     axis: WindowNodeSplit,
     space_manager: &mut SpaceManager,
 ) -> NodeId {
-    if !window_node_is_leaf(space_id, node_id, space_manager) {
+    if !is_leaf_node(space_id, node_id, space_manager) {
         let (node_left, node_right) = match space_manager.view.find(&space_id) {
             Some(view) => {
                 let node = view.node(node_id);
@@ -839,9 +891,10 @@ pub(crate) fn window_node_mirror(
             None => return node_id,
         };
 
-        let left = node_left.map(|left| window_node_mirror(space_id, left, axis, space_manager));
-        let right =
-            node_right.map(|right| window_node_mirror(space_id, right, axis, space_manager));
+        let left = node_left
+            .map(|left| mirror_node_subtree_along_axis(space_id, left, axis, space_manager));
+        let right = node_right
+            .map(|right| mirror_node_subtree_along_axis(space_id, right, axis, space_manager));
 
         let Some(view) = space_manager.view.find_mut(&space_id) else {
             return node_id;
@@ -856,7 +909,7 @@ pub(crate) fn window_node_mirror(
     node_id
 }
 
-pub(crate) fn window_node_fence(
+pub(crate) fn ancestor_whose_split_borders_node_in_direction(
     space_id: SpaceId,
     node_id: NodeId,
     direction: i32,
@@ -876,18 +929,18 @@ pub(crate) fn window_node_fence(
         };
         let parent_node = view.node(parent);
 
-        if (direction == DIR_NORTH
-            && parent_node.split == WindowNodeSplit::X
+        if (direction == DIRECTION_NORTH
+            && parent_node.split == WindowNodeSplit::Horizontal
             && parent_node.area.y < node_area.y)
-            || (direction == DIR_WEST
-                && parent_node.split == WindowNodeSplit::Y
+            || (direction == DIRECTION_WEST
+                && parent_node.split == WindowNodeSplit::Vertical
                 && parent_node.area.x < node_area.x)
-            || (direction == DIR_SOUTH
-                && parent_node.split == WindowNodeSplit::X
+            || (direction == DIRECTION_SOUTH
+                && parent_node.split == WindowNodeSplit::Horizontal
                 && (parent_node.area.y + parent_node.area.height)
                     > (node_area.y + node_area.height))
-            || (direction == DIR_EAST
-                && parent_node.split == WindowNodeSplit::Y
+            || (direction == DIRECTION_EAST
+                && parent_node.split == WindowNodeSplit::Vertical
                 && (parent_node.area.x + parent_node.area.width) > (node_area.x + node_area.width))
         {
             return Some(parent);
@@ -899,7 +952,7 @@ pub(crate) fn window_node_fence(
     None
 }
 
-pub(crate) fn view_find_min_depth_leaf_node(
+pub(crate) fn shallowest_leaf_below_node(
     space_id: SpaceId,
     node_id: NodeId,
     space_manager: &mut SpaceManager,
@@ -907,7 +960,7 @@ pub(crate) fn view_find_min_depth_leaf_node(
     let mut list: VecDeque<NodeId> = VecDeque::from([node_id]);
 
     while let Some(current_node_id) = list.pop_front() {
-        if window_node_is_leaf(space_id, current_node_id, space_manager) {
+        if is_leaf_node(space_id, current_node_id, space_manager) {
             return Some(current_node_id);
         }
 
@@ -930,26 +983,26 @@ pub(crate) fn view_find_min_depth_leaf_node(
     None
 }
 
-pub(crate) fn view_find_window_node_in_direction(
+pub(crate) fn closest_leaf_in_direction_of_node(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     source_node_id: NodeId,
     direction: i32,
     window_manager: &mut WindowManager,
 ) -> Option<NodeId> {
-    let window_list = space_window_list(space_id, false, window_manager)?;
+    let window_list = query_windows_on_space(space_id, false, window_manager)?;
 
     let mut best_distance = i32::MAX;
     let mut best_rank = i32::MAX;
     let mut best_node: Option<NodeId> = None;
-    let source_area = space_manager.view.find(&space_id)?.node(source_node_id).area;
-    let source_area_max = area_max_point(source_area);
+    let source_area = space_manager
+        .view
+        .find(&space_id)?
+        .node(source_node_id)
+        .area;
+    let source_area_max = bottom_right_pixel_inside_area(source_area);
 
-    let mut target = Some(window_node_find_first_leaf(
-        space_id,
-        ROOT_NODE_ID,
-        space_manager,
-    ));
+    let mut target = Some(first_leaf_below_node(space_id, ROOT_NODE_ID, space_manager));
     while let Some(target_node_id) = target {
         if source_node_id != target_node_id {
             let (target_area, target_first_window_id) = {
@@ -957,23 +1010,22 @@ pub(crate) fn view_find_window_node_in_direction(
                 (target_node.area, target_node.window_order[0])
             };
 
-            let target_area_max = area_max_point(target_area);
-            if area_is_in_direction(
+            let target_area_max = bottom_right_pixel_inside_area(target_area);
+            if is_target_area_in_direction_of_source_area_and_facing_it(
                 &source_area,
                 source_area_max,
                 &target_area,
                 target_area_max,
                 direction,
             ) {
-                let distance = area_distance_in_direction(
+                let distance = distance_from_source_area_to_target_area_in_direction(
                     &source_area,
                     source_area_max,
                     &target_area,
                     target_area_max,
                     direction,
                 );
-                let rank =
-                    window_manager_find_rank_of_window_in_list(target_first_window_id, &window_list);
+                let rank = rank_of_window_in_list(target_first_window_id, &window_list);
                 if (distance < best_distance) || (distance == best_distance && rank < best_rank) {
                     best_node = Some(target_node_id);
                     best_distance = distance;
@@ -982,34 +1034,30 @@ pub(crate) fn view_find_window_node_in_direction(
             }
         }
 
-        target = window_node_find_next_leaf(space_id, target_node_id, space_manager);
+        target = next_leaf_in_tree_order(space_id, target_node_id, space_manager);
     }
 
     best_node
 }
 
-pub(crate) fn view_find_window_node(
+pub(crate) fn leaf_holding_window(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     window_id: WindowId,
 ) -> Option<NodeId> {
-    let mut node = Some(window_node_find_first_leaf(
-        space_id,
-        ROOT_NODE_ID,
-        space_manager,
-    ));
+    let mut node = Some(first_leaf_below_node(space_id, ROOT_NODE_ID, space_manager));
     while let Some(node_id) = node {
-        if window_node_contains_window(space_id, node_id, window_id, space_manager) {
+        if is_window_in_node(space_id, node_id, window_id, space_manager) {
             return Some(node_id);
         }
 
-        node = window_node_find_next_leaf(space_id, node_id, space_manager);
+        node = next_leaf_in_tree_order(space_id, node_id, space_manager);
     }
 
     None
 }
 
-pub(crate) fn view_remove_window_node(
+pub(crate) fn remove_window_from_view_tree(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     window_id: WindowId,
@@ -1017,7 +1065,7 @@ pub(crate) fn view_remove_window_node(
     window_manager: &mut WindowManager,
     mouse_drag_state: &mut MouseDragState,
 ) -> Option<NodeId> {
-    let node_id = view_find_window_node(space_manager, space_id, window_id)?;
+    let node_id = leaf_holding_window(space_manager, space_id, window_id)?;
 
     if space_manager.view.find(&space_id)?.node(node_id).window_count > 1 {
         let view = space_manager.view.find_mut(&space_id)?;
@@ -1054,9 +1102,14 @@ pub(crate) fn view_remove_window_node(
 
     if node_id == ROOT_NODE_ID {
         space_manager.view.find_mut(&space_id)?.insertion_point = WindowId(0);
-        insert_feedback_destroy(space_id, node_id, window_manager, space_manager);
+        destroy_insert_feedback_of_node(space_id, node_id, window_manager, space_manager);
         *space_manager.view.find_mut(&space_id)?.node_mut(node_id) = WindowNode::default();
-        view_update(space_manager, space_id, display_manager, window_manager);
+        recompute_view_areas_from_display_bounds_and_padding(
+            space_manager,
+            space_id,
+            display_manager,
+            window_manager,
+        );
         return None;
     }
 
@@ -1145,11 +1198,11 @@ pub(crate) fn view_remove_window_node(
         window_manager.insert_feedback.remove(&parent_first_window_id);
         window_manager
             .insert_feedback
-            .add(parent_first_window_id, (space_id, parent_id));
+            .add_unless_key_already_present(parent_first_window_id, (space_id, parent_id));
         if mouse_drag_state.feedback_node == Some((space_id, child_id)) {
             mouse_drag_state.feedback_node = Some((space_id, parent_id));
         }
-        insert_feedback_show(space_id, parent_id, window_manager, space_manager);
+        show_insert_feedback_of_node(space_id, parent_id, window_manager, space_manager);
     }
 
     if child_parent.is_some() && !(child_left.is_none() && child_right.is_none()) {
@@ -1188,27 +1241,54 @@ pub(crate) fn view_remove_window_node(
         }
 
         if !window_zoom_persist {
-            window_node_clear_zoom(space_id, parent_id, space_manager);
+            clear_zoom_of_node_subtree(space_id, parent_id, space_manager);
         }
 
-        window_node_update(space_manager, space_id, parent_id, window_manager);
+        recompute_areas_below_node_redrawing_insert_feedback(
+            space_manager,
+            space_id,
+            parent_id,
+            window_manager,
+        );
     }
 
-    insert_feedback_destroy(space_id, node_id, window_manager, space_manager);
-    view_free_node(space_id, child_id, window_manager, space_manager, mouse_drag_state);
-    view_free_node(space_id, node_id, window_manager, space_manager, mouse_drag_state);
+    destroy_insert_feedback_of_node(space_id, node_id, window_manager, space_manager);
+    free_node_scrubbing_every_reference_to_it(
+        space_id,
+        child_id,
+        window_manager,
+        space_manager,
+        mouse_drag_state,
+    );
+    free_node_scrubbing_every_reference_to_it(
+        space_id,
+        node_id,
+        window_manager,
+        space_manager,
+        mouse_drag_state,
+    );
 
     let auto_balance = space_manager.view.find(&space_id)?.auto_balance;
     if auto_balance != WindowNodeSplit::None as u32 {
-        window_node_balance(space_id, ROOT_NODE_ID, auto_balance, space_manager);
-        view_update(space_manager, space_id, display_manager, window_manager);
+        balance_split_ratios_below_node_giving_each_leaf_an_equal_share(
+            space_id,
+            ROOT_NODE_ID,
+            auto_balance,
+            space_manager,
+        );
+        recompute_view_areas_from_display_bounds_and_padding(
+            space_manager,
+            space_id,
+            display_manager,
+            window_manager,
+        );
         return Some(ROOT_NODE_ID);
     }
 
     Some(parent_id)
 }
 
-pub(crate) fn view_stack_window_node(
+pub(crate) fn stack_window_in_node_as_its_front_window(
     space_id: SpaceId,
     node_id: NodeId,
     window_id: WindowId,
@@ -1219,7 +1299,7 @@ pub(crate) fn view_stack_window_node(
     };
     let node = view.node_mut(node_id);
 
-    if node.window_count as usize >= NODE_MAX_WINDOW_COUNT {
+    if node.window_count as usize >= MOST_WINDOWS_A_NODE_CAN_HOLD {
         return;
     }
 
@@ -1246,7 +1326,7 @@ pub(crate) fn view_stack_window_node(
     node.window_count += 1;
 }
 
-pub(crate) fn view_add_window_node_with_insertion_point(
+pub(crate) fn add_window_to_view_tree_preferring_insertion_point(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     window_id: WindowId,
@@ -1254,8 +1334,8 @@ pub(crate) fn view_add_window_node_with_insertion_point(
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
 ) -> Option<NodeId> {
-    if !window_node_is_occupied(space_id, ROOT_NODE_ID, space_manager)
-        && window_node_is_leaf(space_id, ROOT_NODE_ID, space_manager)
+    if !is_node_holding_any_window(space_id, ROOT_NODE_ID, space_manager)
+        && is_leaf_node(space_id, ROOT_NODE_ID, space_manager)
     {
         let root = space_manager.view.find_mut(&space_id)?.node_mut(ROOT_NODE_ID);
         root.window_list[0] = window_id;
@@ -1266,7 +1346,7 @@ pub(crate) fn view_add_window_node_with_insertion_point(
 
     let layout = space_manager.view.find(&space_id)?.layout;
 
-    if layout == ViewType::Bsp {
+    if layout == ViewLayout::BinarySpacePartitioning {
         let mut previous_insertion_point = WindowId(0);
         let mut leaf: Option<NodeId> = None;
 
@@ -1278,21 +1358,26 @@ pub(crate) fn view_add_window_node_with_insertion_point(
 
         let view_insertion_point = space_manager.view.find(&space_id)?.insertion_point;
         if view_insertion_point != WindowId(0) {
-            leaf = view_find_window_node(space_manager, space_id, view_insertion_point);
+            leaf = leaf_holding_window(space_manager, space_id, view_insertion_point);
             space_manager.view.find_mut(&space_id)?.insertion_point = previous_insertion_point;
 
             if let Some(leaf) = leaf {
                 let do_stack = {
                     let leaf_node = space_manager.view.find_mut(&space_id)?.node_mut(leaf);
-                    let do_stack = leaf_node.insert_direction == STACK;
+                    let do_stack = leaf_node.insert_direction == DIRECTION_STACK_INSTEAD_OF_SPLIT;
 
                     leaf_node.insert_direction = 0;
                     do_stack
                 };
-                insert_feedback_destroy(space_id, leaf, window_manager, space_manager);
+                destroy_insert_feedback_of_node(space_id, leaf, window_manager, space_manager);
 
                 if do_stack {
-                    view_stack_window_node(space_id, leaf, window_id, space_manager);
+                    stack_window_in_node_as_its_front_window(
+                        space_id,
+                        leaf,
+                        window_id,
+                        space_manager,
+                    );
                     return Some(leaf);
                 }
             }
@@ -1300,58 +1385,57 @@ pub(crate) fn view_add_window_node_with_insertion_point(
 
         if leaf.is_none() {
             if space_manager.window_insertion_point == WindowInsertionPoint::Focused {
-                leaf = view_find_window_node(
-                    space_manager,
-                    space_id,
-                    window_manager.focused_window_id,
-                );
+                leaf =
+                    leaf_holding_window(space_manager, space_id, window_manager.focused_window_id);
             } else if space_manager.window_insertion_point == WindowInsertionPoint::First {
-                leaf = Some(window_node_find_first_leaf(
-                    space_id,
-                    ROOT_NODE_ID,
-                    space_manager,
-                ));
+                leaf = Some(first_leaf_below_node(space_id, ROOT_NODE_ID, space_manager));
             } else if space_manager.window_insertion_point == WindowInsertionPoint::Last {
-                leaf = Some(window_node_find_last_leaf(
-                    space_id,
-                    ROOT_NODE_ID,
-                    space_manager,
-                ));
+                leaf = Some(last_leaf_below_node(space_id, ROOT_NODE_ID, space_manager));
             }
 
             if leaf.is_none() {
-                leaf = view_find_min_depth_leaf_node(space_id, ROOT_NODE_ID, space_manager);
+                leaf = shallowest_leaf_below_node(space_id, ROOT_NODE_ID, space_manager);
             }
         }
 
         let leaf = leaf?;
 
-        window_node_split(space_manager, space_id, leaf, window_id);
+        split_leaf_node_to_hold_a_new_window(space_manager, space_id, leaf, window_id);
 
         let auto_balance = space_manager.view.find(&space_id)?.auto_balance;
         if auto_balance != WindowNodeSplit::None as u32 {
-            window_node_balance(space_id, ROOT_NODE_ID, auto_balance, space_manager);
-            view_update(space_manager, space_id, display_manager, window_manager);
+            balance_split_ratios_below_node_giving_each_leaf_an_equal_share(
+                space_id,
+                ROOT_NODE_ID,
+                auto_balance,
+                space_manager,
+            );
+            recompute_view_areas_from_display_bounds_and_padding(
+                space_manager,
+                space_id,
+                display_manager,
+                window_manager,
+            );
             return Some(ROOT_NODE_ID);
         }
 
         return Some(leaf);
-    } else if layout == ViewType::Stack {
-        view_stack_window_node(space_id, ROOT_NODE_ID, window_id, space_manager);
+    } else if layout == ViewLayout::Stack {
+        stack_window_in_node_as_its_front_window(space_id, ROOT_NODE_ID, window_id, space_manager);
         return Some(ROOT_NODE_ID);
     }
 
     None
 }
 
-pub(crate) fn view_add_window_node(
+pub(crate) fn add_window_to_view_tree(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     window_id: WindowId,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
 ) -> Option<NodeId> {
-    view_add_window_node_with_insertion_point(
+    add_window_to_view_tree_preferring_insertion_point(
         space_manager,
         space_id,
         window_id,
@@ -1361,7 +1445,7 @@ pub(crate) fn view_add_window_node(
     )
 }
 
-pub(crate) fn view_find_window_list(
+pub(crate) fn collect_windows_of_view_in_tree_order(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
 ) -> Vec<WindowId> {
@@ -1371,11 +1455,7 @@ pub(crate) fn view_find_window_list(
         return window_list;
     }
 
-    let mut node = Some(window_node_find_first_leaf(
-        space_id,
-        ROOT_NODE_ID,
-        space_manager,
-    ));
+    let mut node = Some(first_leaf_below_node(space_id, ROOT_NODE_ID, space_manager));
     while let Some(node_id) = node {
         if let Some(view) = space_manager.view.find(&space_id) {
             let leaf = view.node(node_id);
@@ -1384,13 +1464,13 @@ pub(crate) fn view_find_window_list(
             }
         }
 
-        node = window_node_find_next_leaf(space_id, node_id, space_manager);
+        node = next_leaf_in_tree_order(space_id, node_id, space_manager);
     }
 
     window_list
 }
 
-pub(crate) fn view_free_node(
+pub(crate) fn free_node_scrubbing_every_reference_to_it(
     space_id: SpaceId,
     node_id: NodeId,
     window_manager: &mut WindowManager,
@@ -1418,17 +1498,17 @@ pub(crate) fn view_free_node(
     view.free_node_ids.push(node_id);
 }
 
-pub(crate) fn window_node_collect_subtree_post_order(
+pub(crate) fn collect_node_subtree_in_post_order(
     view: &View,
     node_id: NodeId,
     out: &mut Vec<NodeId>,
 ) {
     let node = view.node(node_id);
     if let Some(left) = node.left {
-        window_node_collect_subtree_post_order(view, left, out);
+        collect_node_subtree_in_post_order(view, left, out);
     }
     if let Some(right) = node.right {
-        window_node_collect_subtree_post_order(view, right, out);
+        collect_node_subtree_in_post_order(view, right, out);
     }
     out.push(node_id);
 }

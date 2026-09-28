@@ -11,22 +11,24 @@ use crate::ffi::core_foundation::{
     CFType, as_cftype, kCFBooleanFalse, kCFBooleanTrue, take_create_rule_result,
 };
 use crate::support::handles::WindowId;
-use crate::window::manager::{WindowManager, WindowOpError};
-use crate::window::model::{WindowFlag, window_can_minimize, window_check_flag};
+use crate::window::manager::{WindowManager, WindowOperationOutcome};
+use crate::window::model::{
+    WindowFlag, can_window_be_minimized_through_accessibility, is_window_flag_set,
+};
 
-pub(crate) fn window_manager_minimize_window(
+pub(crate) fn minimize_window_through_accessibility(
     window_id: WindowId,
     window_manager: &mut WindowManager,
-) -> WindowOpError {
+) -> WindowOperationOutcome {
     let Some(window) = window_manager.window.find(&window_id) else {
-        return WindowOpError::CantMinimize;
+        return WindowOperationOutcome::CannotMinimize;
     };
 
-    if !window_can_minimize(window) {
-        return WindowOpError::CantMinimize;
+    if !can_window_be_minimized_through_accessibility(window) {
+        return WindowOperationOutcome::CannotMinimize;
     }
-    if window_check_flag(window, WindowFlag::MINIMIZE) {
-        return WindowOpError::AlreadyMinimized;
+    if is_window_flag_set(window, WindowFlag::MINIMIZED) {
+        return WindowOperationOutcome::AlreadyMinimized;
     }
 
     let result = unsafe {
@@ -37,22 +39,22 @@ pub(crate) fn window_manager_minimize_window(
         )
     };
     if result == kAXErrorSuccess {
-        WindowOpError::Success
+        WindowOperationOutcome::Success
     } else {
-        WindowOpError::MinimizeFailed
+        WindowOperationOutcome::MinimizeFailed
     }
 }
 
-pub(crate) fn window_manager_deminimize_window(
+pub(crate) fn deminimize_window_through_accessibility(
     window_id: WindowId,
     window_manager: &mut WindowManager,
-) -> WindowOpError {
+) -> WindowOperationOutcome {
     let Some(window) = window_manager.window.find(&window_id) else {
-        return WindowOpError::NotMinimized;
+        return WindowOperationOutcome::NotMinimized;
     };
 
-    if !window_check_flag(window, WindowFlag::MINIMIZE) {
-        return WindowOpError::NotMinimized;
+    if !is_window_flag_set(window, WindowFlag::MINIMIZED) {
+        return WindowOperationOutcome::NotMinimized;
     }
 
     let result = unsafe {
@@ -63,13 +65,13 @@ pub(crate) fn window_manager_deminimize_window(
         )
     };
     if result == kAXErrorSuccess {
-        WindowOpError::Success
+        WindowOperationOutcome::Success
     } else {
-        WindowOpError::DeminimizeFailed
+        WindowOperationOutcome::DeminimizeFailed
     }
 }
 
-pub(crate) fn window_manager_close_window(
+pub(crate) fn close_window_by_pressing_its_close_button(
     window_id: WindowId,
     window_manager: &mut WindowManager,
 ) -> bool {

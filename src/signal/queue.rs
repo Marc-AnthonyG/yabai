@@ -1,15 +1,15 @@
-use crate::display::arrangement::display_manager_display_id_arrangement;
+use crate::display::arrangement::query_arrangement_index_of_display;
 use crate::display::manager::DisplayManager;
 use crate::ffi::carbon_events::GetCurrentEventTime;
 use crate::process::manager::ProcessManager;
 use crate::signal::definition::{SIGNAL_TYPE_COUNT, Signal, SignalType};
-use crate::space::lookup::space_manager_mission_control_index;
+use crate::space::lookup::query_mission_control_index_of_space;
 use crate::space::manager::SpaceManager;
-use crate::state::mission_control_mode::{MISSION_CONTROL_MODE_STR, MissionControlMode};
+use crate::state::mission_control_mode::{MISSION_CONTROL_MODE_NAMES, MissionControlMode};
 use crate::support::handles::{DisplayId, ProcessId, SpaceId, WindowId};
-use crate::support::log::or_null;
+use crate::support::log::text_or_printf_null_placeholder;
 use crate::window::manager::WindowManager;
-use crate::window::model::window_title_ts;
+use crate::window::model::window_title_as_string;
 
 pub(crate) struct PendingSignal {
     pub(crate) signal_type: SignalType,
@@ -28,7 +28,7 @@ pub(crate) enum SignalContext {
     MissionControl(MissionControlMode),
 }
 
-pub(crate) fn event_signal_push(
+pub(crate) fn queue_pending_signal_for_its_subscribers(
     signal_type: SignalType,
     context: SignalContext,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
@@ -151,7 +151,7 @@ pub(crate) fn event_signal_push(
             };
 
             event_signal.app = Some(application.name.to_string());
-            event_signal.title = Some(window_title_ts(window));
+            event_signal.title = Some(window_title_as_string(window));
         }
         SignalType::WindowDestroyed => {
             let SignalContext::Window(window_id) = context else {
@@ -201,14 +201,14 @@ pub(crate) fn event_signal_push(
             };
 
             event_signal.app = Some(application.name.to_string());
-            event_signal.title = Some(window_title_ts(window));
+            event_signal.title = Some(window_title_as_string(window));
             event_signal.active = i32::from(window_manager.focused_window_id == window.id);
         }
         SignalType::SpaceCreated => {
             let SignalContext::Space(space_id) = context else {
                 return;
             };
-            let index = space_manager_mission_control_index(space_id);
+            let index = query_mission_control_index_of_space(space_id);
 
             event_signal.arguments[0] = Some((
                 String::from("YABAI_SPACE_ID"),
@@ -231,8 +231,8 @@ pub(crate) fn event_signal_push(
             let space_id = space_manager.current_space_id;
             let recent_space_id = space_manager.last_space_id;
 
-            let index = space_manager_mission_control_index(space_id);
-            let recent_index = space_manager_mission_control_index(recent_space_id);
+            let index = query_mission_control_index_of_space(space_id);
+            let recent_index = query_mission_control_index_of_space(recent_space_id);
 
             event_signal.arguments[0] = Some((
                 String::from("YABAI_SPACE_ID"),
@@ -254,7 +254,7 @@ pub(crate) fn event_signal_push(
             let SignalContext::Display(display_id) = context else {
                 return;
             };
-            let index = display_manager_display_id_arrangement(display_id, display_manager);
+            let index = query_arrangement_index_of_display(display_id, display_manager);
 
             event_signal.arguments[0] = Some((
                 String::from("YABAI_DISPLAY_ID"),
@@ -277,9 +277,9 @@ pub(crate) fn event_signal_push(
             let display_id = display_manager.current_display_id;
             let recent_display_id = display_manager.last_display_id;
 
-            let index = display_manager_display_id_arrangement(display_id, display_manager);
+            let index = query_arrangement_index_of_display(display_id, display_manager);
             let recent_index =
-                display_manager_display_id_arrangement(recent_display_id, display_manager);
+                query_arrangement_index_of_display(recent_display_id, display_manager);
 
             event_signal.arguments[0] = Some((
                 String::from("YABAI_DISPLAY_ID"),
@@ -304,7 +304,10 @@ pub(crate) fn event_signal_push(
 
             event_signal.arguments[0] = Some((
                 String::from("YABAI_MISSION_CONTROL_MODE"),
-                format!("{}", or_null(MISSION_CONTROL_MODE_STR[mode as usize])),
+                format!(
+                    "{}",
+                    text_or_printf_null_placeholder(MISSION_CONTROL_MODE_NAMES[mode as usize])
+                ),
             ));
         }
         _ => {}

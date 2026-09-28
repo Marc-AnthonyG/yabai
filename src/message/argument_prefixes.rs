@@ -1,8 +1,11 @@
 use crate::support::resize_handle::ResizeHandle;
-use crate::support::strings::MAXLEN;
-use crate::support::type_of_change::{TYPE_ABS, TYPE_REL};
+use crate::support::strings::FIXED_STRING_BUFFER_LENGTH;
+use crate::support::type_of_change::{CHANGE_TYPE_ABSOLUTE, CHANGE_TYPE_RELATIVE};
 
-pub(crate) fn c_string_in_buffer_equals(buffer: &[libc::c_char; MAXLEN], candidate: &str) -> bool {
+pub(crate) fn is_null_terminated_buffer_equal_to(
+    buffer: &[libc::c_char; FIXED_STRING_BUFFER_LENGTH],
+    candidate: &str,
+) -> bool {
     let end = buffer
         .iter()
         .position(|character| *character == 0)
@@ -13,35 +16,37 @@ pub(crate) fn c_string_in_buffer_equals(buffer: &[libc::c_char; MAXLEN], candida
         .eq(candidate.bytes())
 }
 
-pub(crate) fn parse_value_type(type_of_change: &[libc::c_char; MAXLEN]) -> u8 {
-    if c_string_in_buffer_equals(type_of_change, "abs") {
-        TYPE_ABS as u8
-    } else if c_string_in_buffer_equals(type_of_change, "rel") {
-        TYPE_REL as u8
+pub(crate) fn parse_absolute_or_relative_change_type(
+    type_of_change: &[libc::c_char; FIXED_STRING_BUFFER_LENGTH],
+) -> u8 {
+    if is_null_terminated_buffer_equal_to(type_of_change, "abs") {
+        CHANGE_TYPE_ABSOLUTE as u8
+    } else if is_null_terminated_buffer_equal_to(type_of_change, "rel") {
+        CHANGE_TYPE_RELATIVE as u8
     } else {
         0
     }
 }
 
-pub(crate) fn parse_resize_handle(handle: &[libc::c_char; MAXLEN]) -> u8 {
-    if c_string_in_buffer_equals(handle, "top") {
+pub(crate) fn parse_resize_handle(handle: &[libc::c_char; FIXED_STRING_BUFFER_LENGTH]) -> u8 {
+    if is_null_terminated_buffer_equal_to(handle, "top") {
         ResizeHandle::TOP.0
-    } else if c_string_in_buffer_equals(handle, "bottom") {
+    } else if is_null_terminated_buffer_equal_to(handle, "bottom") {
         ResizeHandle::BOTTOM.0
-    } else if c_string_in_buffer_equals(handle, "left") {
+    } else if is_null_terminated_buffer_equal_to(handle, "left") {
         ResizeHandle::LEFT.0
-    } else if c_string_in_buffer_equals(handle, "right") {
+    } else if is_null_terminated_buffer_equal_to(handle, "right") {
         ResizeHandle::RIGHT.0
-    } else if c_string_in_buffer_equals(handle, "top_left") {
+    } else if is_null_terminated_buffer_equal_to(handle, "top_left") {
         ResizeHandle::TOP.0 | ResizeHandle::LEFT.0
-    } else if c_string_in_buffer_equals(handle, "top_right") {
+    } else if is_null_terminated_buffer_equal_to(handle, "top_right") {
         ResizeHandle::TOP.0 | ResizeHandle::RIGHT.0
-    } else if c_string_in_buffer_equals(handle, "bottom_left") {
+    } else if is_null_terminated_buffer_equal_to(handle, "bottom_left") {
         ResizeHandle::BOTTOM.0 | ResizeHandle::LEFT.0
-    } else if c_string_in_buffer_equals(handle, "bottom_right") {
+    } else if is_null_terminated_buffer_equal_to(handle, "bottom_right") {
         ResizeHandle::BOTTOM.0 | ResizeHandle::RIGHT.0
-    } else if c_string_in_buffer_equals(handle, "abs") {
-        ResizeHandle::ABS.0
+    } else if is_null_terminated_buffer_equal_to(handle, "abs") {
+        ResizeHandle::ABSOLUTE.0
     } else {
         0
     }
@@ -49,13 +54,16 @@ pub(crate) fn parse_resize_handle(handle: &[libc::c_char; MAXLEN]) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use super::{c_string_in_buffer_equals, parse_resize_handle, parse_value_type};
+    use super::{
+        is_null_terminated_buffer_equal_to, parse_absolute_or_relative_change_type,
+        parse_resize_handle,
+    };
     use crate::support::resize_handle::ResizeHandle;
-    use crate::support::strings::MAXLEN;
-    use crate::support::type_of_change::{TYPE_ABS, TYPE_REL};
+    use crate::support::strings::FIXED_STRING_BUFFER_LENGTH;
+    use crate::support::type_of_change::{CHANGE_TYPE_ABSOLUTE, CHANGE_TYPE_RELATIVE};
 
-    fn buffer_as_sscanf_leaves_it(bytes: &[u8]) -> [libc::c_char; MAXLEN] {
-        let mut buffer = [0 as libc::c_char; MAXLEN];
+    fn buffer_as_sscanf_leaves_it(bytes: &[u8]) -> [libc::c_char; FIXED_STRING_BUFFER_LENGTH] {
+        let mut buffer = [0 as libc::c_char; FIXED_STRING_BUFFER_LENGTH];
         for (index, byte) in bytes.iter().enumerate() {
             buffer[index] = *byte as libc::c_char;
         }
@@ -63,21 +71,27 @@ mod tests {
     }
 
     #[test]
-    fn parse_value_type_accepts_abs_and_rel_with_the_c_values() {
+    fn parse_absolute_or_relative_change_type_accepts_abs_and_rel_with_the_c_values() {
         assert_eq!(
-            parse_value_type(&buffer_as_sscanf_leaves_it(b"abs")),
-            TYPE_ABS as u8
+            parse_absolute_or_relative_change_type(&buffer_as_sscanf_leaves_it(b"abs")),
+            CHANGE_TYPE_ABSOLUTE as u8
         );
         assert_eq!(
-            parse_value_type(&buffer_as_sscanf_leaves_it(b"rel")),
-            TYPE_REL as u8
+            parse_absolute_or_relative_change_type(&buffer_as_sscanf_leaves_it(b"rel")),
+            CHANGE_TYPE_RELATIVE as u8
         );
-        assert_eq!(parse_value_type(&buffer_as_sscanf_leaves_it(b"abs")), 0x1);
-        assert_eq!(parse_value_type(&buffer_as_sscanf_leaves_it(b"rel")), 0x2);
+        assert_eq!(
+            parse_absolute_or_relative_change_type(&buffer_as_sscanf_leaves_it(b"abs")),
+            0x1
+        );
+        assert_eq!(
+            parse_absolute_or_relative_change_type(&buffer_as_sscanf_leaves_it(b"rel")),
+            0x2
+        );
     }
 
     #[test]
-    fn parse_value_type_rejects_every_other_spelling_with_zero() {
+    fn parse_absolute_or_relative_change_type_rejects_every_other_spelling_with_zero() {
         for rejected in [
             &b""[..],
             b"ABS",
@@ -88,7 +102,7 @@ mod tests {
             b" abs",
         ] {
             assert_eq!(
-                parse_value_type(&buffer_as_sscanf_leaves_it(rejected)),
+                parse_absolute_or_relative_change_type(&buffer_as_sscanf_leaves_it(rejected)),
                 0,
                 "value type {:?}",
                 String::from_utf8_lossy(rejected)
@@ -110,7 +124,7 @@ mod tests {
                 "bottom_right",
                 ResizeHandle::BOTTOM.0 | ResizeHandle::RIGHT.0,
             ),
-            ("abs", ResizeHandle::ABS.0),
+            ("abs", ResizeHandle::ABSOLUTE.0),
         ];
 
         for (handle, expected_bits) in expected_handles {
@@ -168,18 +182,24 @@ mod tests {
     }
 
     #[test]
-    fn c_string_in_buffer_equals_ignores_everything_after_the_first_terminator() {
+    fn is_null_terminated_buffer_equal_to_ignores_everything_after_the_first_terminator() {
         let buffer = buffer_as_sscanf_leaves_it(b"abs\0olete");
 
-        assert!(c_string_in_buffer_equals(&buffer, "abs"));
-        assert!(!c_string_in_buffer_equals(&buffer, "absolete"));
+        assert!(is_null_terminated_buffer_equal_to(&buffer, "abs"));
+        assert!(!is_null_terminated_buffer_equal_to(&buffer, "absolete"));
     }
 
     #[test]
-    fn c_string_in_buffer_equals_compares_a_buffer_without_terminator_in_full() {
-        let buffer = [b'a' as libc::c_char; MAXLEN];
+    fn is_null_terminated_buffer_equal_to_compares_a_buffer_without_terminator_in_full() {
+        let buffer = [b'a' as libc::c_char; FIXED_STRING_BUFFER_LENGTH];
 
-        assert!(c_string_in_buffer_equals(&buffer, &"a".repeat(MAXLEN)));
-        assert!(!c_string_in_buffer_equals(&buffer, &"a".repeat(MAXLEN - 1)));
+        assert!(is_null_terminated_buffer_equal_to(
+            &buffer,
+            &"a".repeat(FIXED_STRING_BUFFER_LENGTH)
+        ));
+        assert!(!is_null_terminated_buffer_equal_to(
+            &buffer,
+            &"a".repeat(FIXED_STRING_BUFFER_LENGTH - 1)
+        ));
     }
 }

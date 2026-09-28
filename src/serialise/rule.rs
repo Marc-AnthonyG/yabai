@@ -1,14 +1,17 @@
-use crate::display::arrangement::display_manager_display_id_arrangement;
+use crate::display::arrangement::query_arrangement_index_of_display;
 use crate::display::manager::DisplayManager;
-use crate::space::lookup::space_manager_mission_control_index;
-use crate::support::json::{json_bool, json_optional_bool, ts_string_escape};
-use crate::support::layer::LAYER_STR;
+use crate::space::lookup::query_mission_control_index_of_space;
+use crate::support::json::{
+    escape_string_for_json_when_it_needs_escaping, json_literal_for_boolean,
+    json_literal_for_optional_boolean,
+};
+use crate::support::layer::LAYER_NAMES;
 use crate::support::printf_float_format::format_float_with_decimals_as_printf_does;
 use crate::support::response::Response;
 use crate::window::manager::WindowManager;
 use crate::window::rule::{Rule, RuleEffectsFlag, RuleFlag};
 
-pub(crate) fn rule_serialize(
+pub(crate) fn write_rule_as_json_object(
     response: &mut Response,
     rule: &Rule,
     index: i32,
@@ -19,23 +22,23 @@ pub(crate) fn rule_serialize(
     let role = rule.role.as_deref();
     let subrole = rule.subrole.as_deref();
 
-    let escaped_app = app.and_then(ts_string_escape);
-    let escaped_title = title.and_then(ts_string_escape);
-    let escaped_role = role.and_then(ts_string_escape);
-    let escaped_subrole = subrole.and_then(ts_string_escape);
+    let escaped_app = app.and_then(escape_string_for_json_when_it_needs_escaping);
+    let escaped_title = title.and_then(escape_string_for_json_when_it_needs_escaping);
+    let escaped_role = role.and_then(escape_string_for_json_when_it_needs_escaping);
+    let escaped_subrole = subrole.and_then(escape_string_for_json_when_it_needs_escaping);
 
     let mut flags = RuleFlag(rule.flags);
     if rule.app_regex.is_some() {
-        flags.insert(RuleFlag::APP_VALID);
+        flags.insert(RuleFlag::APPLICATION_PATTERN_IS_VALID);
     }
     if rule.title_regex.is_some() {
-        flags.insert(RuleFlag::TITLE_VALID);
+        flags.insert(RuleFlag::TITLE_PATTERN_IS_VALID);
     }
     if rule.role_regex.is_some() {
-        flags.insert(RuleFlag::ROLE_VALID);
+        flags.insert(RuleFlag::ROLE_PATTERN_IS_VALID);
     }
     if rule.subrole_regex.is_some() {
-        flags.insert(RuleFlag::SUBROLE_VALID);
+        flags.insert(RuleFlag::SUBROLE_PATTERN_IS_VALID);
     }
 
     let effects_flags = RuleEffectsFlag(rule.effects.flags);
@@ -69,22 +72,24 @@ pub(crate) fn rule_serialize(
         escaped_role.as_deref().or(role).unwrap_or(""),
         escaped_subrole.as_deref().or(subrole).unwrap_or(""),
         if rule.effects.display_id.0 != 0 {
-            display_manager_display_id_arrangement(rule.effects.display_id, display_manager)
+            query_arrangement_index_of_display(rule.effects.display_id, display_manager)
         } else {
             0
         },
         if rule.effects.space_id.0 != 0 {
-            space_manager_mission_control_index(rule.effects.space_id)
+            query_mission_control_index_of_space(rule.effects.space_id)
         } else {
             0
         },
-        json_bool(effects_flags.contains(RuleEffectsFlag::FOLLOW_SPACE)),
+        json_literal_for_boolean(
+            effects_flags.contains(RuleEffectsFlag::FOCUS_FOLLOWS_WINDOW_TO_ITS_SPACE)
+        ),
         format_float_with_decimals_as_printf_does(rule.effects.opacity as f64, 4),
-        json_optional_bool(rule.effects.manage),
-        json_optional_bool(rule.effects.sticky),
-        json_optional_bool(rule.effects.mff),
-        if effects_flags.contains(RuleEffectsFlag::LAYER) {
-            LAYER_STR
+        json_literal_for_optional_boolean(rule.effects.manage),
+        json_literal_for_optional_boolean(rule.effects.sticky),
+        json_literal_for_optional_boolean(rule.effects.mff),
+        if effects_flags.contains(RuleEffectsFlag::LAYER_IS_SET) {
+            LAYER_NAMES
                 .get(rule.effects.layer as usize)
                 .copied()
                 .flatten()
@@ -92,7 +97,7 @@ pub(crate) fn rule_serialize(
         } else {
             ""
         },
-        json_optional_bool(rule.effects.fullscreen),
+        json_literal_for_optional_boolean(rule.effects.fullscreen),
         rule.effects.grid[0] as i32,
         rule.effects.grid[1] as i32,
         rule.effects.grid[2] as i32,
@@ -100,12 +105,12 @@ pub(crate) fn rule_serialize(
         rule.effects.grid[4] as i32,
         rule.effects.grid[5] as i32,
         rule.effects.scratchpad.as_deref().unwrap_or(""),
-        json_bool(flags.contains(RuleFlag::ONE_SHOT)),
+        json_literal_for_boolean(flags.contains(RuleFlag::ONE_SHOT)),
         ((rule.effects.flags as u32) << 16) | (flags.0 as u32),
     ));
 }
 
-pub(crate) fn window_manager_query_window_rules(
+pub(crate) fn write_every_rule_as_json_array(
     response: &mut Response,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
@@ -113,7 +118,7 @@ pub(crate) fn window_manager_query_window_rules(
     response.write(format_args!("["));
     for index in 0..window_manager.rules.len() as i32 {
         let rule = &window_manager.rules[index as usize];
-        rule_serialize(response, rule, index, display_manager);
+        write_rule_as_json_object(response, rule, index, display_manager);
         if index < window_manager.rules.len() as i32 - 1 {
             response.write(format_args!(","));
         }

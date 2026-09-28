@@ -2,18 +2,18 @@ use crate::layout::area::{
     Area, area_a_window_inserted_in_direction_takes_from_node_area, cgrect_from_area,
 };
 use crate::layout::feedback_window::{
-    FeedbackWindow, feedback_window_advance_fade_in,
-    feedback_window_create_transparent_above_window, feedback_window_draw_ghost_of_frame,
-    feedback_window_is_fading_in, schedule_the_next_feedback_window_fade_in_step,
+    FeedbackWindow, advance_the_fade_in_of_feedback_window,
+    create_transparent_feedback_window_above_window, draw_ghost_of_frame_in_feedback_window,
+    is_feedback_window_fading_in, schedule_the_next_feedback_window_fade_in_step,
 };
-use crate::layout::settings::{ViewType, window_node_get_gap, window_node_get_ratio};
-use crate::layout::tree::{WindowNodeChild, WindowNodeSplit, view_find_window_node};
+use crate::layout::settings::{ViewLayout, effective_ratio_of_node, effective_window_gap_of_view};
+use crate::layout::tree::{WindowNodeChild, WindowNodeSplit, leaf_holding_window};
 use crate::mouse::drag::MouseDragState;
-use crate::notifications::window::update_window_notifications;
+use crate::notifications::window::request_skylight_notifications_for_windows_that_need_them;
 use crate::space::manager::SpaceManager;
-use crate::support::direction::STACK;
+use crate::support::direction::DIRECTION_STACK_INSTEAD_OF_SPLIT;
 use crate::support::handles::{NodeId, SpaceId, WindowId};
-use crate::support::macos_version::{workspace_is_macos_sequoia, workspace_is_macos_tahoe};
+use crate::support::macos_version::{is_running_on_macos_sequoia, is_running_on_macos_tahoe};
 use crate::window::manager::WindowManager;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -24,21 +24,21 @@ pub(crate) enum WindowInsertionPoint {
     Last = 2,
 }
 
-pub(crate) static WINDOW_INSERTION_POINT_STR: [&str; 3] = ["focused", "first", "last"];
+pub(crate) static WINDOW_INSERTION_POINT_NAMES: [&str; 3] = ["focused", "first", "last"];
 
 pub(crate) fn area_the_insert_feedback_previews(
     space_id: SpaceId,
     node_id: NodeId,
     space_manager: &mut SpaceManager,
 ) -> Option<Area> {
-    let ratio = window_node_get_ratio(space_id, node_id, space_manager);
-    let gap = window_node_get_gap(space_manager, space_id);
+    let ratio = effective_ratio_of_node(space_id, node_id, space_manager);
+    let gap = effective_window_gap_of_view(space_manager, space_id);
 
     let view = space_manager.view.find(&space_id)?;
     let node = view.find_node(node_id)?;
     let insert_direction_the_view_layout_honours =
-        if view.layout == ViewType::Stack && node.insert_direction != 0 {
-            STACK
+        if view.layout == ViewLayout::Stack && node.insert_direction != 0 {
+            DIRECTION_STACK_INSTEAD_OF_SPLIT
         } else {
             node.insert_direction
         };
@@ -50,7 +50,7 @@ pub(crate) fn area_the_insert_feedback_previews(
     )
 }
 
-pub(crate) fn insert_feedback_show(
+pub(crate) fn show_insert_feedback_of_node(
     space_id: SpaceId,
     node_id: NodeId,
     window_manager: &mut WindowManager,
@@ -73,7 +73,7 @@ pub(crate) fn insert_feedback_show(
     let node_first_window_id = node.window_order[0];
 
     if FeedbackWindow::window_id_or_zero(&node.feedback_window) == 0 {
-        let feedback_window = feedback_window_create_transparent_above_window(
+        let feedback_window = create_transparent_feedback_window_above_window(
             frame_of_the_inserted_window,
             node_first_window_id,
         );
@@ -88,9 +88,12 @@ pub(crate) fn insert_feedback_show(
         schedule_a_fade_in_step_unless_one_is_already_scheduled(space_manager);
         window_manager
             .insert_feedback
-            .add(node_first_window_id, (space_id, node_id));
-        if !workspace_is_macos_sequoia() && !workspace_is_macos_tahoe() {
-            update_window_notifications(window_manager, space_manager);
+            .add_unless_key_already_present(node_first_window_id, (space_id, node_id));
+        if !is_running_on_macos_sequoia() && !is_running_on_macos_tahoe() {
+            request_skylight_notifications_for_windows_that_need_them(
+                window_manager,
+                space_manager,
+            );
         }
     }
 
@@ -102,14 +105,14 @@ pub(crate) fn insert_feedback_show(
     else {
         return;
     };
-    feedback_window_draw_ghost_of_frame(
+    draw_ghost_of_frame_in_feedback_window(
         feedback_window,
         frame_of_the_inserted_window,
         window_manager.insert_feedback_color,
     );
 }
 
-pub(crate) fn insert_feedback_destroy(
+pub(crate) fn destroy_insert_feedback_of_node(
     space_id: SpaceId,
     node_id: NodeId,
     window_manager: &mut WindowManager,
@@ -125,8 +128,11 @@ pub(crate) fn insert_feedback_destroy(
     if FeedbackWindow::window_id_or_zero(&node.feedback_window) != 0 {
         window_manager.insert_feedback.remove(&node.window_order[0]);
 
-        if !workspace_is_macos_sequoia() && !workspace_is_macos_tahoe() {
-            update_window_notifications(window_manager, space_manager);
+        if !is_running_on_macos_sequoia() && !is_running_on_macos_tahoe() {
+            request_skylight_notifications_for_windows_that_need_them(
+                window_manager,
+                space_manager,
+            );
         }
 
         let Some(node) = space_manager
@@ -150,21 +156,21 @@ pub(crate) fn schedule_a_fade_in_step_unless_one_is_already_scheduled(
     schedule_the_next_feedback_window_fade_in_step();
 }
 
-pub(crate) fn a_feedback_window_is_still_fading_in(space_manager: &SpaceManager) -> bool {
+pub(crate) fn is_any_feedback_window_still_fading_in(space_manager: &SpaceManager) -> bool {
     space_manager.view.values().any(|view| {
         view.nodes.iter().flatten().any(|node| {
             node.feedback_window
                 .as_ref()
-                .is_some_and(feedback_window_is_fading_in)
+                .is_some_and(is_feedback_window_fading_in)
         })
     })
 }
 
-pub(crate) fn insert_feedback_advance_every_fade_in(space_manager: &mut SpaceManager) {
+pub(crate) fn advance_the_fade_in_of_every_feedback_window(space_manager: &mut SpaceManager) {
     for view in space_manager.view.values_mut() {
         for node in view.nodes.iter_mut().flatten() {
             if let Some(feedback_window) = node.feedback_window.as_mut() {
-                feedback_window_advance_fade_in(feedback_window);
+                advance_the_fade_in_of_feedback_window(feedback_window);
             }
         }
     }
@@ -207,11 +213,16 @@ fn clear_the_pending_insertion_point_of_view(
         return;
     };
 
-    if let Some(insert_node_id) = view_find_window_node(space_manager, space_id, insertion_point) {
+    if let Some(insert_node_id) = leaf_holding_window(space_manager, space_id, insertion_point) {
         let the_mouse_drag_preview_is_shown_on_the_insert_node =
             mouse_drag_state.feedback_node == Some((space_id, insert_node_id));
         if !the_mouse_drag_preview_is_shown_on_the_insert_node {
-            insert_feedback_destroy(space_id, insert_node_id, window_manager, space_manager);
+            destroy_insert_feedback_of_node(
+                space_id,
+                insert_node_id,
+                window_manager,
+                space_manager,
+            );
         }
 
         if let Some(insert_node) = space_manager
@@ -240,19 +251,23 @@ mod tests {
     };
     use crate::display::manager::DisplayManager;
     use crate::layout::area::Area;
-    use crate::layout::settings::{ViewFlag, ViewType};
+    use crate::layout::settings::{ViewFlag, ViewLayout};
     use crate::layout::tree::{
-        WindowNode, WindowNodeChild, WindowNodeSplit, view_add_window_node_with_insertion_point,
+        WindowNode, WindowNodeChild, WindowNodeSplit,
+        add_window_to_view_tree_preferring_insertion_point,
         window_node_split_and_child_placing_a_window_inserted_in_direction,
     };
     use crate::layout::view::View;
     use crate::mouse::drag::{MouseDragState, mouse_drag_state_without_a_drag};
     use crate::space::manager::{
-        SpaceManager, space_manager_without_any_view_with_its_initial_settings,
+        SpaceManager, create_space_manager_without_any_view_with_its_initial_settings,
     };
-    use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST, STACK};
+    use crate::support::direction::{
+        DIRECTION_EAST, DIRECTION_NORTH, DIRECTION_SOUTH, DIRECTION_STACK_INSTEAD_OF_SPLIT,
+        DIRECTION_WEST,
+    };
     use crate::support::handles::{NodeId, ROOT_NODE_ID, SpaceId, WindowId};
-    use crate::window::manager::window_manager_tracking_nothing_with_its_initial_settings;
+    use crate::window::manager::create_window_manager_tracking_nothing_with_its_initial_settings;
 
     const WINDOW_GAP_OF_EVERY_VIEW: i32 = 11;
     const GLOBAL_SPLIT_RATIO: f32 = 0.62;
@@ -272,7 +287,7 @@ mod tests {
 
     fn view_holding_one_window_in_its_root(
         space_id: SpaceId,
-        layout: ViewType,
+        layout: ViewLayout,
         gap_is_enabled: bool,
         window_id: WindowId,
         root_area: Area,
@@ -302,18 +317,20 @@ mod tests {
             window_gap: WINDOW_GAP_OF_EVERY_VIEW,
             auto_balance: 0,
             flags: if gap_is_enabled {
-                ViewFlag::ENABLE_GAP.0
+                ViewFlag::WINDOW_GAP_IS_ENABLED.0
             } else {
                 0
             },
         }
     }
 
-    fn space_manager_with_views(views: Vec<View>) -> SpaceManager {
-        let mut space_manager = space_manager_without_any_view_with_its_initial_settings();
+    fn create_space_manager_holding_views(views: Vec<View>) -> SpaceManager {
+        let mut space_manager = create_space_manager_without_any_view_with_its_initial_settings();
         space_manager.split_ratio = GLOBAL_SPLIT_RATIO;
         for view in views {
-            space_manager.view.add(view.space_id, view);
+            space_manager
+                .view
+                .add_unless_key_already_present(view.space_id, view);
         }
         space_manager
     }
@@ -342,8 +359,8 @@ mod tests {
         new_window_id: WindowId,
     ) {
         let mut display_manager = DisplayManager::default();
-        let mut window_manager = window_manager_tracking_nothing_with_its_initial_settings();
-        view_add_window_node_with_insertion_point(
+        let mut window_manager = create_window_manager_tracking_nothing_with_its_initial_settings();
+        add_window_to_view_tree_preferring_insertion_point(
             space_manager,
             space_id,
             new_window_id,
@@ -376,18 +393,25 @@ mod tests {
         let window_in_the_node = WindowId(101);
         let new_window = WindowId(202);
 
-        for insert_direction in [DIR_NORTH, DIR_EAST, DIR_SOUTH, DIR_WEST, STACK] {
+        for insert_direction in [
+            DIRECTION_NORTH,
+            DIRECTION_EAST,
+            DIRECTION_SOUTH,
+            DIRECTION_WEST,
+            DIRECTION_STACK_INSTEAD_OF_SPLIT,
+        ] {
             for node_ratio in [0.3f32, 0.9, 0.0, 0.95] {
                 for gap_is_enabled in [true, false] {
-                    let mut space_manager =
-                        space_manager_with_views(vec![view_holding_one_window_in_its_root(
+                    let mut space_manager = create_space_manager_holding_views(vec![
+                        view_holding_one_window_in_its_root(
                             space_id,
-                            ViewType::Bsp,
+                            ViewLayout::BinarySpacePartitioning,
                             gap_is_enabled,
                             window_in_the_node,
                             area_at(0.5, 25.25, 1511.0, 943.0),
                             node_ratio,
-                        )]);
+                        ),
+                    ]);
                     set_the_root_to_insert_in_direction_as_window_insert_does(
                         &mut space_manager,
                         space_id,
@@ -426,11 +450,16 @@ mod tests {
         let new_window = WindowId(202);
         let root_area = area_at(-1728.0, 38.0, 1727.0, 1079.0);
 
-        for insert_direction in [DIR_NORTH, DIR_EAST, DIR_SOUTH, DIR_WEST] {
+        for insert_direction in [
+            DIRECTION_NORTH,
+            DIRECTION_EAST,
+            DIRECTION_SOUTH,
+            DIRECTION_WEST,
+        ] {
             let mut space_manager =
-                space_manager_with_views(vec![view_holding_one_window_in_its_root(
+                create_space_manager_holding_views(vec![view_holding_one_window_in_its_root(
                     space_id,
-                    ViewType::Stack,
+                    ViewLayout::Stack,
                     true,
                     window_in_the_node,
                     root_area,
@@ -472,9 +501,9 @@ mod tests {
     fn a_node_without_an_insert_direction_previews_nothing() {
         let space_id = SpaceId(7);
         let mut space_manager =
-            space_manager_with_views(vec![view_holding_one_window_in_its_root(
+            create_space_manager_holding_views(vec![view_holding_one_window_in_its_root(
                 space_id,
-                ViewType::Bsp,
+                ViewLayout::BinarySpacePartitioning,
                 true,
                 WindowId(101),
                 area_at(0.0, 0.0, 1000.0, 800.0),
@@ -498,10 +527,10 @@ mod tests {
         let first_window = WindowId(11);
         let second_space_id = SpaceId(2);
         let second_window = WindowId(22);
-        let mut space_manager = space_manager_with_views(vec![
+        let mut space_manager = create_space_manager_holding_views(vec![
             view_holding_one_window_in_its_root(
                 first_space_id,
-                ViewType::Bsp,
+                ViewLayout::BinarySpacePartitioning,
                 true,
                 first_window,
                 area_at(0.0, 0.0, 1000.0, 800.0),
@@ -509,7 +538,7 @@ mod tests {
             ),
             view_holding_one_window_in_its_root(
                 second_space_id,
-                ViewType::Bsp,
+                ViewLayout::BinarySpacePartitioning,
                 true,
                 second_window,
                 area_at(0.0, 0.0, 1000.0, 800.0),
@@ -519,12 +548,12 @@ mod tests {
         set_the_root_to_insert_in_direction_as_window_insert_does(
             &mut space_manager,
             first_space_id,
-            DIR_EAST,
+            DIRECTION_EAST,
         );
         set_the_root_to_insert_in_direction_as_window_insert_does(
             &mut space_manager,
             second_space_id,
-            DIR_NORTH,
+            DIRECTION_NORTH,
         );
 
         TwoViewsPendingAnInsertion {
@@ -563,7 +592,7 @@ mod tests {
         focused_window: WindowId,
         mouse_drag_state: &MouseDragState,
     ) {
-        let mut window_manager = window_manager_tracking_nothing_with_its_initial_settings();
+        let mut window_manager = create_window_manager_tracking_nothing_with_its_initial_settings();
         clear_every_pending_insertion_point_other_than_the_window(
             focused_window,
             &mut window_manager,
@@ -610,9 +639,9 @@ mod tests {
                 views.first_space_id
             ) == (
                 views.first_window,
-                WindowNodeSplit::Y,
+                WindowNodeSplit::Vertical,
                 WindowNodeChild::Second,
-                DIR_EAST
+                DIRECTION_EAST
             )
         );
         assert!(
@@ -644,7 +673,7 @@ mod tests {
                 WindowId(0),
                 WindowNodeSplit::None,
                 WindowNodeChild::None,
-                DIR_EAST
+                DIRECTION_EAST
             )
         );
     }
@@ -653,9 +682,9 @@ mod tests {
     fn a_view_without_a_pending_insertion_point_is_left_alone() {
         let space_id = SpaceId(3);
         let mut space_manager =
-            space_manager_with_views(vec![view_holding_one_window_in_its_root(
+            create_space_manager_holding_views(vec![view_holding_one_window_in_its_root(
                 space_id,
-                ViewType::Bsp,
+                ViewLayout::BinarySpacePartitioning,
                 true,
                 WindowId(33),
                 area_at(0.0, 0.0, 1000.0, 800.0),
@@ -667,9 +696,9 @@ mod tests {
                 .find_mut(&space_id)
                 .unwrap()
                 .node_mut(ROOT_NODE_ID);
-            root.split = WindowNodeSplit::X;
+            root.split = WindowNodeSplit::Horizontal;
             root.child = WindowNodeChild::First;
-            root.insert_direction = DIR_SOUTH;
+            root.insert_direction = DIRECTION_SOUTH;
         }
 
         clear_every_pending_insertion_point_other_than(
@@ -682,9 +711,9 @@ mod tests {
             insertion_point_and_root_split_child_and_insert_direction(&space_manager, space_id)
                 == (
                     WindowId(0),
-                    WindowNodeSplit::X,
+                    WindowNodeSplit::Horizontal,
                     WindowNodeChild::First,
-                    DIR_SOUTH
+                    DIRECTION_SOUTH
                 )
         );
     }

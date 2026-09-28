@@ -1,12 +1,12 @@
 use crate::display::manager::DisplayManager;
-use crate::message::domain::config::handle_domain_config;
-use crate::message::domain::display::handle_domain_display;
-use crate::message::domain::query::handle_domain_query;
-use crate::message::domain::rule::handle_domain_rule;
-use crate::message::domain::signal::handle_domain_signal;
-use crate::message::domain::space::handle_domain_space;
-use crate::message::domain::window::handle_domain_window;
-use crate::message::token::{MessageCursor, token_equals};
+use crate::message::domain::config::run_config_command;
+use crate::message::domain::display::run_display_command;
+use crate::message::domain::query::run_query_command;
+use crate::message::domain::rule::run_rule_command;
+use crate::message::domain::signal::run_signal_command;
+use crate::message::domain::space::run_space_command;
+use crate::message::domain::window::run_window_command;
+use crate::message::token::{MessageCursor, is_token_equal_to};
 use crate::mouse::drag::MouseDragState;
 use crate::process::manager::ProcessManager;
 use crate::signal::definition::{SIGNAL_TYPE_COUNT, Signal};
@@ -23,7 +23,7 @@ pub(crate) const DOMAIN_QUERY: &str = "query";
 pub(crate) const DOMAIN_RULE: &str = "rule";
 pub(crate) const DOMAIN_SIGNAL: &str = "signal";
 
-pub(crate) fn handle_message(
+pub(crate) fn dispatch_message_to_its_domain(
     response: &mut Response,
     message: &mut [u8],
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
@@ -35,9 +35,9 @@ pub(crate) fn handle_message(
     mission_control_mode: &mut MissionControlMode,
 ) {
     let mut message_cursor = MessageCursor::new(message);
-    let domain = message_cursor.get_token();
-    if token_equals(domain, message_cursor.bytes(), DOMAIN_CONFIG) {
-        handle_domain_config(
+    let domain = message_cursor.take_next_token();
+    if is_token_equal_to(domain, message_cursor.bytes(), DOMAIN_CONFIG) {
+        run_config_command(
             response,
             domain,
             &mut message_cursor,
@@ -46,8 +46,8 @@ pub(crate) fn handle_message(
             space_manager,
             mouse_drag_state,
         );
-    } else if token_equals(domain, message_cursor.bytes(), DOMAIN_DISPLAY) {
-        handle_domain_display(
+    } else if is_token_equal_to(domain, message_cursor.bytes(), DOMAIN_DISPLAY) {
+        run_display_command(
             response,
             domain,
             &mut message_cursor,
@@ -56,8 +56,8 @@ pub(crate) fn handle_message(
             space_manager,
             mission_control_mode,
         );
-    } else if token_equals(domain, message_cursor.bytes(), DOMAIN_SPACE) {
-        handle_domain_space(
+    } else if is_token_equal_to(domain, message_cursor.bytes(), DOMAIN_SPACE) {
+        run_space_command(
             response,
             domain,
             &mut message_cursor,
@@ -67,8 +67,8 @@ pub(crate) fn handle_message(
             mouse_drag_state,
             mission_control_mode,
         );
-    } else if token_equals(domain, message_cursor.bytes(), DOMAIN_WINDOW) {
-        handle_domain_window(
+    } else if is_token_equal_to(domain, message_cursor.bytes(), DOMAIN_WINDOW) {
+        run_window_command(
             response,
             domain,
             &mut message_cursor,
@@ -79,8 +79,8 @@ pub(crate) fn handle_message(
             mouse_drag_state,
             mission_control_mode,
         );
-    } else if token_equals(domain, message_cursor.bytes(), DOMAIN_QUERY) {
-        handle_domain_query(
+    } else if is_token_equal_to(domain, message_cursor.bytes(), DOMAIN_QUERY) {
+        run_query_command(
             response,
             domain,
             &mut message_cursor,
@@ -89,8 +89,8 @@ pub(crate) fn handle_message(
             space_manager,
             mouse_drag_state,
         );
-    } else if token_equals(domain, message_cursor.bytes(), DOMAIN_RULE) {
-        handle_domain_rule(
+    } else if is_token_equal_to(domain, message_cursor.bytes(), DOMAIN_RULE) {
+        run_rule_command(
             response,
             domain,
             &mut message_cursor,
@@ -101,10 +101,10 @@ pub(crate) fn handle_message(
             mouse_drag_state,
             mission_control_mode,
         );
-    } else if token_equals(domain, message_cursor.bytes(), DOMAIN_SIGNAL) {
-        handle_domain_signal(response, domain, &mut message_cursor, signal_event);
+    } else if is_token_equal_to(domain, message_cursor.bytes(), DOMAIN_SIGNAL) {
+        run_signal_command(response, domain, &mut message_cursor, signal_event);
     } else {
-        response.fail_pieces(&[
+        response.write_failure_pieces_unless_silent(&[
             FailurePiece::Text("unknown domain '"),
             FailurePiece::Bytes(domain.bytes(message_cursor.bytes())),
             FailurePiece::Text("'\n"),

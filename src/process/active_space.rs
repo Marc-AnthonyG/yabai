@@ -1,26 +1,26 @@
-use crate::display::identity::display_manager_active_display_list;
-use crate::display::spaces::display_space_list;
+use crate::display::identity::query_displays_active_for_drawing;
+use crate::display::spaces::query_spaces_of_display;
 use crate::ffi::core_foundation::{
-    cfarray_count, cfarray_of_cfnumbers, kCFNumberSInt64Type, take_create_rule_result,
+    cfarray_count, create_cfarray_of_cfnumbers, kCFNumberSInt64Type, take_create_rule_result,
 };
 use crate::ffi::skylight::{
     SLSCopyWindowsWithOptionsAndTags, SLSWindowIteratorAdvance, SLSWindowIteratorGetAttributes,
     SLSWindowIteratorGetLevel, SLSWindowIteratorGetParentID, SLSWindowIteratorGetTags,
     SLSWindowIteratorGetWindowID, SLSWindowQueryResultCopyWindows, SLSWindowQueryWindows,
 };
-use crate::state::process_wide::CONNECTION;
+use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
 use crate::support::handles::{SpaceId, WindowId};
-use crate::window::model::window_space;
+use crate::window::model::query_space_holding_window;
 
-pub(crate) fn process_manager_active_space_for_psn(connection: i32) -> SpaceId {
+pub(crate) fn query_space_of_first_window_owned_by_connection(connection: i32) -> SpaceId {
     let mut space_id = SpaceId(0);
 
-    let display_list = display_manager_active_display_list();
+    let display_list = query_displays_active_for_drawing();
 
     let mut space_list: Vec<u64> = Vec::new();
 
     for display_id in display_list {
-        let Some(list) = display_space_list(display_id) else {
+        let Some(list) = query_spaces_of_display(display_id) else {
             continue;
         };
 
@@ -37,10 +37,10 @@ pub(crate) fn process_manager_active_space_for_psn(connection: i32) -> SpaceId {
     let mut clear_tags: u64 = 0;
     let options: u32 = 0x2;
 
-    let space_list_ref = cfarray_of_cfnumbers(&space_list, kCFNumberSInt64Type);
+    let space_list_ref = create_cfarray_of_cfnumbers(&space_list, kCFNumberSInt64Type);
     let window_list_ref = unsafe {
         SLSCopyWindowsWithOptionsAndTags(
-            *CONNECTION.get().unwrap(),
+            *SKYLIGHT_CONNECTION_ID.get().unwrap(),
             connection as u32,
             &*space_list_ref,
             options,
@@ -59,7 +59,7 @@ pub(crate) fn process_manager_active_space_for_psn(connection: i32) -> SpaceId {
 
     let query = unsafe {
         take_create_rule_result(SLSWindowQueryWindows(
-            *CONNECTION.get().unwrap(),
+            *SKYLIGHT_CONNECTION_ID.get().unwrap(),
             &*window_list_ref,
             count,
         ))
@@ -85,7 +85,7 @@ pub(crate) fn process_manager_active_space_for_psn(connection: i32) -> SpaceId {
                 if ((attributes & 0x2) != 0 || (tags & 0x400000000000000) != 0)
                     && ((tags & 0x1) != 0 || ((tags & 0x2) != 0 && (tags & 0x80000000) != 0))
                 {
-                    space_id = window_space(WindowId(window_id));
+                    space_id = query_space_holding_window(WindowId(window_id));
                     break;
                 }
             }

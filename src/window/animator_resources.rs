@@ -3,7 +3,7 @@ use std::sync::mpsc::Sender;
 
 use crate::ffi::skylight::{SLSNewConnection, SLSReleaseConnection};
 use crate::window::animation_completion::{
-    AnimationCompletionJob, animation_completion_worker_spawn,
+    AnimationCompletionJob, spawn_animation_completion_worker,
 };
 use crate::window::animator::WindowAnimator;
 
@@ -21,13 +21,13 @@ impl WindowAnimatorResources {
     }
 }
 
-pub(crate) fn window_animator_resources_start(
+pub(crate) fn start_window_animator_resources(
     window_animator: Weak<WindowAnimator>,
 ) -> Option<WindowAnimatorResources> {
     let mut animation_connection: i32 = 0;
     unsafe { SLSNewConnection(0, &mut animation_connection) };
 
-    match animation_completion_worker_spawn(animation_connection, window_animator) {
+    match spawn_animation_completion_worker(animation_connection, window_animator) {
         Some(completion_job_sender) => Some(WindowAnimatorResources {
             animation_connection,
             completion_job_sender,

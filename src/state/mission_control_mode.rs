@@ -9,7 +9,7 @@ pub(crate) enum MissionControlMode {
     ShowDesktop = 4,
 }
 
-pub(crate) static MISSION_CONTROL_MODE_STR: [Option<&str>; 5] = [
+pub(crate) static MISSION_CONTROL_MODE_NAMES: [Option<&str>; 5] = [
     Some("inactive"),
     Some("show"),
     Some("show-all-windows"),
@@ -17,6 +17,6 @@ pub(crate) static MISSION_CONTROL_MODE_STR: [Option<&str>; 5] = [
     Some("show-desktop"),
 ];
 
-pub(crate) fn mission_control_is_active(mission_control_mode: &mut MissionControlMode) -> bool {
+pub(crate) fn is_mission_control_active(mission_control_mode: &mut MissionControlMode) -> bool {
     *mission_control_mode != MissionControlMode::Inactive
 }

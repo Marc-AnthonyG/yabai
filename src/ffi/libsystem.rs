@@ -17,7 +17,7 @@ pub const P_TRACED: i32 = 0x0000_0800;
 pub const SIZE_OF_KINFO_PROC: usize = 648;
 pub const OFFSET_OF_P_FLAG_IN_KINFO_PROC: usize = 32;
 
-pub fn process_is_being_debugged(process_id: pid_t) -> bool {
+pub fn is_process_being_debugged(process_id: pid_t) -> bool {
     let mut process_information = [0u8; SIZE_OF_KINFO_PROC];
     let mut size = core::mem::size_of_val(&process_information);
     let mut management_information_base: [c_int; 4] = [

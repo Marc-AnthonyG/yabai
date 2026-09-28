@@ -1,10 +1,12 @@
 use crate::signal::definition::{
-    SIGNAL_TYPE_BY_DISCRIMINANT, SIGNAL_TYPE_COUNT, SIGNAL_TYPE_STR, Signal, SignalType,
+    SIGNAL_TYPE_BY_DISCRIMINANT, SIGNAL_TYPE_COUNT, SIGNAL_TYPE_NAMES, Signal, SignalType,
 };
-use crate::support::json::{json_optional_bool, ts_string_escape};
+use crate::support::json::{
+    escape_string_for_json_when_it_needs_escaping, json_literal_for_optional_boolean,
+};
 use crate::support::response::Response;
 
-pub(crate) fn event_signal_serialize(
+pub(crate) fn write_signal_as_json_object(
     response: &mut Response,
     signal: &Signal,
     signal_type: SignalType,
@@ -14,9 +16,9 @@ pub(crate) fn event_signal_serialize(
     let title = signal.title.as_deref();
     let command = signal.command.as_deref();
 
-    let escaped_app = app.and_then(ts_string_escape);
-    let escaped_title = title.and_then(ts_string_escape);
-    let escaped_command = command.and_then(ts_string_escape);
+    let escaped_app = app.and_then(escape_string_for_json_when_it_needs_escaping);
+    let escaped_title = title.and_then(escape_string_for_json_when_it_needs_escaping);
+    let escaped_command = command.and_then(escape_string_for_json_when_it_needs_escaping);
 
     response.write(format_args!(
         "{{\n\t\"index\":{},\n\t\"label\":\"{}\",\n\t\"app\":\"{}\",\n\t\"title\":\"{}\",\n\t\"active\":{},\n\t\"event\":\"{}\",\n\t\"action\":\"{}\"\n}}",
@@ -24,13 +26,13 @@ pub(crate) fn event_signal_serialize(
         signal.label.as_deref().unwrap_or(""),
         escaped_app.as_deref().or(app).unwrap_or(""),
         escaped_title.as_deref().or(title).unwrap_or(""),
-        json_optional_bool(signal.active as i32),
-        SIGNAL_TYPE_STR[signal_type as usize],
+        json_literal_for_optional_boolean(signal.active as i32),
+        SIGNAL_TYPE_NAMES[signal_type as usize],
         escaped_command.as_deref().or(command).unwrap_or("")
     ));
 }
 
-pub(crate) fn event_signal_list(
+pub(crate) fn write_every_signal_as_json_array(
     response: &mut Response,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
 ) {
@@ -45,7 +47,7 @@ pub(crate) fn event_signal_list(
         }
 
         for inner_index in 0..count {
-            event_signal_serialize(
+            write_signal_as_json_object(
                 response,
                 &signal_event[index][inner_index as usize],
                 SIGNAL_TYPE_BY_DISCRIMINANT[index],

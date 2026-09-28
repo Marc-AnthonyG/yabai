@@ -22,7 +22,7 @@ pub(crate) struct ProxyFrameUpdate {
     pub(crate) must_refresh_alpha: bool,
 }
 
-pub(crate) fn animation_commit_proxy_frames(
+pub(crate) fn commit_proxy_frames_in_one_window_server_transaction(
     animation_connection: i32,
     proxy_frame_update_list: &[ProxyFrameUpdate],
 ) {

@@ -168,12 +168,12 @@ elaborates these decisions; none may reopen them.
 43. Every C `FILE *rsp` parameter is `response: &mut Response`, in first position. The two
     verbose-mode calls that pass `stdout` (`src/window_manager.c:1531`, `:1547`) build the value
     with `Response::to_standard_output()`.
-44. `regex_match` is the one in `src/support/regex.rs`:
-    `regex_match(regex: Option<&PosixRegex>, subject: &CStr) -> RegexMatch`. Each C pair of
-    `regex_t` and `*_regex_valid` becomes one `Option<PosixRegex>` field.
-45. `hash_wm` becomes two functions with the C body, `hash_wm_window_id(&WindowId)` and
-    `hash_wm_process_id(&ProcessId)`, because `Table::new` takes a `fn(&K) -> u64` and the seven
-    tables have two key types.
+44. The C `regex_match` is the one in `src/support/regex.rs`:
+    `match_subject_against_optional_regex(regex: Option<&PosixRegex>, subject: &CStr) -> RegexMatch`.
+    Each C pair of `regex_t` and `*_regex_valid` becomes one `Option<PosixRegex>` field.
+45. `hash_wm` becomes two functions with the C body, `hash_window_id_for_table(&WindowId)` and
+    `hash_process_id_for_table(&ProcessId)`, because `Table::new` takes a `fn(&K) -> u64` and the
+    seven tables have two key types.
 46. Superseded by 55. `AnimationContext` carries its own clone of the `Arc<Mutex<_>>` holding
     `window_animations_table`. The display-link callback reaches the table through it and takes
     no manager.
@@ -183,12 +183,13 @@ elaborates these decisions; none may reopen them.
 49. Deviations are recorded per unit in `doc/rust-rewrite/deviations/<unit key>.md`, never in a
     shared file, because units run concurrently. They are merged into `DEVIATIONS.md` once, at
     the end of phase 2. Signature changes follow the same rule under `signature-changes/`.
-50. `ax_application_notification` and `ax_application_notification_str` belong to
+50. `application_notification_cfstrings` and `APPLICATION_NOTIFICATION_CONSTANT_NAMES` belong to
     `src/notifications/application.rs`. `WORKSPACE_CONTEXT` is declared by the unit that writes
     `src/notifications/workspace.rs`. `SIGNAL_TYPE_COUNT` moves from `src/state.rs` to
     `src/signal/definition.rs`.
-51. `src/support/timer.rs` does not exist: its only live functions are `read_os_timer` and
-    `read_os_freq` in `src/ffi/carbon_core.rs`. `Cargo.lock` is kept.
+51. `src/support/timer.rs` does not exist: its only live functions are
+    `read_system_clock_in_nanoseconds` and `system_clock_ticks_per_second` in
+    `src/ffi/carbon_core.rs`. `Cargo.lock` is kept.
 52. A re-export is added by the first unit that uses it, since an unused `pub use` is a warning.
 
 ## Changes to behaviour after the rewrite
@@ -209,3 +210,16 @@ decision 3's "behaviour identical to the C".
     layer. `window_animation_duration` and `window_animation_easing` keep their meaning. Nothing
     on the display-link path blocks: the proxy swap-out, the JankyBorders notification and the
     proxy release run off it.
+56. Superseding 37 and 48 for names: functions, methods, types, enum variants and constants carry
+    Rust names that say what they do, spelled out in full, including the qualifier that would
+    otherwise need a doc comment. A long name is never a problem; an abbreviation or a name that
+    only restates the module is. Functions are snake_case and verb-first for actions
+    (`focus_window_of_process_without_raising_it`), `is_`/`has_`/`can_` for predicates, a plain
+    noun for a cheap accessor, and `read_…`/`copy_…`/`query_…` when the value comes from the
+    window server or Accessibility. Event handlers are `handle_<event>_event`. The C module
+    prefixes (`window_manager_`, `space_manager_`, `display_manager_`, `process_manager_`) and
+    the `_ts` suffix disappear, replaced by the subject the function acts on. Every function name
+    is unique in the crate. Names that belong to the operating system stay as they are: extern
+    declarations, Objective-C class names and selectors, and the SkyLight, Carbon, Accessibility
+    and CoreFoundation symbols. `doc/rust-rewrite/RENAMES.md` maps every C name to its Rust name,
+    so upstream yabai fixes can still be found and ported.

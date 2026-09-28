@@ -4,18 +4,18 @@ use std::os::fd::IntoRawFd;
 use std::os::unix::net::UnixStream;
 
 use crate::display::manager::DisplayManager;
-use crate::message::dispatch::handle_message;
+use crate::message::dispatch::dispatch_message_to_its_domain;
 use crate::mouse::drag::MouseDragState;
 use crate::process::manager::ProcessManager;
 use crate::signal::definition::{SIGNAL_TYPE_COUNT, Signal};
 use crate::space::manager::SpaceManager;
 use crate::state::mission_control_mode::MissionControlMode;
-use crate::support::log::debug_message;
+use crate::support::log::print_message_arguments_when_verbose;
 use crate::support::response::Response;
-use crate::support::sockets::socket_close;
+use crate::support::sockets::shut_down_and_close_socket;
 use crate::window::manager::WindowManager;
 
-pub(crate) fn event_handler_daemon_message(
+pub(crate) fn handle_daemon_message_event(
     stream: UnixStream,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
     process_manager: &mut ProcessManager,
@@ -54,11 +54,11 @@ pub(crate) fn event_handler_daemon_message(
 
             if bytes_read == bytes_to_read {
                 let mut response = Response::to_client(stream);
-                debug_message(
-                    "EVENT_HANDLER_DAEMON_MESSAGE",
+                print_message_arguments_when_verbose(
+                    "handle_daemon_message_event",
                     &String::from_utf8_lossy(&message),
                 );
-                handle_message(
+                dispatch_message_to_its_domain(
                     &mut response,
                     &mut message,
                     signal_event,
@@ -77,5 +77,5 @@ pub(crate) fn event_handler_daemon_message(
         }
     }
 
-    socket_close(stream.into_raw_fd());
+    shut_down_and_close_socket(stream.into_raw_fd());
 }

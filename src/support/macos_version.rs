@@ -2,20 +2,44 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::ffi::foundation::NSProcessInfo;
 
-macro_rules! supported_macos_version_list {
+macro_rules! with_every_supported_macos_version {
     ($entry:ident) => {
-        $entry!(tahoe,    _workspace_is_macos_version_tahoe,    workspace_is_macos_tahoe,    26);
-        $entry!(sequoia,  _workspace_is_macos_version_sequoia,  workspace_is_macos_sequoia,  15);
-        $entry!(sonoma,   _workspace_is_macos_version_sonoma,   workspace_is_macos_sonoma,   14);
-        $entry!(ventura,  _workspace_is_macos_version_ventura,  workspace_is_macos_ventura,  13);
-        $entry!(monterey, _workspace_is_macos_version_monterey, workspace_is_macos_monterey, 12);
-        $entry!(bigsur,   _workspace_is_macos_version_bigsur,   workspace_is_macos_bigsur,   11);
+        $entry!(tahoe, RUNNING_ON_MACOS_TAHOE, is_running_on_macos_tahoe, 26);
+        $entry!(
+            sequoia,
+            RUNNING_ON_MACOS_SEQUOIA,
+            is_running_on_macos_sequoia,
+            15
+        );
+        $entry!(
+            sonoma,
+            RUNNING_ON_MACOS_SONOMA,
+            is_running_on_macos_sonoma,
+            14
+        );
+        $entry!(
+            ventura,
+            RUNNING_ON_MACOS_VENTURA,
+            is_running_on_macos_ventura,
+            13
+        );
+        $entry!(
+            monterey,
+            RUNNING_ON_MACOS_MONTEREY,
+            is_running_on_macos_monterey,
+            12
+        );
+        $entry!(
+            bigsur,
+            RUNNING_ON_MACOS_BIG_SUR,
+            is_running_on_macos_big_sur,
+            11
+        );
     };
 }
 
-macro_rules! support_macos_version {
+macro_rules! define_running_on_macos_version_flag_and_accessor {
     ($name:ident, $flag_name:ident, $accessor_name:ident, $major_version:literal) => {
-        #[allow(non_upper_case_globals)]
         pub(crate) static $flag_name: AtomicBool = AtomicBool::new(false);
 
         pub(crate) fn $accessor_name() -> bool {
@@ -24,11 +48,11 @@ macro_rules! support_macos_version {
     };
 }
 
-supported_macos_version_list!(support_macos_version);
+with_every_supported_macos_version!(define_running_on_macos_version_flag_and_accessor);
 
-pub(crate) use supported_macos_version_list;
+pub(crate) use with_every_supported_macos_version;
 
-pub(crate) fn workspace_use_macos_space_workaround() -> bool {
+pub(crate) fn is_workaround_needed_to_move_windows_between_spaces() -> bool {
     let os_version = NSProcessInfo::processInfo().operatingSystemVersion();
 
     if os_version.majorVersion == 12 && os_version.minorVersion >= 7 {

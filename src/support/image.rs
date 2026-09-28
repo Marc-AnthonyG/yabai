@@ -8,7 +8,9 @@ use crate::ffi::core_graphics::{
     CGContextDrawImage, CGImage, CGImageAlphaInfo, CGImageGetHeight, CGImageGetWidth,
 };
 
-pub fn cgimage_restore_alpha(image: &CGImage) -> Option<CFRetained<CGImage>> {
+pub fn copy_image_undoing_premultiplied_alpha_and_making_it_opaque(
+    image: &CGImage,
+) -> Option<CFRetained<CGImage>> {
     let width = CGImageGetWidth(Some(image));
     let height = CGImageGetHeight(Some(image));
     let pitch = width * 4;
@@ -40,7 +42,9 @@ pub fn cgimage_restore_alpha(image: &CGImage) -> Option<CFRetained<CGImage>> {
     let whole_group_count = pixel_count / 4;
     for group_index in 0..whole_group_count {
         unsafe {
-            restore_alpha_four_pixels(data.as_mut_ptr().add(group_index * 16).cast::<u32>());
+            undo_premultiplied_alpha_of_four_pixels_and_make_them_opaque(
+                data.as_mut_ptr().add(group_index * 16).cast::<u32>(),
+            );
         }
     }
 
@@ -54,7 +58,7 @@ pub fn cgimage_restore_alpha(image: &CGImage) -> Option<CFRetained<CGImage>> {
                 scratch.as_mut_ptr().cast::<u8>(),
                 remainder_pixel_count * 4,
             );
-            restore_alpha_four_pixels(scratch.as_mut_ptr());
+            undo_premultiplied_alpha_of_four_pixels_and_make_them_opaque(scratch.as_mut_ptr());
             std::ptr::copy_nonoverlapping(
                 scratch.as_ptr().cast::<u8>(),
                 data.as_mut_ptr().add(tail_offset),
@@ -72,7 +76,7 @@ pub fn cgimage_restore_alpha(image: &CGImage) -> Option<CFRetained<CGImage>> {
 
 #[cfg(target_arch = "x86_64")]
 #[inline]
-unsafe fn restore_alpha_four_pixels(pixel: *mut u32) {
+unsafe fn undo_premultiplied_alpha_of_four_pixels_and_make_them_opaque(pixel: *mut u32) {
     use std::arch::x86_64::{
         __m128i, _mm_and_si128, _mm_andnot_si128, _mm_castps_si128, _mm_cmpgt_ps, _mm_cvtepi32_ps,
         _mm_cvtps_epi32, _mm_div_ps, _mm_loadu_si128, _mm_mul_ps, _mm_or_si128, _mm_set1_epi32,
@@ -121,7 +125,7 @@ unsafe fn restore_alpha_four_pixels(pixel: *mut u32) {
 
 #[cfg(target_arch = "aarch64")]
 #[inline]
-unsafe fn restore_alpha_four_pixels(pixel: *mut u32) {
+unsafe fn undo_premultiplied_alpha_of_four_pixels_and_make_them_opaque(pixel: *mut u32) {
     use std::arch::aarch64::{
         vandq_s32, vbicq_s32, vcgtq_f32, vcvtnq_s32_f32, vcvtq_f32_s32, vdivq_f32, vdupq_n_f32,
         vdupq_n_s32, vld1q_s32, vmulq_f32, vorrq_s32, vreinterpretq_s32_u32, vreinterpretq_u32_s32,
@@ -176,10 +180,12 @@ unsafe fn restore_alpha_four_pixels(pixel: *mut u32) {
 
 #[cfg(test)]
 mod tests {
-    use super::restore_alpha_four_pixels;
+    use super::undo_premultiplied_alpha_of_four_pixels_and_make_them_opaque;
 
     fn restore_alpha_of(mut pixels: [u32; 4]) -> [u32; 4] {
-        unsafe { restore_alpha_four_pixels(pixels.as_mut_ptr()) };
+        unsafe {
+            undo_premultiplied_alpha_of_four_pixels_and_make_them_opaque(pixels.as_mut_ptr())
+        };
         pixels
     }
 

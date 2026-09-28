@@ -1,9 +1,9 @@
-use crate::service::plist::{populate_plist_path, service_install_internal};
-use crate::support::filesystem::file_exists;
+use crate::service::plist::{build_launchd_service_plist_path, write_launchd_service_plist};
+use crate::support::filesystem::is_existing_file_that_is_not_a_directory;
 use crate::{error, warn};
 
-const _PATH_LAUNCHCTL: &str = "/bin/launchctl";
-const _NAME_YABAI_PLIST: &str = "com.asmvik.yabai";
+const LAUNCHCTL_EXECUTABLE_PATH: &str = "/bin/launchctl";
+const LAUNCHD_SERVICE_LABEL: &str = "com.asmvik.yabai";
 
 //
 // NOTE(asmvik): A launchd service has the following states:
@@ -14,7 +14,7 @@ const _NAME_YABAI_PLIST: &str = "com.asmvik.yabai";
 //          4. Running (Start / Stop)
 //
 
-fn safe_exec(arguments: &[&str], suppress_output: bool) -> i32 {
+fn run_program_and_wait_for_its_exit_status(arguments: &[&str], suppress_output: bool) -> i32 {
     let argument_strings: Vec<std::ffi::CString> = arguments
         .iter()
         .map(|argument| std::ffi::CString::new(*argument).unwrap())
@@ -78,15 +78,15 @@ fn safe_exec(arguments: &[&str], suppress_output: bool) -> i32 {
     }
 }
 
-pub fn service_start() -> i32 {
-    let yabai_plist_path = populate_plist_path();
-    if !file_exists(&yabai_plist_path) {
+pub fn start_launchd_service_installing_it_if_missing() -> i32 {
+    let yabai_plist_path = build_launchd_service_plist_path();
+    if !is_existing_file_that_is_not_a_directory(&yabai_plist_path) {
         warn!(
             "yabai: service file '{}' is not installed! attempting installation..\n",
             yabai_plist_path
         );
 
-        let result = service_install_internal(&yabai_plist_path);
+        let result = write_launchd_service_plist(&yabai_plist_path);
         if result != 0 {
             error!(
                 "yabai: service file '{}' could not be installed! abort..\n",
@@ -98,7 +98,7 @@ pub fn service_start() -> i32 {
     let service_target = format!(
         "gui/{}/{}",
         unsafe { libc::getuid() } as i32,
-        _NAME_YABAI_PLIST
+        LAUNCHD_SERVICE_LABEL
     );
 
     let domain_target = format!("gui/{}", unsafe { libc::getuid() } as i32);
@@ -107,8 +107,8 @@ pub fn service_start() -> i32 {
     // NOTE(asmvik): Check if service is bootstrapped
     //
 
-    let print_arguments = [_PATH_LAUNCHCTL, "print", &service_target];
-    let is_bootstrapped = safe_exec(&print_arguments, true);
+    let print_arguments = [LAUNCHCTL_EXECUTABLE_PATH, "print", &service_target];
+    let is_bootstrapped = run_program_and_wait_for_its_exit_status(&print_arguments, true);
 
     if is_bootstrapped != 0 {
         //
@@ -118,8 +118,8 @@ pub fn service_start() -> i32 {
         // a no-op if the service is already enabled.
         //
 
-        let enable_arguments = [_PATH_LAUNCHCTL, "enable", &service_target];
-        safe_exec(&enable_arguments, false);
+        let enable_arguments = [LAUNCHCTL_EXECUTABLE_PATH, "enable", &service_target];
+        run_program_and_wait_for_its_exit_status(&enable_arguments, false);
 
         //
         // NOTE(asmvik): Bootstrap service into the target domain.
@@ -127,12 +127,12 @@ pub fn service_start() -> i32 {
         //
 
         let bootstrap_arguments = [
-            _PATH_LAUNCHCTL,
+            LAUNCHCTL_EXECUTABLE_PATH,
             "bootstrap",
             &domain_target,
             &yabai_plist_path,
         ];
-        safe_exec(&bootstrap_arguments, false)
+        run_program_and_wait_for_its_exit_status(&bootstrap_arguments, false)
     } else {
         //
         // NOTE(asmvik): The service has already been bootstrapped.
@@ -140,14 +140,14 @@ pub fn service_start() -> i32 {
         // error to bootstrap a service that has already been bootstrapped.
         //
 
-        let kickstart_arguments = [_PATH_LAUNCHCTL, "kickstart", &service_target];
-        safe_exec(&kickstart_arguments, false)
+        let kickstart_arguments = [LAUNCHCTL_EXECUTABLE_PATH, "kickstart", &service_target];
+        run_program_and_wait_for_its_exit_status(&kickstart_arguments, false)
     }
 }
 
-pub fn service_restart() -> i32 {
-    let yabai_plist_path = populate_plist_path();
-    if !file_exists(&yabai_plist_path) {
+pub fn restart_launchd_service() -> i32 {
+    let yabai_plist_path = build_launchd_service_plist_path();
+    if !is_existing_file_that_is_not_a_directory(&yabai_plist_path) {
         error!(
             "yabai: service file '{}' is not installed! abort..\n",
             yabai_plist_path
@@ -157,16 +157,21 @@ pub fn service_restart() -> i32 {
     let service_target = format!(
         "gui/{}/{}",
         unsafe { libc::getuid() } as i32,
-        _NAME_YABAI_PLIST
+        LAUNCHD_SERVICE_LABEL
     );
 
-    let kickstart_arguments = [_PATH_LAUNCHCTL, "kickstart", "-k", &service_target];
-    safe_exec(&kickstart_arguments, false)
+    let kickstart_arguments = [
+        LAUNCHCTL_EXECUTABLE_PATH,
+        "kickstart",
+        "-k",
+        &service_target,
+    ];
+    run_program_and_wait_for_its_exit_status(&kickstart_arguments, false)
 }
 
-pub fn service_stop() -> i32 {
-    let yabai_plist_path = populate_plist_path();
-    if !file_exists(&yabai_plist_path) {
+pub fn stop_launchd_service() -> i32 {
+    let yabai_plist_path = build_launchd_service_plist_path();
+    if !is_existing_file_that_is_not_a_directory(&yabai_plist_path) {
         error!(
             "yabai: service file '{}' is not installed! abort..\n",
             yabai_plist_path
@@ -176,7 +181,7 @@ pub fn service_stop() -> i32 {
     let service_target = format!(
         "gui/{}/{}",
         unsafe { libc::getuid() } as i32,
-        _NAME_YABAI_PLIST
+        LAUNCHD_SERVICE_LABEL
     );
 
     let domain_target = format!("gui/{}", unsafe { libc::getuid() } as i32);
@@ -185,8 +190,8 @@ pub fn service_stop() -> i32 {
     // NOTE(asmvik): Check if service is bootstrapped
     //
 
-    let print_arguments = [_PATH_LAUNCHCTL, "print", &service_target];
-    let is_bootstrapped = safe_exec(&print_arguments, true);
+    let print_arguments = [LAUNCHCTL_EXECUTABLE_PATH, "print", &service_target];
+    let is_bootstrapped = run_program_and_wait_for_its_exit_status(&print_arguments, true);
 
     if is_bootstrapped != 0 {
         //
@@ -195,8 +200,13 @@ pub fn service_stop() -> i32 {
         // was bootstrapped**, so we tell it to stop said service.
         //
 
-        let kill_arguments = [_PATH_LAUNCHCTL, "kill", "SIGTERM", &service_target];
-        safe_exec(&kill_arguments, false)
+        let kill_arguments = [
+            LAUNCHCTL_EXECUTABLE_PATH,
+            "kill",
+            "SIGTERM",
+            &service_target,
+        ];
+        run_program_and_wait_for_its_exit_status(&kill_arguments, false)
     } else {
         //
         // NOTE(asmvik): Service is bootstrapped; we stop a potentially
@@ -209,14 +219,14 @@ pub fn service_stop() -> i32 {
         //
 
         let bootout_arguments = [
-            _PATH_LAUNCHCTL,
+            LAUNCHCTL_EXECUTABLE_PATH,
             "bootout",
             &domain_target,
             &yabai_plist_path,
         ];
-        safe_exec(&bootout_arguments, false);
+        run_program_and_wait_for_its_exit_status(&bootout_arguments, false);
 
-        let disable_arguments = [_PATH_LAUNCHCTL, "disable", &service_target];
-        safe_exec(&disable_arguments, false)
+        let disable_arguments = [LAUNCHCTL_EXECUTABLE_PATH, "disable", &service_target];
+        run_program_and_wait_for_its_exit_status(&disable_arguments, false)
     }
 }

@@ -4,17 +4,17 @@ use core::ffi::c_void;
 use core::ptr::NonNull;
 use std::sync::Arc;
 
-use crate::ffi::core_foundation::{CFRetained, SendCFRetained};
+use crate::ffi::core_foundation::{CFRetained, CFRetainedAssumedSendAndSync};
 use crate::ffi::core_video::{
     CVDisplayLink, CVDisplayLinkCreateWithActiveCGDisplays, CVDisplayLinkSetOutputCallback,
     CVDisplayLinkStart, CVDisplayLinkStop, CVOptionFlags, CVReturn, CVTimeStamp,
     kCVReturnDisplayLinkAlreadyRunning, kCVReturnSuccess,
 };
-use crate::window::animation_tick::window_animator_run_one_display_link_tick;
+use crate::window::animation_tick::run_one_window_animator_display_link_tick;
 use crate::window::animator::WindowAnimator;
 
 pub(crate) struct AnimationDisplayLink {
-    display_link: SendCFRetained<CVDisplayLink>,
+    display_link: CFRetainedAssumedSendAndSync<CVDisplayLink>,
     window_animator_kept_alive_for_the_callback: *const WindowAnimator,
 }
 
@@ -33,7 +33,7 @@ impl Drop for AnimationDisplayLink {
     }
 }
 
-pub(crate) fn animation_display_link_start(
+pub(crate) fn start_animation_display_link(
     window_animator: &Arc<WindowAnimator>,
 ) -> Option<AnimationDisplayLink> {
     let mut display_link_pointer: *mut CVDisplayLink = core::ptr::null_mut();
@@ -47,14 +47,14 @@ pub(crate) fn animation_display_link_start(
     }
 
     let animation_display_link = AnimationDisplayLink {
-        display_link: SendCFRetained(display_link?),
+        display_link: CFRetainedAssumedSendAndSync(display_link?),
         window_animator_kept_alive_for_the_callback: Arc::into_raw(Arc::clone(window_animator)),
     };
 
     let callback_result = unsafe {
         CVDisplayLinkSetOutputCallback(
             animation_display_link.display_link.as_ref(),
-            Some(window_manager_animate_window_list_thread_proc),
+            Some(run_one_animator_tick_from_display_link_output_callback),
             animation_display_link
                 .window_animator_kept_alive_for_the_callback
                 .cast::<c_void>()
@@ -73,11 +73,11 @@ pub(crate) fn animation_display_link_start(
     Some(animation_display_link)
 }
 
-pub(crate) fn animation_display_link_stop_from_its_own_callback(display_link: &CVDisplayLink) {
+pub(crate) fn stop_display_link_from_its_own_callback(display_link: &CVDisplayLink) {
     CVDisplayLinkStop(display_link);
 }
 
-unsafe extern "C-unwind" fn window_manager_animate_window_list_thread_proc(
+unsafe extern "C-unwind" fn run_one_animator_tick_from_display_link_output_callback(
     link: NonNull<CVDisplayLink>,
     now: NonNull<CVTimeStamp>,
     output_time: NonNull<CVTimeStamp>,
@@ -86,7 +86,7 @@ unsafe extern "C-unwind" fn window_manager_animate_window_list_thread_proc(
     data: *mut c_void,
 ) -> CVReturn {
     let window_animator = unsafe { &*data.cast_const().cast::<WindowAnimator>() };
-    window_animator_run_one_display_link_tick(
+    run_one_window_animator_display_link_tick(
         window_animator,
         unsafe { link.as_ref() },
         unsafe { now.as_ref().hostTime },

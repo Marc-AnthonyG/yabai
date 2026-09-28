@@ -1,9 +1,11 @@
 use core::ffi::c_char;
 use std::ffi::{CStr, CString};
 
-use crate::signal::definition::{SIGNAL_TYPE_COUNT, SIGNAL_TYPE_STR, Signal, SignalProp, SignalType};
+use crate::signal::definition::{
+    SIGNAL_TYPE_COUNT, SIGNAL_TYPE_NAMES, Signal, SignalPropertyRequirement, SignalType,
+};
 use crate::signal::queue::PendingSignal;
-use crate::support::regex::{RegexMatch, regex_match};
+use crate::support::regex::{RegexMatch, match_subject_against_optional_regex};
 
 pub(crate) struct PreparedSignalCommand {
     arguments: Vec<CString>,
@@ -19,7 +21,10 @@ fn regex_subject_truncated_at_the_first_null(subject: Option<&str>) -> CString {
     CString::new(&bytes[..end]).unwrap_or_default()
 }
 
-pub(crate) fn event_signal_filter(event_signal: &PendingSignal, signal: &Signal) -> bool {
+pub(crate) fn is_signal_filtered_out_for_pending_signal(
+    event_signal: &PendingSignal,
+    signal: &Signal,
+) -> bool {
     match event_signal.signal_type {
         SignalType::ApplicationLaunched
         | SignalType::ApplicationActivated
@@ -30,7 +35,7 @@ pub(crate) fn event_signal_filter(event_signal: &PendingSignal, signal: &Signal)
             } else {
                 RegexMatch::No
             };
-            regex_match(
+            match_subject_against_optional_regex(
                 signal.app_regex.as_ref(),
                 &regex_subject_truncated_at_the_first_null(event_signal.app.as_deref()),
             ) == regex_match_app
@@ -43,27 +48,26 @@ pub(crate) fn event_signal_filter(event_signal: &PendingSignal, signal: &Signal)
             } else {
                 RegexMatch::No
             };
-            let app_no_match = regex_match(
+            let app_no_match = match_subject_against_optional_regex(
                 signal.app_regex.as_ref(),
                 &regex_subject_truncated_at_the_first_null(event_signal.app.as_deref()),
             ) == regex_match_app;
 
-            let mut active = signal.active == SignalProp::Undefined;
+            let mut active = signal.active == SignalPropertyRequirement::Undefined;
             if !active {
-                active = event_signal.active == i32::from(signal.active == SignalProp::Yes);
+                active = event_signal.active
+                    == i32::from(signal.active == SignalPropertyRequirement::Yes);
             }
 
             app_no_match || !active
         }
-        SignalType::WindowCreated
-        | SignalType::WindowFocused
-        | SignalType::WindowDeminimized => {
+        SignalType::WindowCreated | SignalType::WindowFocused | SignalType::WindowDeminimized => {
             let regex_match_app = if signal.app_regex_exclude {
                 RegexMatch::Yes
             } else {
                 RegexMatch::No
             };
-            let app_no_match = regex_match(
+            let app_no_match = match_subject_against_optional_regex(
                 signal.app_regex.as_ref(),
                 &regex_subject_truncated_at_the_first_null(event_signal.app.as_deref()),
             ) == regex_match_app;
@@ -73,7 +77,7 @@ pub(crate) fn event_signal_filter(event_signal: &PendingSignal, signal: &Signal)
             } else {
                 RegexMatch::No
             };
-            let title_no_match = regex_match(
+            let title_no_match = match_subject_against_optional_regex(
                 signal.title_regex.as_ref(),
                 &regex_subject_truncated_at_the_first_null(event_signal.title.as_deref()),
             ) == regex_match_title;
@@ -89,7 +93,7 @@ pub(crate) fn event_signal_filter(event_signal: &PendingSignal, signal: &Signal)
             } else {
                 RegexMatch::No
             };
-            let app_no_match = regex_match(
+            let app_no_match = match_subject_against_optional_regex(
                 signal.app_regex.as_ref(),
                 &regex_subject_truncated_at_the_first_null(event_signal.app.as_deref()),
             ) == regex_match_app;
@@ -99,14 +103,15 @@ pub(crate) fn event_signal_filter(event_signal: &PendingSignal, signal: &Signal)
             } else {
                 RegexMatch::No
             };
-            let title_no_match = regex_match(
+            let title_no_match = match_subject_against_optional_regex(
                 signal.title_regex.as_ref(),
                 &regex_subject_truncated_at_the_first_null(event_signal.title.as_deref()),
             ) == regex_match_title;
 
-            let mut active = signal.active == SignalProp::Undefined;
+            let mut active = signal.active == SignalPropertyRequirement::Undefined;
             if !active {
-                active = event_signal.active == i32::from(signal.active == SignalProp::Yes);
+                active = event_signal.active
+                    == i32::from(signal.active == SignalPropertyRequirement::Yes);
             }
 
             app_no_match || title_no_match || !active
@@ -115,7 +120,7 @@ pub(crate) fn event_signal_filter(event_signal: &PendingSignal, signal: &Signal)
     }
 }
 
-pub(crate) fn event_signal_prepare_commands(
+pub(crate) fn prepare_commands_of_signals_matching_pending_signals(
     signal_event: &[Vec<Signal>; SIGNAL_TYPE_COUNT],
     signal_storage: &[PendingSignal],
 ) -> Vec<PreparedSignalCommand> {
@@ -138,14 +143,14 @@ pub(crate) fn event_signal_prepare_commands(
         let signal_count = signal_event[event_signal.signal_type as usize].len() as i32;
         crate::debug!(
             "{}: transmitting {} to {} subscriber(s)\n",
-            "event_signal_flush",
-            SIGNAL_TYPE_STR[event_signal.signal_type as usize],
+            "prepare_commands_of_signals_matching_pending_signals",
+            SIGNAL_TYPE_NAMES[event_signal.signal_type as usize],
             signal_count
         );
 
         for inner_index in 0..signal_count {
             let signal = &signal_event[event_signal.signal_type as usize][inner_index as usize];
-            if event_signal_filter(event_signal, signal) {
+            if is_signal_filtered_out_for_pending_signal(event_signal, signal) {
                 continue;
             }
 
@@ -189,7 +194,7 @@ pub(crate) fn null_terminated_pointer_list(strings: &[CString]) -> Vec<*const c_
     pointers
 }
 
-pub(crate) fn event_signal_flush(
+pub(crate) fn run_commands_of_pending_signals_in_forked_children(
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
     signal_storage: &mut Vec<PendingSignal>,
 ) {
@@ -197,7 +202,10 @@ pub(crate) fn event_signal_flush(
         return;
     }
 
-    let prepared_commands = event_signal_prepare_commands(signal_event, signal_storage.as_slice());
+    let prepared_commands = prepare_commands_of_signals_matching_pending_signals(
+        signal_event,
+        signal_storage.as_slice(),
+    );
     let prepared_command_pointers: Vec<(Vec<*const c_char>, Vec<*const c_char>)> =
         prepared_commands
             .iter()

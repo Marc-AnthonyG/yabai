@@ -65,7 +65,10 @@ unsafe extern "C" {
     pub fn CoreDockSendNotification(notification: *const CFString, unknown: c_int) -> CGError;
 }
 
-pub fn psn_equals(first: *const ProcessSerialNumber, second: *const ProcessSerialNumber) -> bool {
+pub fn is_same_process_serial_number(
+    first: *const ProcessSerialNumber,
+    second: *const ProcessSerialNumber,
+) -> bool {
     let mut result: u8 = 0;
     unsafe { SameProcess(first, second, &mut result) };
     result == 1

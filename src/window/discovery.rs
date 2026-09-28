@@ -3,14 +3,17 @@
 use core::ptr::NonNull;
 use std::sync::Arc;
 
-use crate::application::model::{application_create, application_destroy, application_window_list};
-use crate::display::identity::display_manager_active_display_list;
+use crate::application::model::{
+    copy_accessibility_windows_of_application, create_application_for_process,
+    destroy_application_releasing_its_accessibility_element,
+};
+use crate::display::identity::query_displays_active_for_drawing;
 use crate::display::manager::DisplayManager;
-use crate::display::spaces::display_space_list;
-use crate::event::queue::{Event, event_loop_post};
+use crate::display::spaces::query_spaces_of_display;
+use crate::event::queue::{Event, post_event_to_event_loop};
 use crate::ffi::accessibility::{
     _AXUIElementCreateWithRemoteToken, AXUIElement, AXUIElementCopyAttributeValue, AXUIElementRef,
-    ax_window_id, kAXRoleAttribute, kAXWindowRole,
+    kAXRoleAttribute, kAXWindowRole, read_window_id_of_accessibility_element,
 };
 use crate::ffi::core_foundation::{
     CFData, CFDataCreateMutable, CFDataGetMutableBytePtr, CFDataIncreaseLength, CFEqual, CFIndex,
@@ -18,41 +21,50 @@ use crate::ffi::core_foundation::{
     take_create_rule_result,
 };
 use crate::mouse::drag::MouseDragState;
-use crate::notifications::application::{application_observe, application_unobserve};
-use crate::notifications::window::{window_observe, window_unobserve};
+use crate::notifications::application::{
+    start_observing_application_notifications_reporting_whether_all_registered,
+    stop_observing_application_notifications,
+};
+use crate::notifications::window::{
+    start_observing_window_notifications_reporting_whether_all_registered,
+    stop_observing_window_notifications,
+};
 use crate::notifications::workspace::{
-    WORKSPACE_CONTEXT, workspace_application_observe_activation_policy,
+    WORKSPACE_CONTEXT, start_observing_application_activation_policy,
 };
 use crate::process::manager::{PROCESS_TABLE, ProcessManager};
 use crate::process::model::Process;
-use crate::process::running_application::workspace_application_is_observable;
-use crate::serialise::window::window_serialize;
-use crate::space::managed_space::space_window_list_for_connection;
+use crate::process::running_application::is_process_observable_refreshing_its_activation_policy;
+use crate::serialise::window::write_tracked_window_as_json_object;
+use crate::space::managed_space::query_windows_on_spaces_owned_by_connection;
 use crate::space::manager::SpaceManager;
 use crate::state::mission_control_mode::MissionControlMode;
 use crate::support::handles::{ProcessId, SpaceId, WindowId};
-use crate::support::log::{g_verbose, or_null};
+use crate::support::log::{is_verbose_debug_output_enabled, text_or_printf_null_placeholder};
 use crate::support::response::Response;
-use crate::window::focus::window_manager_focused_window;
+use crate::window::focus::query_focused_tracked_window;
 use crate::window::manager::{
-    WindowManager, window_manager_add_application, window_manager_add_window,
-    window_manager_find_lost_focused_event, window_manager_find_window,
-    window_manager_is_window_eligible, window_manager_remove_lost_focused_event,
+    WindowManager, forget_focused_event_that_arrived_before_window_was_tracked,
+    has_focused_event_arrived_before_window_was_tracked, is_window_eligible_for_management,
+    start_tracking_application, start_tracking_window, tracked_window_with_id,
 };
 use crate::window::model::{
-    WindowFlag, WindowRuleFlag, window_can_move, window_can_resize, window_check_flag,
-    window_check_rule_flag, window_clear_rule_flag, window_create, window_destroy,
-    window_is_standard, window_is_sticky, window_is_undersized, window_is_unknown,
-    window_level_is_standard, window_role_ts, window_set_flag, window_subrole_ts, window_title_ts,
+    WindowFlag, WindowRuleFlag, clear_window_rule_flag, create_window_from_accessibility_element,
+    destroy_window_releasing_its_accessibility_element, is_window_a_standard_window,
+    is_window_at_most_500_points_wide_or_tall, is_window_at_normal_window_level,
+    is_window_flag_set, is_window_movable, is_window_on_more_than_one_space, is_window_resizable,
+    is_window_rule_flag_set, is_window_subrole_unknown, set_window_flag, window_role_as_string,
+    window_subrole_as_string, window_title_as_string,
 };
-use crate::window::opacity::window_manager_set_window_opacity;
+use crate::window::opacity::set_window_opacity_unless_disabled_or_fixed_by_rule;
 use crate::window::rule::RuleFlag;
 use crate::window::rule_application::{
-    window_manager_apply_manage_rules_to_window, window_manager_apply_rules_to_window,
+    apply_effects_other_than_manage_of_matching_rules_to_window,
+    apply_manage_effect_of_matching_rules_to_window,
 };
-use crate::window::shadow::window_manager_purify_window;
+use crate::window::shadow::apply_shadow_removal_mode_to_window;
 
-pub(crate) fn window_manager_create_and_add_window(
+pub(crate) fn track_newly_discovered_window_applying_its_rules(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     process_id: ProcessId,
@@ -64,35 +76,36 @@ pub(crate) fn window_manager_create_and_add_window(
     mouse_drag_state: &mut MouseDragState,
     mission_control_mode: &mut MissionControlMode,
 ) -> Option<WindowId> {
-    let mut window = window_create(process_id, window_ref, window_id, window_manager);
+    let mut window =
+        create_window_from_accessibility_element(process_id, window_ref, window_id, window_manager);
 
-    let window_title = window_title_ts(&window);
-    let window_role = window_role_ts(&window);
-    let window_subrole = window_subrole_ts(&window);
+    let window_title = window_title_as_string(&window);
+    let window_role = window_role_as_string(&window);
+    let window_subrole = window_subrole_as_string(&window);
     let application_name = window
         .application
         .and_then(|application_process_id| window_manager.application.find(&application_process_id))
         .map(|application| Arc::clone(&application.name));
     crate::debug!(
         "{}:{} {} - {} ({}:{}:{})\n",
-        "window_manager_create_and_add_window",
+        "track_newly_discovered_window_applying_its_rules",
         window.id.0 as i32,
-        or_null(application_name.as_deref()),
+        text_or_printf_null_placeholder(application_name.as_deref()),
         window_title,
         window_role,
         window_subrole,
         window.is_root as i32
     );
 
-    if window_is_unknown(&window) {
+    if is_window_subrole_unknown(&window) {
         crate::debug!(
             "{}: ignoring AXUnknown window {} {}\n",
-            "window_manager_create_and_add_window",
-            or_null(application_name.as_deref()),
+            "track_newly_discovered_window_applying_its_rules",
+            text_or_printf_null_placeholder(application_name.as_deref()),
             window.id.0 as i32
         );
-        window_manager_remove_lost_focused_event(window_manager, window.id);
-        window_destroy(window);
+        forget_focused_event_that_arrived_before_window_was_tracked(window_manager, window.id);
+        destroy_window_releasing_its_accessibility_element(window);
         return None;
     }
 
@@ -100,27 +113,30 @@ pub(crate) fn window_manager_create_and_add_window(
     // NOTE(asmvik): Attempt to track **all** windows.
     //
 
-    if !window_observe(&mut window, window_manager) {
+    if !start_observing_window_notifications_reporting_whether_all_registered(
+        &mut window,
+        window_manager,
+    ) {
         crate::debug!(
             "{}: could not observe {} {}\n",
-            "window_manager_create_and_add_window",
-            or_null(application_name.as_deref()),
+            "track_newly_discovered_window_applying_its_rules",
+            text_or_printf_null_placeholder(application_name.as_deref()),
             window.id.0 as i32
         );
-        window_manager_remove_lost_focused_event(window_manager, window.id);
-        window_unobserve(&mut window, window_manager);
-        window_destroy(window);
+        forget_focused_event_that_arrived_before_window_was_tracked(window_manager, window.id);
+        stop_observing_window_notifications(&mut window, window_manager);
+        destroy_window_releasing_its_accessibility_element(window);
         return None;
     }
 
-    if window_manager_find_lost_focused_event(window_manager, window.id) {
-        event_loop_post(Event::WindowFocused(window.id));
-        window_manager_remove_lost_focused_event(window_manager, window.id);
+    if has_focused_event_arrived_before_window_was_tracked(window_manager, window.id) {
+        post_event_to_event_loop(Event::WindowFocused(window.id));
+        forget_focused_event_that_arrived_before_window_was_tracked(window_manager, window.id);
     }
 
     let window_id = window.id;
     let window_is_root = window.is_root;
-    window_manager_add_window(window_manager, window);
+    start_tracking_window(window_manager, window);
 
     //
     // NOTE(asmvik): However, only **root windows** are eligible for management.
@@ -135,7 +151,7 @@ pub(crate) fn window_manager_create_and_add_window(
         // no such rule matches this window, it will be ignored if it does not have a role of kAXWindowRole.
         //
 
-        window_manager_apply_manage_rules_to_window(
+        apply_manage_effect_of_matching_rules_to_window(
             space_manager,
             window_manager,
             window_id,
@@ -147,11 +163,11 @@ pub(crate) fn window_manager_create_and_add_window(
             mouse_drag_state,
         );
 
-        if window_manager_is_window_eligible(window_id, window_manager) {
+        if is_window_eligible_for_management(window_id, window_manager) {
             if let Some(window) = window_manager.window.find_mut(&window_id) {
                 window.is_eligible = true;
             }
-            window_manager_apply_rules_to_window(
+            apply_effects_other_than_manage_of_matching_rules_to_window(
                 space_manager,
                 window_manager,
                 window_id,
@@ -164,8 +180,8 @@ pub(crate) fn window_manager_create_and_add_window(
                 mouse_drag_state,
                 mission_control_mode,
             );
-            window_manager_purify_window(window_manager, window_id);
-            window_manager_set_window_opacity(
+            apply_shadow_removal_mode_to_window(window_manager, window_id);
+            set_window_opacity_unless_disabled_or_fixed_by_rule(
                 window_manager,
                 window_id,
                 window_manager.normal_window_opacity,
@@ -182,38 +198,39 @@ pub(crate) fn window_manager_create_and_add_window(
             let Some(window) = window_manager.window.find_mut(&window_id) else {
                 return Some(window_id);
             };
-            if window_check_flag(window, WindowFlag::MINIMIZE) {
+            if is_window_flag_set(window, WindowFlag::MINIMIZED) {
                 return Some(window_id);
             }
-            if window_check_flag(window, WindowFlag::FULLSCREEN) {
+            if is_window_flag_set(window, WindowFlag::IN_NATIVE_FULLSCREEN) {
                 return Some(window_id);
             }
-            if window_check_rule_flag(window, WindowRuleFlag::MANAGED) {
-                return Some(window_id);
-            }
-
-            if window_check_rule_flag(window, WindowRuleFlag::FULLSCREEN) {
-                window_clear_rule_flag(window, WindowRuleFlag::FULLSCREEN);
+            if is_window_rule_flag_set(window, WindowRuleFlag::MANAGE_FORCED_ON) {
                 return Some(window_id);
             }
 
-            if window_is_sticky(window.id)
-                || !window_can_move(window)
-                || !window_is_standard(window)
-                || !window_level_is_standard(window)
-                || (!window_can_resize(window) && window_is_undersized(window))
+            if is_window_rule_flag_set(window, WindowRuleFlag::NATIVE_FULLSCREEN_REQUESTED) {
+                clear_window_rule_flag(window, WindowRuleFlag::NATIVE_FULLSCREEN_REQUESTED);
+                return Some(window_id);
+            }
+
+            if is_window_on_more_than_one_space(window.id)
+                || !is_window_movable(window)
+                || !is_window_a_standard_window(window)
+                || !is_window_at_normal_window_level(window)
+                || (!is_window_resizable(window)
+                    && is_window_at_most_500_points_wide_or_tall(window))
             {
-                window_set_flag(window, WindowFlag::FLOAT);
+                set_window_flag(window, WindowFlag::FLOATING);
             }
         } else {
             crate::debug!(
                 "{} ignoring incorrectly marked window {} {}\n",
-                "window_manager_create_and_add_window",
-                or_null(application_name.as_deref()),
+                "track_newly_discovered_window_applying_its_rules",
+                text_or_printf_null_placeholder(application_name.as_deref()),
                 window_id.0 as i32
             );
             if let Some(window) = window_manager.window.find_mut(&window_id) {
-                window_set_flag(window, WindowFlag::FLOAT);
+                set_window_flag(window, WindowFlag::FLOATING);
             }
 
             //
@@ -221,10 +238,10 @@ pub(crate) fn window_manager_create_and_add_window(
             // Useful for identifying and creating rules if this window should in fact be managed.
             //
 
-            if g_verbose() {
+            if is_verbose_debug_output_enabled() {
                 let mut response = Response::to_standard_output();
                 response.write(format_args!("window info: \n"));
-                window_serialize(
+                write_tracked_window_as_json_object(
                     &mut response,
                     window_id,
                     0,
@@ -239,22 +256,22 @@ pub(crate) fn window_manager_create_and_add_window(
     } else {
         crate::debug!(
             "{} ignoring child window {} {}\n",
-            "window_manager_create_and_add_window",
-            or_null(application_name.as_deref()),
+            "track_newly_discovered_window_applying_its_rules",
+            text_or_printf_null_placeholder(application_name.as_deref()),
             window_id.0 as i32
         );
         if let Some(window) = window_manager.window.find_mut(&window_id) {
-            window_set_flag(window, WindowFlag::FLOAT);
+            set_window_flag(window, WindowFlag::FLOATING);
         }
 
         //
         // NOTE(asmvik): Print window information when debug_output is enabled.
         //
 
-        if g_verbose() {
+        if is_verbose_debug_output_enabled() {
             let mut response = Response::to_standard_output();
             response.write(format_args!("window info: \n"));
-            window_serialize(
+            write_tracked_window_as_json_object(
                 &mut response,
                 window_id,
                 0,
@@ -270,7 +287,7 @@ pub(crate) fn window_manager_create_and_add_window(
     Some(window_id)
 }
 
-pub(crate) fn window_manager_add_application_windows(
+pub(crate) fn track_untracked_windows_of_application_applying_one_shot_rules(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     process_id: ProcessId,
@@ -282,7 +299,7 @@ pub(crate) fn window_manager_add_application_windows(
     let Some(application) = window_manager.application.find(&process_id) else {
         return Vec::new();
     };
-    let Some(window_list) = application_window_list(application) else {
+    let Some(window_list) = copy_accessibility_windows_of_application(application) else {
         return Vec::new();
     };
 
@@ -296,10 +313,8 @@ pub(crate) fn window_manager_add_application_windows(
             continue;
         };
 
-        let window_id = ax_window_id(window_ref);
-        if window_id == 0
-            || window_manager_find_window(window_manager, WindowId(window_id)).is_some()
-        {
+        let window_id = read_window_id_of_accessibility_element(window_ref);
+        if window_id == 0 || tracked_window_with_id(window_manager, WindowId(window_id)).is_some() {
             continue;
         }
 
@@ -307,7 +322,7 @@ pub(crate) fn window_manager_add_application_windows(
             CFRetained::into_raw(unsafe { CFRetained::retain(NonNull::from(window_ref)) })
                 .as_ptr()
                 .cast_const();
-        let window = window_manager_create_and_add_window(
+        let window = track_newly_discovered_window_applying_its_rules(
             space_manager,
             window_manager,
             process_id,
@@ -327,7 +342,8 @@ pub(crate) fn window_manager_add_application_windows(
     let mut rule_length = window_manager.rules.len() as i32;
     let mut index: i32 = 0;
     while index < rule_length {
-        if RuleFlag(window_manager.rules[index as usize].flags).contains(RuleFlag::ONE_SHOT_REMOVE)
+        if RuleFlag(window_manager.rules[index as usize].flags)
+            .contains(RuleFlag::ONE_SHOT_DUE_FOR_REMOVAL)
         {
             window_manager.rules.swap_remove(index as usize);
             index -= 1;
@@ -340,16 +356,16 @@ pub(crate) fn window_manager_add_application_windows(
     list
 }
 
-pub(crate) fn window_manager_existing_application_window_list(
+pub(crate) fn query_application_windows_on_every_space(
     process_id: Option<ProcessId>,
     window_manager: &mut WindowManager,
 ) -> Option<Vec<WindowId>> {
-    let display_list = display_manager_active_display_list();
+    let display_list = query_displays_active_for_drawing();
 
     let mut space_list: Option<Vec<SpaceId>> = None;
 
     for index in 0..display_list.len() {
-        let Some(list) = display_space_list(display_list[index]) else {
+        let Some(list) = query_spaces_of_display(display_list[index]) else {
             continue;
         };
 
@@ -373,10 +389,10 @@ pub(crate) fn window_manager_existing_application_window_list(
         },
         None => 0,
     };
-    space_window_list_for_connection(&space_list, connection_id, true, window_manager)
+    query_windows_on_spaces_owned_by_connection(&space_list, connection_id, true, window_manager)
 }
 
-pub(crate) fn window_manager_add_existing_application_windows(
+pub(crate) fn track_existing_windows_of_application_including_those_on_inactive_spaces(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     process_id: ProcessId,
@@ -389,7 +405,7 @@ pub(crate) fn window_manager_add_existing_application_windows(
     let mut result = false;
 
     let Some(global_window_list) =
-        window_manager_existing_application_window_list(Some(process_id), window_manager)
+        query_application_windows_on_every_space(Some(process_id), window_manager)
     else {
         return result;
     };
@@ -400,7 +416,7 @@ pub(crate) fn window_manager_add_existing_application_windows(
     };
     let application_name = Arc::clone(&application.name);
     let application_process_id = application.process_id;
-    let window_list_ref = application_window_list(application);
+    let window_list_ref = copy_accessibility_windows_of_application(application);
     let window_count = match &window_list_ref {
         Some(window_list_ref) => cfarray_count(window_list_ref) as i32,
         None => 0,
@@ -412,7 +428,9 @@ pub(crate) fn window_manager_add_existing_application_windows(
             let window_ref = unsafe {
                 cfarray_borrow_value_at_index::<AXUIElement>(window_list_ref, index as CFIndex)
             };
-            let window_id = window_ref.map_or(0, |window_ref| ax_window_id(window_ref));
+            let window_id = window_ref.map_or(0, |window_ref| {
+                read_window_id_of_accessibility_element(window_ref)
+            });
 
             //
             // @cleanup
@@ -429,14 +447,14 @@ pub(crate) fn window_manager_add_existing_application_windows(
                 continue;
             }
 
-            if window_manager_find_window(window_manager, WindowId(window_id)).is_none()
+            if tracked_window_with_id(window_manager, WindowId(window_id)).is_none()
                 && let Some(window_ref) = window_ref
             {
                 let retained_window_ref =
                     CFRetained::into_raw(unsafe { CFRetained::retain(NonNull::from(window_ref)) })
                         .as_ptr()
                         .cast_const();
-                window_manager_create_and_add_window(
+                track_newly_discovered_window_applying_its_rules(
                     space_manager,
                     window_manager,
                     process_id,
@@ -458,7 +476,7 @@ pub(crate) fn window_manager_add_existing_application_windows(
             let mut application_window_list: Vec<WindowId> = Vec::new();
 
             for index in 0..global_window_count as usize {
-                let window = window_manager_find_window(window_manager, global_window_list[index]);
+                let window = tracked_window_with_id(window_manager, global_window_list[index]);
                 if window.is_none() {
                     missing_window = true;
                     application_window_list.push(global_window_list[index]);
@@ -468,7 +486,7 @@ pub(crate) fn window_manager_add_existing_application_windows(
             if missing_window {
                 crate::debug!(
                     "{}: {} has {} windows that are not yet resolved, attempting workaround\n",
-                    "window_manager_add_existing_application_windows",
+                    "track_existing_windows_of_application_including_those_on_inactive_spaces",
                     application_name,
                     application_window_list.len() as i32
                 );
@@ -523,9 +541,10 @@ pub(crate) fn window_manager_add_existing_application_windows(
 
                         if let Some(role) = role {
                             if CFEqual(Some(&*role), Some(as_cftype(kAXWindowRole()))) {
-                                let element_window_id = element_ref
-                                    .as_deref()
-                                    .map_or(0, |element_ref| ax_window_id(element_ref));
+                                let element_window_id =
+                                    element_ref.as_deref().map_or(0, |element_ref| {
+                                        read_window_id_of_accessibility_element(element_ref)
+                                    });
                                 let mut matched = false;
 
                                 if element_window_id != 0 {
@@ -541,7 +560,7 @@ pub(crate) fn window_manager_add_existing_application_windows(
                                 }
 
                                 if matched && let Some(element_ref) = element_ref {
-                                    window_manager_create_and_add_window(
+                                    track_newly_discovered_window_applying_its_rules(
                                         space_manager,
                                         window_manager,
                                         process_id,
@@ -569,14 +588,14 @@ pub(crate) fn window_manager_add_existing_application_windows(
             if application_window_list.len() > 0 {
                 crate::debug!(
                     "{}: workaround failed to resolve all windows for {}\n",
-                    "window_manager_add_existing_application_windows",
+                    "track_existing_windows_of_application_including_those_on_inactive_spaces",
                     application_name
                 );
                 window_manager.applications_to_refresh.push(process_id);
             } else {
                 crate::debug!(
                     "{}: workaround resolved all windows for {}\n",
-                    "window_manager_add_existing_application_windows",
+                    "track_existing_windows_of_application_including_those_on_inactive_spaces",
                     application_name
                 );
             }
@@ -584,7 +603,7 @@ pub(crate) fn window_manager_add_existing_application_windows(
             let mut missing_window = false;
 
             for index in 0..global_window_count as usize {
-                let window = window_manager_find_window(window_manager, global_window_list[index]);
+                let window = tracked_window_with_id(window_manager, global_window_list[index]);
                 if window.is_none() {
                     missing_window = true;
                     break;
@@ -594,7 +613,7 @@ pub(crate) fn window_manager_add_existing_application_windows(
             if !missing_window {
                 crate::debug!(
                     "{}: all windows for {} are now resolved\n",
-                    "window_manager_add_existing_application_windows",
+                    "track_existing_windows_of_application_including_those_on_inactive_spaces",
                     application_name
                 );
                 window_manager
@@ -606,7 +625,7 @@ pub(crate) fn window_manager_add_existing_application_windows(
     } else if refresh_index != -1 {
         crate::debug!(
             "{}: all windows for {} are now resolved\n",
-            "window_manager_add_existing_application_windows",
+            "track_existing_windows_of_application_including_those_on_inactive_spaces",
             application_name
         );
         window_manager
@@ -620,7 +639,7 @@ pub(crate) fn window_manager_add_existing_application_windows(
     result
 }
 
-pub(crate) fn space_manager_refresh_application_windows(
+pub(crate) fn retry_tracking_windows_of_applications_with_unresolved_windows(
     space_manager: &mut SpaceManager,
     process_manager: &mut ProcessManager,
     display_manager: &mut DisplayManager,
@@ -642,10 +661,10 @@ pub(crate) fn space_manager_refresh_application_windows(
             .map(|application| Arc::clone(&application.name));
         crate::debug!(
             "{}: {} has windows that are not yet resolved\n",
-            "space_manager_refresh_application_windows",
+            "retry_tracking_windows_of_applications_with_unresolved_windows",
             application_name.as_deref().unwrap_or("(null)")
         );
-        let result = window_manager_add_existing_application_windows(
+        let result = track_existing_windows_of_application_including_those_on_inactive_spaces(
             space_manager,
             window_manager,
             process_id,
@@ -664,7 +683,7 @@ pub(crate) fn space_manager_refresh_application_windows(
     window_count != window_manager.window.len()
 }
 
-pub(crate) fn window_manager_begin(
+pub(crate) fn start_tracking_running_applications_and_their_windows(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     process_manager: &mut ProcessManager,
@@ -683,13 +702,15 @@ pub(crate) fn window_manager_begin(
             .collect();
 
         for process in process_list {
-            if workspace_application_is_observable(&process) {
-                let mut application = application_create(&process);
+            if is_process_observable_refreshing_its_activation_policy(&process) {
+                let mut application = create_application_for_process(&process);
 
-                if application_observe(&mut application) {
+                if start_observing_application_notifications_reporting_whether_all_registered(
+                    &mut application,
+                ) {
                     let application_process_id = application.process_id;
-                    window_manager_add_application(window_manager, application);
-                    window_manager_add_existing_application_windows(
+                    start_tracking_application(window_manager, application);
+                    track_existing_windows_of_application_including_those_on_inactive_spaces(
                         space_manager,
                         window_manager,
                         application_process_id,
@@ -700,17 +721,17 @@ pub(crate) fn window_manager_begin(
                         mission_control_mode,
                     );
                 } else {
-                    application_unobserve(&mut application);
-                    application_destroy(application);
+                    stop_observing_application_notifications(&mut application);
+                    destroy_application_releasing_its_accessibility_element(application);
                 }
             } else {
                 crate::debug!(
                     "{}: {} ({}) is not observable, subscribing to activationPolicy changes\n",
-                    "window_manager_begin",
+                    "start_tracking_running_applications_and_their_windows",
                     process.name,
                     process.process_id.0
                 );
-                workspace_application_observe_activation_policy(
+                start_observing_application_activation_policy(
                     WORKSPACE_CONTEXT.get().unwrap(),
                     &process,
                 );
@@ -718,7 +739,7 @@ pub(crate) fn window_manager_begin(
         }
     });
 
-    let window = window_manager_focused_window(window_manager);
+    let window = query_focused_tracked_window(window_manager);
     if let Some(window_id) = window {
         window_manager.last_window_id = window_id;
         window_manager.focused_window_id = window_id;
@@ -732,7 +753,7 @@ pub(crate) fn window_manager_begin(
         {
             window_manager.focused_window_process_serial_number = application.process_serial_number;
         }
-        window_manager_set_window_opacity(
+        set_window_opacity_unless_disabled_or_fixed_by_rule(
             window_manager,
             window_id,
             window_manager.active_window_opacity,

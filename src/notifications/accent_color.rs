@@ -1,18 +1,20 @@
-use crate::event::queue::{Event, event_loop_post};
+use crate::event::queue::{Event, post_event_to_event_loop};
 use crate::ffi::appkit::{NSColor, NSColorSpace};
 use crate::ffi::dispatch::dispatch_after_on_main_queue;
-use crate::support::color::{RgbaColor, rgba_color_from_hex};
+use crate::support::color::{RgbaColor, rgba_color_from_packed_argb};
 
 pub(crate) fn read_the_system_accent_color_as_srgb() -> Option<RgbaColor> {
     let accent_color_in_srgb =
         NSColor::controlAccentColor().colorUsingColorSpace(&NSColorSpace::sRGBColorSpace())?;
 
-    Some(rgba_color_from_hex(packed_argb_from_srgb_components(
-        accent_color_in_srgb.redComponent(),
-        accent_color_in_srgb.greenComponent(),
-        accent_color_in_srgb.blueComponent(),
-        accent_color_in_srgb.alphaComponent(),
-    )))
+    Some(rgba_color_from_packed_argb(
+        packed_argb_from_srgb_components(
+            accent_color_in_srgb.redComponent(),
+            accent_color_in_srgb.greenComponent(),
+            accent_color_in_srgb.blueComponent(),
+            accent_color_in_srgb.alphaComponent(),
+        ),
+    ))
 }
 
 fn packed_argb_from_srgb_components(red: f64, green: f64, blue: f64, alpha: f64) -> u32 {
@@ -28,7 +30,7 @@ fn color_component_scaled_to_a_byte(color_component: f64) -> u32 {
 
 pub(crate) fn post_the_system_accent_color_to_the_event_loop() {
     if let Some(accent_color) = read_the_system_accent_color_as_srgb() {
-        event_loop_post(Event::SystemAccentColorChanged(accent_color));
+        post_event_to_event_loop(Event::SystemAccentColorChanged(accent_color));
     }
 }
 
@@ -39,7 +41,7 @@ pub(crate) fn post_the_system_accent_color_once_every_other_observer_has_seen_th
 #[cfg(test)]
 mod tests {
     use super::{color_component_scaled_to_a_byte, packed_argb_from_srgb_components};
-    use crate::support::color::rgba_color_from_hex;
+    use crate::support::color::rgba_color_from_packed_argb;
 
     #[test]
     fn a_component_is_scaled_to_the_nearest_byte_rounding_halves_up() {
@@ -116,7 +118,7 @@ mod tests {
         ];
 
         for (red_byte, green_byte, blue_byte, alpha_byte) in byte_exact_components {
-            let color = rgba_color_from_hex(packed_argb_from_srgb_components(
+            let color = rgba_color_from_packed_argb(packed_argb_from_srgb_components(
                 red_byte as f64 / 255.0,
                 green_byte as f64 / 255.0,
                 blue_byte as f64 / 255.0,

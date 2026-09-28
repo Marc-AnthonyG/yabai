@@ -2,7 +2,9 @@ use core::ffi::c_void;
 use std::sync::Mutex;
 
 use crate::ffi::libsystem::{PROC_PIDPATHINFO_MAXSIZE, proc_name};
-use crate::ffi::mach_port::{bootstrap_look_up, mach_port_deallocate, mach_send, mach_task_self};
+use crate::ffi::mach_port::{
+    bootstrap_look_up, mach_port_deallocate, mach_task_self, send_bytes_out_of_line_to_mach_port,
+};
 use crate::ffi::skylight::SLSConnectionGetPID;
 use crate::state::process_wide::BOOTSTRAP_PORT;
 use crate::window::proxy_pairing::WindowProxyPairing;
@@ -17,7 +19,7 @@ pub(crate) struct JankyBordersEvent {
 
 const _: () = assert!(core::mem::size_of::<JankyBordersEvent>() == 4104);
 
-pub(crate) fn window_manager_notify_jankyborders(
+pub(crate) fn notify_janky_borders_of_proxy_pairings(
     pairing_list: &[WindowProxyPairing],
     event: u32,
     wait: bool,
@@ -46,7 +48,7 @@ pub(crate) fn window_manager_notify_jankyborders(
             data.count += 1;
         }
 
-        mach_send(
+        send_bytes_out_of_line_to_mach_port(
             port,
             (&mut data as *mut JankyBordersEvent).cast::<c_void>(),
             core::mem::size_of::<JankyBordersEvent>() as u32,
@@ -58,10 +60,10 @@ pub(crate) fn window_manager_notify_jankyborders(
     }
 }
 
-pub(crate) fn window_manager_window_connection_is_jankyborders(window_connection_id: i32) -> bool {
-    static PROCESS_NAME: Mutex<[u8; PROC_PIDPATHINFO_MAXSIZE]> =
+pub(crate) fn is_window_connection_owned_by_janky_borders(window_connection_id: i32) -> bool {
+    static PROCESS_NAME_BUFFER: Mutex<[u8; PROC_PIDPATHINFO_MAXSIZE]> =
         Mutex::new([0u8; PROC_PIDPATHINFO_MAXSIZE]);
-    let mut process_name = PROCESS_NAME.lock().unwrap();
+    let mut process_name = PROCESS_NAME_BUFFER.lock().unwrap();
 
     let mut window_process_id: libc::pid_t = 0;
     unsafe { SLSConnectionGetPID(window_connection_id, &mut window_process_id) };

@@ -1,35 +1,39 @@
 use crate::daemon_fail;
-use crate::display::identity::display_manager_active_display_id;
+use crate::display::identity::query_display_showing_the_active_menu_bar;
 use crate::display::manager::DisplayManager;
 use crate::message::common_failures::{
     daemon_fail_with_unknown_command_for_domain,
     daemon_fail_with_unknown_option_given_to_command_for_domain,
 };
-use crate::message::properties::parse_properties;
+use crate::message::properties::parse_comma_separated_properties;
 use crate::message::selectors::{
     parse_display_selector, parse_space_selector, parse_window_selector,
 };
-use crate::message::token::{MessageCursor, Token, token_equals};
+use crate::message::token::{MessageCursor, Token, is_token_equal_to};
 use crate::mouse::drag::MouseDragState;
-use crate::query::displays::display_manager_query_displays;
+use crate::query::displays::write_every_display_as_json_array;
 use crate::query::spaces::{
-    space_manager_query_space, space_manager_query_spaces_for_display,
-    space_manager_query_spaces_for_displays, space_manager_query_spaces_for_window,
+    write_space_as_json_object_followed_by_newline, write_spaces_of_display_as_json_array,
+    write_spaces_of_every_display_as_json_array, write_spaces_of_window_as_json_array,
 };
 use crate::query::windows::{
-    window_manager_query_windows_for_display, window_manager_query_windows_for_displays,
-    window_manager_query_windows_for_spaces,
+    write_windows_on_display_as_json_array, write_windows_on_every_display_as_json_array,
+    write_windows_on_spaces_as_json_array,
 };
-use crate::serialise::display::{DISPLAY_PROPERTY_STR, DISPLAY_PROPERTY_VAL, display_serialize};
-use crate::serialise::space::{SPACE_PROPERTY_STR, SPACE_PROPERTY_VAL};
-use crate::serialise::window::{WINDOW_PROPERTY_STR, WINDOW_PROPERTY_VAL, window_serialize};
-use crate::space::focus::space_manager_active_space;
-use crate::space::managed_space::space_display_id;
+use crate::serialise::display::{
+    DISPLAY_PROPERTY_NAMES, DISPLAY_PROPERTY_SELECTION_BITS, write_display_as_json_object,
+};
+use crate::serialise::space::{SPACE_PROPERTY_NAMES, SPACE_PROPERTY_SELECTION_BITS};
+use crate::serialise::window::{
+    WINDOW_PROPERTY_NAMES, WINDOW_PROPERTY_SELECTION_BITS, write_tracked_window_as_json_object,
+};
+use crate::space::focus::query_current_space_of_the_focused_display;
+use crate::space::managed_space::query_display_holding_space;
 use crate::space::manager::SpaceManager;
 use crate::support::response::Response;
-use crate::window::focus::window_manager_focused_window;
+use crate::window::focus::query_focused_tracked_window;
 use crate::window::manager::WindowManager;
-use crate::window::model::window_display_id;
+use crate::window::model::query_display_holding_window;
 
 /* --------------------------------DOMAIN QUERY--------------------------------- */
 pub(crate) const COMMAND_QUERY_DISPLAYS: &str = "--displays";
@@ -41,7 +45,7 @@ pub(crate) const ARGUMENT_QUERY_SPACE: &str = "--space";
 pub(crate) const ARGUMENT_QUERY_WINDOW: &str = "--window";
 /* ----------------------------------------------------------------------------- */
 
-pub(crate) fn handle_domain_query(
+pub(crate) fn run_query_command(
     response: &mut Response,
     domain: Token,
     message_cursor: &mut MessageCursor,
@@ -50,27 +54,27 @@ pub(crate) fn handle_domain_query(
     space_manager: &mut SpaceManager,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    let command = message_cursor.get_token();
-    if token_equals(command, message_cursor.bytes(), COMMAND_QUERY_DISPLAYS) {
-        let token = message_cursor.get_token();
-        let properties = parse_properties(
+    let command = message_cursor.take_next_token();
+    if is_token_equal_to(command, message_cursor.bytes(), COMMAND_QUERY_DISPLAYS) {
+        let token = message_cursor.take_next_token();
+        let properties = parse_comma_separated_properties(
             response,
             message_cursor.bytes_mut(),
             token,
-            &DISPLAY_PROPERTY_VAL,
-            &DISPLAY_PROPERTY_STR,
+            &DISPLAY_PROPERTY_SELECTION_BITS,
+            &DISPLAY_PROPERTY_NAMES,
         );
         if properties.did_error {
             return;
         }
 
         let option = if properties.did_parse {
-            message_cursor.get_token()
+            message_cursor.take_next_token()
         } else {
             properties.token
         };
-        if token_equals(option, message_cursor.bytes(), ARGUMENT_QUERY_DISPLAY) {
-            let mut acting_display_id = display_manager_active_display_id();
+        if is_token_equal_to(option, message_cursor.bytes(), ARGUMENT_QUERY_DISPLAY) {
+            let mut acting_display_id = query_display_showing_the_active_menu_bar();
             let selector = parse_display_selector(
                 response,
                 message_cursor,
@@ -79,18 +83,23 @@ pub(crate) fn handle_domain_query(
                 display_manager,
             );
 
-            if selector.token.is_valid() {
-                if let Some(selector_display_id) = selector.resolved() {
+            if selector.token.is_not_empty() {
+                if let Some(selector_display_id) = selector.resolved_target() {
                     acting_display_id = selector_display_id;
                 } else {
                     return;
                 }
             }
 
-            display_serialize(response, acting_display_id, properties.flags, display_manager);
+            write_display_as_json_object(
+                response,
+                acting_display_id,
+                properties.flags,
+                display_manager,
+            );
             response.write(format_args!("\n"));
-        } else if token_equals(option, message_cursor.bytes(), ARGUMENT_QUERY_SPACE) {
-            let mut acting_space_id = space_manager_active_space(window_manager);
+        } else if is_token_equal_to(option, message_cursor.bytes(), ARGUMENT_QUERY_SPACE) {
+            let mut acting_space_id = query_current_space_of_the_focused_display(window_manager);
             let selector = parse_space_selector(
                 response,
                 message_cursor,
@@ -99,23 +108,23 @@ pub(crate) fn handle_domain_query(
                 space_manager,
             );
 
-            if selector.token.is_valid() {
-                if let Some(selector_space_id) = selector.resolved() {
+            if selector.token.is_not_empty() {
+                if let Some(selector_space_id) = selector.resolved_target() {
                     acting_space_id = selector_space_id;
                 } else {
                     return;
                 }
             }
 
-            display_serialize(
+            write_display_as_json_object(
                 response,
-                space_display_id(acting_space_id),
+                query_display_holding_space(acting_space_id),
                 properties.flags,
                 display_manager,
             );
             response.write(format_args!("\n"));
-        } else if token_equals(option, message_cursor.bytes(), ARGUMENT_QUERY_WINDOW) {
-            let mut acting_window_id = window_manager_focused_window(window_manager);
+        } else if is_token_equal_to(option, message_cursor.bytes(), ARGUMENT_QUERY_WINDOW) {
+            let mut acting_window_id = query_focused_tracked_window(window_manager);
             let selector = parse_window_selector(
                 response,
                 message_cursor,
@@ -126,8 +135,8 @@ pub(crate) fn handle_domain_query(
                 space_manager,
             );
 
-            if selector.token.is_valid() {
-                if let Some(selector_window_id) = selector.resolved() {
+            if selector.token.is_not_empty() {
+                if let Some(selector_window_id) = selector.resolved_target() {
                     acting_window_id = Some(selector_window_id);
                 } else {
                     return;
@@ -135,9 +144,9 @@ pub(crate) fn handle_domain_query(
             }
 
             if let Some(acting_window) = acting_window_id {
-                display_serialize(
+                write_display_as_json_object(
                     response,
-                    window_display_id(acting_window),
+                    query_display_holding_window(acting_window),
                     properties.flags,
                     display_manager,
                 );
@@ -148,7 +157,7 @@ pub(crate) fn handle_domain_query(
                     "could not find window to retrieve display details.\n"
                 );
             }
-        } else if option.is_valid() {
+        } else if option.is_not_empty() {
             daemon_fail_with_unknown_option_given_to_command_for_domain(
                 response,
                 message_cursor.bytes(),
@@ -157,28 +166,28 @@ pub(crate) fn handle_domain_query(
                 domain,
             );
         } else {
-            display_manager_query_displays(response, properties.flags, display_manager);
+            write_every_display_as_json_array(response, properties.flags, display_manager);
         }
-    } else if token_equals(command, message_cursor.bytes(), COMMAND_QUERY_SPACES) {
-        let token = message_cursor.get_token();
-        let properties = parse_properties(
+    } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_QUERY_SPACES) {
+        let token = message_cursor.take_next_token();
+        let properties = parse_comma_separated_properties(
             response,
             message_cursor.bytes_mut(),
             token,
-            &SPACE_PROPERTY_VAL,
-            &SPACE_PROPERTY_STR,
+            &SPACE_PROPERTY_SELECTION_BITS,
+            &SPACE_PROPERTY_NAMES,
         );
         if properties.did_error {
             return;
         }
 
         let option = if properties.did_parse {
-            message_cursor.get_token()
+            message_cursor.take_next_token()
         } else {
             properties.token
         };
-        if token_equals(option, message_cursor.bytes(), ARGUMENT_QUERY_DISPLAY) {
-            let mut acting_display_id = display_manager_active_display_id();
+        if is_token_equal_to(option, message_cursor.bytes(), ARGUMENT_QUERY_DISPLAY) {
+            let mut acting_display_id = query_display_showing_the_active_menu_bar();
             let selector = parse_display_selector(
                 response,
                 message_cursor,
@@ -187,15 +196,15 @@ pub(crate) fn handle_domain_query(
                 display_manager,
             );
 
-            if selector.token.is_valid() {
-                if let Some(selector_display_id) = selector.resolved() {
+            if selector.token.is_not_empty() {
+                if let Some(selector_display_id) = selector.resolved_target() {
                     acting_display_id = selector_display_id;
                 } else {
                     return;
                 }
             }
 
-            if !space_manager_query_spaces_for_display(
+            if !write_spaces_of_display_as_json_array(
                 response,
                 acting_display_id,
                 properties.flags,
@@ -205,8 +214,8 @@ pub(crate) fn handle_domain_query(
             ) {
                 daemon_fail!(response, "could not retrieve spaces for display.\n");
             }
-        } else if token_equals(option, message_cursor.bytes(), ARGUMENT_QUERY_SPACE) {
-            let mut acting_space_id = space_manager_active_space(window_manager);
+        } else if is_token_equal_to(option, message_cursor.bytes(), ARGUMENT_QUERY_SPACE) {
+            let mut acting_space_id = query_current_space_of_the_focused_display(window_manager);
             let selector = parse_space_selector(
                 response,
                 message_cursor,
@@ -215,15 +224,15 @@ pub(crate) fn handle_domain_query(
                 space_manager,
             );
 
-            if selector.token.is_valid() {
-                if let Some(selector_space_id) = selector.resolved() {
+            if selector.token.is_not_empty() {
+                if let Some(selector_space_id) = selector.resolved_target() {
                     acting_space_id = selector_space_id;
                 } else {
                     return;
                 }
             }
 
-            if !space_manager_query_space(
+            if !write_space_as_json_object_followed_by_newline(
                 response,
                 acting_space_id,
                 properties.flags,
@@ -233,8 +242,8 @@ pub(crate) fn handle_domain_query(
             ) {
                 daemon_fail!(response, "could not retrieve space details.\n");
             }
-        } else if token_equals(option, message_cursor.bytes(), ARGUMENT_QUERY_WINDOW) {
-            let mut acting_window_id = window_manager_focused_window(window_manager);
+        } else if is_token_equal_to(option, message_cursor.bytes(), ARGUMENT_QUERY_WINDOW) {
+            let mut acting_window_id = query_focused_tracked_window(window_manager);
             let selector = parse_window_selector(
                 response,
                 message_cursor,
@@ -245,8 +254,8 @@ pub(crate) fn handle_domain_query(
                 space_manager,
             );
 
-            if selector.token.is_valid() {
-                if let Some(selector_window_id) = selector.resolved() {
+            if selector.token.is_not_empty() {
+                if let Some(selector_window_id) = selector.resolved_target() {
                     acting_window_id = Some(selector_window_id);
                 } else {
                     return;
@@ -254,7 +263,7 @@ pub(crate) fn handle_domain_query(
             }
 
             if let Some(acting_window) = acting_window_id {
-                space_manager_query_spaces_for_window(
+                write_spaces_of_window_as_json_array(
                     response,
                     acting_window,
                     properties.flags,
@@ -265,7 +274,7 @@ pub(crate) fn handle_domain_query(
             } else {
                 daemon_fail!(response, "could not find window to retrieve space details.\n");
             }
-        } else if option.is_valid() {
+        } else if option.is_not_empty() {
             daemon_fail_with_unknown_option_given_to_command_for_domain(
                 response,
                 message_cursor.bytes(),
@@ -273,7 +282,7 @@ pub(crate) fn handle_domain_query(
                 command,
                 domain,
             );
-        } else if !space_manager_query_spaces_for_displays(
+        } else if !write_spaces_of_every_display_as_json_array(
             response,
             properties.flags,
             display_manager,
@@ -282,26 +291,26 @@ pub(crate) fn handle_domain_query(
         ) {
             daemon_fail!(response, "could not retrieve spaces for displays.\n");
         }
-    } else if token_equals(command, message_cursor.bytes(), COMMAND_QUERY_WINDOWS) {
-        let token = message_cursor.get_token();
-        let properties = parse_properties(
+    } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_QUERY_WINDOWS) {
+        let token = message_cursor.take_next_token();
+        let properties = parse_comma_separated_properties(
             response,
             message_cursor.bytes_mut(),
             token,
-            &WINDOW_PROPERTY_VAL,
-            &WINDOW_PROPERTY_STR,
+            &WINDOW_PROPERTY_SELECTION_BITS,
+            &WINDOW_PROPERTY_NAMES,
         );
         if properties.did_error {
             return;
         }
 
         let option = if properties.did_parse {
-            message_cursor.get_token()
+            message_cursor.take_next_token()
         } else {
             properties.token
         };
-        if token_equals(option, message_cursor.bytes(), ARGUMENT_QUERY_DISPLAY) {
-            let mut acting_display_id = display_manager_active_display_id();
+        if is_token_equal_to(option, message_cursor.bytes(), ARGUMENT_QUERY_DISPLAY) {
+            let mut acting_display_id = query_display_showing_the_active_menu_bar();
             let selector = parse_display_selector(
                 response,
                 message_cursor,
@@ -310,15 +319,15 @@ pub(crate) fn handle_domain_query(
                 display_manager,
             );
 
-            if selector.token.is_valid() {
-                if let Some(selector_display_id) = selector.resolved() {
+            if selector.token.is_not_empty() {
+                if let Some(selector_display_id) = selector.resolved_target() {
                     acting_display_id = selector_display_id;
                 } else {
                     return;
                 }
             }
 
-            window_manager_query_windows_for_display(
+            write_windows_on_display_as_json_array(
                 response,
                 acting_display_id,
                 properties.flags,
@@ -327,8 +336,8 @@ pub(crate) fn handle_domain_query(
                 space_manager,
                 mouse_drag_state,
             );
-        } else if token_equals(option, message_cursor.bytes(), ARGUMENT_QUERY_SPACE) {
-            let mut acting_space_id = space_manager_active_space(window_manager);
+        } else if is_token_equal_to(option, message_cursor.bytes(), ARGUMENT_QUERY_SPACE) {
+            let mut acting_space_id = query_current_space_of_the_focused_display(window_manager);
             let selector = parse_space_selector(
                 response,
                 message_cursor,
@@ -337,15 +346,15 @@ pub(crate) fn handle_domain_query(
                 space_manager,
             );
 
-            if selector.token.is_valid() {
-                if let Some(selector_space_id) = selector.resolved() {
+            if selector.token.is_not_empty() {
+                if let Some(selector_space_id) = selector.resolved_target() {
                     acting_space_id = selector_space_id;
                 } else {
                     return;
                 }
             }
 
-            window_manager_query_windows_for_spaces(
+            write_windows_on_spaces_as_json_array(
                 response,
                 &[acting_space_id],
                 properties.flags,
@@ -354,8 +363,8 @@ pub(crate) fn handle_domain_query(
                 space_manager,
                 mouse_drag_state,
             );
-        } else if token_equals(option, message_cursor.bytes(), ARGUMENT_QUERY_WINDOW) {
-            let mut acting_window_id = window_manager_focused_window(window_manager);
+        } else if is_token_equal_to(option, message_cursor.bytes(), ARGUMENT_QUERY_WINDOW) {
+            let mut acting_window_id = query_focused_tracked_window(window_manager);
             let selector = parse_window_selector(
                 response,
                 message_cursor,
@@ -366,8 +375,8 @@ pub(crate) fn handle_domain_query(
                 space_manager,
             );
 
-            if selector.token.is_valid() {
-                if let Some(selector_window_id) = selector.resolved() {
+            if selector.token.is_not_empty() {
+                if let Some(selector_window_id) = selector.resolved_target() {
                     acting_window_id = Some(selector_window_id);
                 } else {
                     return;
@@ -375,7 +384,7 @@ pub(crate) fn handle_domain_query(
             }
 
             if let Some(acting_window) = acting_window_id {
-                window_serialize(
+                write_tracked_window_as_json_object(
                     response,
                     acting_window,
                     properties.flags,
@@ -388,7 +397,7 @@ pub(crate) fn handle_domain_query(
             } else {
                 daemon_fail!(response, "could not retrieve window details.\n");
             }
-        } else if option.is_valid() {
+        } else if option.is_not_empty() {
             daemon_fail_with_unknown_option_given_to_command_for_domain(
                 response,
                 message_cursor.bytes(),
@@ -397,7 +406,7 @@ pub(crate) fn handle_domain_query(
                 domain,
             );
         } else {
-            window_manager_query_windows_for_displays(
+            write_windows_on_every_display_as_json_array(
                 response,
                 properties.flags,
                 display_manager,

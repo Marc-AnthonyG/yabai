@@ -1,4 +1,4 @@
-pub fn json_optional_bool(value: i32) -> &'static str {
+pub fn json_literal_for_optional_boolean(value: i32) -> &'static str {
     if value == 0 {
         return "null";
     }
@@ -9,11 +9,11 @@ pub fn json_optional_bool(value: i32) -> &'static str {
     "false"
 }
 
-pub fn json_bool(value: bool) -> &'static str {
+pub fn json_literal_for_boolean(value: bool) -> &'static str {
     if value { "true" } else { "false" }
 }
 
-pub fn ts_string_escape(string: &str) -> Option<String> {
+pub fn escape_string_for_json_when_it_needs_escaping(string: &str) -> Option<String> {
     let mut number_of_replacements = 0;
 
     for cursor in string.chars() {
@@ -65,34 +65,48 @@ pub fn ts_string_escape(string: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{json_bool, json_optional_bool, ts_string_escape};
+    use super::{
+        escape_string_for_json_when_it_needs_escaping, json_literal_for_boolean,
+        json_literal_for_optional_boolean,
+    };
 
     #[test]
-    fn ts_string_escape_returns_nothing_when_there_is_nothing_to_escape() {
+    fn escape_string_for_json_when_it_needs_escaping_returns_nothing_when_there_is_nothing_to_escape()
+     {
         for unescaped in ["Safari", "", "/", "\u{7f}", "caf\u{e9} \u{2014} \u{1f600}"] {
-            assert_eq!(ts_string_escape(unescaped), None, "escaping {unescaped:?}");
+            assert_eq!(
+                escape_string_for_json_when_it_needs_escaping(unescaped),
+                None,
+                "escaping {unescaped:?}"
+            );
         }
     }
 
     #[test]
-    fn ts_string_escape_escapes_quotes_and_backslashes_with_a_backslash() {
+    fn escape_string_for_json_when_it_needs_escaping_escapes_quotes_and_backslashes_with_a_backslash()
+     {
         assert_eq!(
-            ts_string_escape("say \"hi\""),
+            escape_string_for_json_when_it_needs_escaping("say \"hi\""),
             Some("say \\\"hi\\\"".to_string())
         );
-        assert_eq!(ts_string_escape("C:\\path"), Some("C:\\\\path".to_string()));
+        assert_eq!(
+            escape_string_for_json_when_it_needs_escaping("C:\\path"),
+            Some("C:\\\\path".to_string())
+        );
     }
 
     #[test]
-    fn ts_string_escape_uses_the_short_escapes_for_backspace_form_feed_newline_return_and_tab() {
+    fn escape_string_for_json_when_it_needs_escaping_uses_the_short_escapes_for_backspace_form_feed_newline_return_and_tab()
+     {
         assert_eq!(
-            ts_string_escape("\u{8}\u{c}\n\r\t"),
+            escape_string_for_json_when_it_needs_escaping("\u{8}\u{c}\n\r\t"),
             Some("\\b\\f\\n\\r\\t".to_string())
         );
     }
 
     #[test]
-    fn ts_string_escape_writes_other_control_characters_as_four_lowercase_hex_digits() {
+    fn escape_string_for_json_when_it_needs_escaping_writes_other_control_characters_as_four_lowercase_hex_digits()
+     {
         let expected_escapes = [
             ("\u{1}", "\\u0001"),
             ("\u{1b}[0m", "\\u001b[0m"),
@@ -102,7 +116,7 @@ mod tests {
 
         for (unescaped, expected_escape) in expected_escapes {
             assert_eq!(
-                ts_string_escape(unescaped),
+                escape_string_for_json_when_it_needs_escaping(unescaped),
                 Some(expected_escape.to_string()),
                 "escaping {unescaped:?}"
             );
@@ -110,24 +124,26 @@ mod tests {
     }
 
     #[test]
-    fn ts_string_escape_passes_non_ascii_text_through_beside_escaped_characters() {
+    fn escape_string_for_json_when_it_needs_escaping_passes_non_ascii_text_through_beside_escaped_characters()
+     {
         assert_eq!(
-            ts_string_escape("tab\there \"q\" \\ \u{2} caf\u{e9}"),
+            escape_string_for_json_when_it_needs_escaping("tab\there \"q\" \\ \u{2} caf\u{e9}"),
             Some("tab\\there \\\"q\\\" \\\\ \\u0002 caf\u{e9}".to_string())
         );
     }
 
     #[test]
-    fn json_optional_bool_reads_zero_as_null_one_as_true_and_anything_else_as_false() {
-        assert_eq!(json_optional_bool(0), "null");
-        assert_eq!(json_optional_bool(1), "true");
-        assert_eq!(json_optional_bool(2), "false");
-        assert_eq!(json_optional_bool(-1), "false");
+    fn json_literal_for_optional_boolean_reads_zero_as_null_one_as_true_and_anything_else_as_false()
+    {
+        assert_eq!(json_literal_for_optional_boolean(0), "null");
+        assert_eq!(json_literal_for_optional_boolean(1), "true");
+        assert_eq!(json_literal_for_optional_boolean(2), "false");
+        assert_eq!(json_literal_for_optional_boolean(-1), "false");
     }
 
     #[test]
-    fn json_bool_spells_true_and_false() {
-        assert_eq!(json_bool(true), "true");
-        assert_eq!(json_bool(false), "false");
+    fn json_literal_for_boolean_spells_true_and_false() {
+        assert_eq!(json_literal_for_boolean(true), "true");
+        assert_eq!(json_literal_for_boolean(false), "false");
     }
 }

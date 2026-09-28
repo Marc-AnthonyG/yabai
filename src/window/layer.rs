@@ -3,13 +3,13 @@ use crate::ffi::skylight::{
     SLSCopyAssociatedWindows, SLSWindowIteratorAdvance, SLSWindowIteratorGetParentID,
     SLSWindowIteratorGetWindowID, SLSWindowQueryResultCopyWindows, SLSWindowQueryWindows,
 };
-use crate::scripting_addition::client::scripting_addition_set_layer;
-use crate::state::process_wide::CONNECTION;
+use crate::scripting_addition::client::set_window_layer_through_scripting_addition;
+use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
 use crate::support::handles::WindowId;
 use crate::support::layer::{LAYER_AUTO, LAYER_BELOW, LAYER_NORMAL};
-use crate::window::manager::{WindowManager, window_manager_find_managed_window};
+use crate::window::manager::{WindowManager, space_managing_window};
 
-pub(crate) fn window_manager_adjust_layer(
+pub(crate) fn set_window_layer_unless_explicitly_set(
     window_id: WindowId,
     layer: i32,
     window_manager: &mut WindowManager,
@@ -21,10 +21,10 @@ pub(crate) fn window_manager_adjust_layer(
         return;
     }
 
-    scripting_addition_set_layer(window_id, layer);
+    set_window_layer_through_scripting_addition(window_id, layer);
 }
 
-pub(crate) fn window_manager_set_window_layer(
+pub(crate) fn set_window_layer_for_it_and_its_child_windows(
     window_id: WindowId,
     layer: i32,
     window_manager: &mut WindowManager,
@@ -33,7 +33,7 @@ pub(crate) fn window_manager_set_window_layer(
     let mut child_layer = layer;
 
     if layer == LAYER_AUTO {
-        parent_layer = if window_manager_find_managed_window(window_manager, window_id).is_some() {
+        parent_layer = if space_managing_window(window_manager, window_id).is_some() {
             LAYER_BELOW
         } else {
             LAYER_NORMAL
@@ -45,12 +45,12 @@ pub(crate) fn window_manager_set_window_layer(
         return false;
     };
     window.layer = layer;
-    let result = scripting_addition_set_layer(window_id, parent_layer);
+    let result = set_window_layer_through_scripting_addition(window_id, parent_layer);
     if !result {
         return false;
     }
 
-    let connection = *CONNECTION.get().unwrap();
+    let connection = *SKYLIGHT_CONNECTION_ID.get().unwrap();
     let Some(window_list) =
         (unsafe { take_create_rule_result(SLSCopyAssociatedWindows(connection, window_id.0)) })
     else {
@@ -96,7 +96,10 @@ pub(crate) fn window_manager_set_window_layer(
             if parent_list[inner_index] != check_list[index] {
                 continue;
             }
-            scripting_addition_set_layer(WindowId(child_list[inner_index]), child_layer);
+            set_window_layer_through_scripting_addition(
+                WindowId(child_list[inner_index]),
+                child_layer,
+            );
             if check_list.len() < window_count as usize {
                 check_list.push(child_list[inner_index]);
             }

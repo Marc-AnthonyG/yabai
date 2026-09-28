@@ -1,20 +1,21 @@
-use crate::display::arrangement::display_manager_display_id_arrangement;
+use crate::display::arrangement::query_arrangement_index_of_display;
 use crate::display::manager::DisplayManager;
-use crate::ffi::core_foundation::ts_cfstring_copy;
-use crate::layout::settings::VIEW_TYPE_STR;
-use crate::layout::tree::{window_node_find_first_leaf, window_node_find_last_leaf};
-use crate::space::labels::space_manager_get_label_for_space;
-use crate::space::lookup::space_manager_mission_control_index;
+use crate::ffi::core_foundation::cfstring_to_string;
+use crate::layout::settings::VIEW_LAYOUT_NAMES;
+use crate::layout::tree::{first_leaf_below_node, last_leaf_below_node};
+use crate::space::labels::label_of_space;
+use crate::space::lookup::query_mission_control_index_of_space;
 use crate::space::managed_space::{
-    space_display_id, space_is_fullscreen, space_is_visible, space_window_list,
+    is_native_fullscreen_space, is_space_visible_on_its_display, query_display_holding_space,
+    query_windows_on_space,
 };
 use crate::space::manager::SpaceManager;
 use crate::support::handles::{ROOT_NODE_ID, SpaceId, WindowId};
-use crate::support::json::json_bool;
+use crate::support::json::json_literal_for_boolean;
 use crate::support::response::Response;
 use crate::window::manager::WindowManager;
 
-macro_rules! space_property_list {
+macro_rules! with_every_space_property {
     ($space_property_entry:ident) => {
         $space_property_entry! {
             ("id", SPACE_PROPERTY_ID, 0x001),
@@ -33,19 +34,19 @@ macro_rules! space_property_list {
     };
 }
 
-macro_rules! define_space_property_list {
+macro_rules! define_space_property_bits_and_names {
     ($(($name:literal, $identifier:ident, $value:literal)),* $(,)?) => {
         $(pub(crate) const $identifier: u64 = $value;)*
 
-        pub(crate) static SPACE_PROPERTY_VAL: [u64; 12] = [$($value),*];
+        pub(crate) static SPACE_PROPERTY_SELECTION_BITS: [u64; 12] = [$($value),*];
 
-        pub(crate) static SPACE_PROPERTY_STR: [&str; 12] = [$($name),*];
+        pub(crate) static SPACE_PROPERTY_NAMES: [&str; 12] = [$($name),*];
     };
 }
 
-space_property_list!(define_space_property_list);
+with_every_space_property!(define_space_property_bits_and_names);
 
-pub(crate) fn view_serialize(
+pub(crate) fn write_space_as_json_object(
     response: &mut Response,
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
@@ -80,7 +81,7 @@ pub(crate) fn view_serialize(
             .view
             .find(&space_id)
             .and_then(|view| view.uuid.as_ref())
-            .and_then(|uuid| ts_cfstring_copy(uuid.as_ref()));
+            .and_then(|uuid| cfstring_to_string(uuid.as_ref()));
         response.write(format_args!(
             "\t\"uuid\":\"{}\"",
             uuid.as_deref().unwrap_or("<unknown>")
@@ -95,7 +96,7 @@ pub(crate) fn view_serialize(
 
         response.write(format_args!(
             "\t\"index\":{}",
-            space_manager_mission_control_index(space_id)
+            query_mission_control_index_of_space(space_id)
         ));
         did_output = true;
     }
@@ -105,7 +106,7 @@ pub(crate) fn view_serialize(
             response.write(format_args!(",\n"));
         }
 
-        let space_label = space_manager_get_label_for_space(space_manager, space_id);
+        let space_label = label_of_space(space_manager, space_id);
         response.write(format_args!(
             "\t\"label\":\"{}\"",
             match &space_label {
@@ -123,7 +124,7 @@ pub(crate) fn view_serialize(
 
         response.write(format_args!(
             "\t\"type\":\"{}\"",
-            VIEW_TYPE_STR[layout as usize]
+            VIEW_LAYOUT_NAMES[layout as usize]
         ));
         did_output = true;
     }
@@ -135,7 +136,10 @@ pub(crate) fn view_serialize(
 
         response.write(format_args!(
             "\t\"display\":{}",
-            display_manager_display_id_arrangement(space_display_id(space_id), display_manager)
+            query_arrangement_index_of_display(
+                query_display_holding_space(space_id),
+                display_manager
+            )
         ));
         did_output = true;
     }
@@ -145,7 +149,8 @@ pub(crate) fn view_serialize(
             response.write(format_args!(",\n"));
         }
 
-        let window_list = space_window_list(space_id, true, window_manager).unwrap_or_default();
+        let window_list =
+            query_windows_on_space(space_id, true, window_manager).unwrap_or_default();
         let window_count = window_list.len() as i32;
 
         response.write(format_args!("\t\"windows\":["));
@@ -165,7 +170,7 @@ pub(crate) fn view_serialize(
             response.write(format_args!(",\n"));
         }
 
-        let first_leaf = window_node_find_first_leaf(space_id, ROOT_NODE_ID, space_manager);
+        let first_leaf = first_leaf_below_node(space_id, ROOT_NODE_ID, space_manager);
         let first_window_id = space_manager
             .view
             .find(&space_id)
@@ -182,7 +187,7 @@ pub(crate) fn view_serialize(
             response.write(format_args!(",\n"));
         }
 
-        let last_leaf = window_node_find_last_leaf(space_id, ROOT_NODE_ID, space_manager);
+        let last_leaf = last_leaf_below_node(space_id, ROOT_NODE_ID, space_manager);
         let last_window_id = space_manager
             .view
             .find(&space_id)
@@ -201,7 +206,7 @@ pub(crate) fn view_serialize(
 
         response.write(format_args!(
             "\t\"has-focus\":{}",
-            json_bool(space_id == space_manager.current_space_id)
+            json_literal_for_boolean(space_id == space_manager.current_space_id)
         ));
         did_output = true;
     }
@@ -213,7 +218,7 @@ pub(crate) fn view_serialize(
 
         response.write(format_args!(
             "\t\"is-visible\":{}",
-            json_bool(space_is_visible(space_id))
+            json_literal_for_boolean(is_space_visible_on_its_display(space_id))
         ));
         did_output = true;
     }
@@ -225,7 +230,7 @@ pub(crate) fn view_serialize(
 
         response.write(format_args!(
             "\t\"is-native-fullscreen\":{}",
-            json_bool(space_is_fullscreen(space_id))
+            json_literal_for_boolean(is_native_fullscreen_space(space_id))
         ));
     }
 

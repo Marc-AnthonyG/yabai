@@ -1,4 +1,4 @@
-pub(crate) const FAILURE_MESSAGE: &[u8] = b"\x07";
+pub(crate) const FAILURE_RESPONSE_MARKER: &[u8] = b"\x07";
 
 enum ResponseSink {
     Client(std::io::BufWriter<std::os::unix::net::UnixStream>),
@@ -58,23 +58,23 @@ impl Response {
         };
     }
 
-    pub fn begin_failure(&mut self) {
-        self.write_bytes(FAILURE_MESSAGE);
+    pub fn write_failure_marker(&mut self) {
+        self.write_bytes(FAILURE_RESPONSE_MARKER);
     }
 
-    pub fn fail(&mut self, arguments: std::fmt::Arguments) {
+    pub fn write_failure_unless_silent(&mut self, arguments: std::fmt::Arguments) {
         if self.is_silent() {
             return;
         }
-        self.begin_failure();
+        self.write_failure_marker();
         self.write(arguments);
     }
 
-    pub fn fail_pieces(&mut self, pieces: &[FailurePiece]) {
+    pub fn write_failure_pieces_unless_silent(&mut self, pieces: &[FailurePiece]) {
         if self.is_silent() {
             return;
         }
-        self.begin_failure();
+        self.write_failure_marker();
         for piece in pieces {
             match piece {
                 FailurePiece::Text(text) => self.write_bytes(text.as_bytes()),
@@ -106,6 +106,6 @@ impl Drop for Response {
 #[macro_export]
 macro_rules! daemon_fail {
     ($response:expr, $($argument:tt)*) => {
-        $response.fail(format_args!($($argument)*))
+        $response.write_failure_unless_silent(format_args!($($argument)*))
     };
 }

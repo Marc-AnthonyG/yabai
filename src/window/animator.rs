@@ -5,11 +5,11 @@ use crate::ffi::core_video::CVDisplayLink;
 use crate::support::easing::AnimationEasingType;
 use crate::support::handles::WindowId;
 use crate::window::animated_windows::AnimatedWindows;
-use crate::window::animation::WindowCapture;
+use crate::window::animation::WindowWithTargetFrame;
 use crate::window::animation_completion::AnimationCompletionJob;
-use crate::window::animation_display_link::{AnimationDisplayLink, animation_display_link_start};
+use crate::window::animation_display_link::{AnimationDisplayLink, start_animation_display_link};
 use crate::window::animation_frame_transaction::ProxyFrameUpdate;
-use crate::window::animator_resources::{WindowAnimatorResources, window_animator_resources_start};
+use crate::window::animator_resources::{WindowAnimatorResources, start_window_animator_resources};
 use crate::window::proxy::WindowProxy;
 
 pub(crate) struct WindowAnimator {
@@ -53,18 +53,18 @@ pub(crate) fn window_animator_resources_starting_them_once(
 ) -> Option<&WindowAnimatorResources> {
     if window_animator.resources.get().is_none() {
         let window_animator_resources =
-            window_animator_resources_start(Arc::downgrade(window_animator))?;
+            start_window_animator_resources(Arc::downgrade(window_animator))?;
         let _ = window_animator.resources.set(window_animator_resources);
     }
     window_animator.resources.get()
 }
 
-pub(crate) fn window_animator_retarget_moving_windows_and_collect_stationary_ones(
+pub(crate) fn retarget_moving_windows_and_collect_stationary_ones(
     window_animator: &WindowAnimator,
-    window_list: &[WindowCapture],
+    window_list: &[WindowWithTargetFrame],
     duration_in_seconds: f32,
     easing: AnimationEasingType,
-) -> Vec<WindowCapture> {
+) -> Vec<WindowWithTargetFrame> {
     let mut shared_state = window_animator.shared_state.lock().unwrap();
 
     let was_retargeted_list: Vec<bool> = window_list
@@ -91,7 +91,7 @@ pub(crate) fn window_animator_retarget_moving_windows_and_collect_stationary_one
     }
     drop(shared_state);
 
-    let mut stationary_window_list: Vec<WindowCapture> = Vec::new();
+    let mut stationary_window_list: Vec<WindowWithTargetFrame> = Vec::new();
     for (window_capture, was_retargeted) in window_list.iter().zip(was_retargeted_list) {
         if was_retargeted {
             continue;
@@ -108,7 +108,7 @@ pub(crate) fn window_animator_retarget_moving_windows_and_collect_stationary_one
     stationary_window_list
 }
 
-pub(crate) fn window_animator_set_request_in_motion(
+pub(crate) fn set_animation_request_in_motion(
     window_animator: &Arc<WindowAnimator>,
     window_animator_resources: &WindowAnimatorResources,
     proxies_with_their_target_frame: Vec<(WindowProxy, CGRect)>,
@@ -133,7 +133,7 @@ pub(crate) fn window_animator_set_request_in_motion(
         return;
     }
 
-    let started_display_link = animation_display_link_start(window_animator);
+    let started_display_link = start_animation_display_link(window_animator);
 
     let proxies_to_swap_out_at_once = {
         let mut shared_state = window_animator.shared_state.lock().unwrap();
@@ -156,7 +156,7 @@ pub(crate) fn window_animator_set_request_in_motion(
     }
 }
 
-pub(crate) fn window_animator_advance_to_display_link_tick(
+pub(crate) fn advance_window_animator_to_display_link_tick(
     window_animator: &WindowAnimator,
     display_link: &CVDisplayLink,
     tick_host_time: u64,
@@ -197,7 +197,7 @@ pub(crate) fn window_animator_advance_to_display_link_tick(
     })
 }
 
-pub(crate) fn window_animator_forget_windows_whose_proxy_was_swapped_out(
+pub(crate) fn forget_swapped_out_windows_waking_requests_that_wait_for_them(
     window_animator: &WindowAnimator,
     window_id_list: &[WindowId],
 ) {
@@ -217,13 +217,13 @@ mod tests {
     use std::time::Duration;
 
     use super::{
-        WindowAnimator, window_animator_forget_windows_whose_proxy_was_swapped_out,
-        window_animator_retarget_moving_windows_and_collect_stationary_ones,
+        WindowAnimator, forget_swapped_out_windows_waking_requests_that_wait_for_them,
+        retarget_moving_windows_and_collect_stationary_ones,
     };
     use crate::ffi::core_foundation::{CGPoint, CGRect, CGSize};
     use crate::support::easing::AnimationEasingType;
     use crate::support::handles::WindowId;
-    use crate::window::animation::WindowCapture;
+    use crate::window::animation::WindowWithTargetFrame;
     use crate::window::proxy::WindowProxy;
 
     const HOST_CLOCK_FREQUENCY: f64 = 24_000_000.0;
@@ -231,8 +231,8 @@ mod tests {
     const HOST_TIME_OF_THE_FIRST_TICK: u64 = 1_000_000_000;
     const DURATION_IN_SECONDS: f32 = 0.1;
 
-    fn capture_towards(window_id: u32, x: f32) -> WindowCapture {
-        WindowCapture {
+    fn capture_towards(window_id: u32, x: f32) -> WindowWithTargetFrame {
+        WindowWithTargetFrame {
             window_id: WindowId(window_id),
             x,
             y: 50.0,
@@ -285,9 +285,9 @@ mod tests {
 
     fn collect_stationary_windows(
         window_animator: &WindowAnimator,
-        window_list: &[WindowCapture],
+        window_list: &[WindowWithTargetFrame],
     ) -> Vec<(u32, f32)> {
-        window_animator_retarget_moving_windows_and_collect_stationary_ones(
+        retarget_moving_windows_and_collect_stationary_ones(
             window_animator,
             window_list,
             DURATION_IN_SECONDS,
@@ -389,13 +389,13 @@ mod tests {
                 Arc::clone(&the_requested_window_is_about_to_be_forgotten);
             std::thread::spawn(move || {
                 std::thread::sleep(Duration::from_millis(20));
-                window_animator_forget_windows_whose_proxy_was_swapped_out(
+                forget_swapped_out_windows_waking_requests_that_wait_for_them(
                     &window_animator,
                     &[WindowId(6)],
                 );
                 std::thread::sleep(Duration::from_millis(30));
                 the_requested_window_is_about_to_be_forgotten.store(true, Ordering::SeqCst);
-                window_animator_forget_windows_whose_proxy_was_swapped_out(
+                forget_swapped_out_windows_waking_requests_that_wait_for_them(
                     &window_animator,
                     &[WindowId(5)],
                 );

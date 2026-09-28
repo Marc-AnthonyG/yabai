@@ -1,45 +1,55 @@
 use std::sync::atomic::{Ordering, compiler_fence};
 
 use crate::display::manager::DisplayManager;
-use crate::display::spaces::{display_manager_display_is_animating, display_space_id};
-use crate::layout::view::{view_flush, view_update};
+use crate::display::spaces::{
+    is_display_animating_a_space_transition, query_current_space_of_display,
+};
+use crate::layout::view::{
+    move_view_windows_into_their_areas_or_defer_until_space_is_visible,
+    recompute_view_areas_from_display_bounds_and_padding,
+};
 use crate::mouse::drag::MouseDragState;
 use crate::scripting_addition::client::{
-    scripting_addition_create_space, scripting_addition_destroy_space,
-    scripting_addition_move_space_after_space, scripting_addition_move_space_to_display,
+    create_space_on_display_of_space_through_scripting_addition,
+    destroy_space_through_scripting_addition, move_space_after_space_through_scripting_addition,
+    move_space_to_display_through_scripting_addition,
 };
-use crate::space::focus::{space_manager_active_space, space_manager_focus_space};
+use crate::space::focus::{
+    focus_space_through_the_scripting_addition_or_dock_swipes,
+    query_current_space_of_the_focused_display,
+};
 use crate::space::lookup::{
-    space_manager_find_first_user_space_for_display, space_manager_is_space_last_user_space,
-    space_manager_mission_control_index, space_manager_prev_space,
+    is_space_the_last_user_space_of_its_display, query_first_user_space_of_display,
+    query_mission_control_index_of_space, query_previous_space_in_mission_control_order,
 };
-use crate::space::managed_space::{space_display_id, space_is_user, space_window_list};
+use crate::space::managed_space::{
+    is_user_space, query_display_holding_space, query_windows_on_space,
+};
 use crate::space::manager::{
-    SpaceManager, space_manager_mark_view_invalid,
-    space_manager_point_view_handles_at_rekeyed_views,
+    SpaceManager, mark_view_areas_out_of_date, point_view_handles_at_rekeyed_views,
 };
-use crate::space::moving_windows::space_manager_move_window_list_to_space;
-use crate::state::mission_control_mode::{MissionControlMode, mission_control_is_active};
+use crate::space::moving_windows::move_windows_to_space_by_whichever_mechanism_this_macos_supports;
+use crate::state::mission_control_mode::{MissionControlMode, is_mission_control_active};
 use crate::support::handles::{DisplayId, SpaceId};
 use crate::window::manager::WindowManager;
-use crate::window::space_reconciliation::window_manager_validate_and_check_for_windows_on_space;
+use crate::window::space_reconciliation::reconcile_space_view_with_windows_on_space;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum SpaceOpError {
+pub(crate) enum SpaceOperationOutcome {
     Success = 0,
-    MissingSrc = 1,
-    MissingDst = 2,
-    InvalidSrc = 3,
-    InvalidDst = 4,
-    InvalidType = 5,
+    MissingSource = 1,
+    MissingDestination = 2,
+    InvalidSource = 3,
+    InvalidDestination = 4,
+    NotAUserSpace = 5,
     SameSpace = 6,
-    SameDisplay = 7,
+    NotOnTheSameDisplay = 7,
     DisplayIsAnimating = 8,
-    InMissionControl = 9,
-    ScriptingAddition = 10,
+    MissionControlIsActive = 9,
+    ScriptingAdditionFailed = 10,
 }
 
-pub(crate) fn space_manager_swap_space_with_space_on_display(
+pub(crate) fn swap_spaces_across_displays_by_exchanging_their_windows(
     a_display_id: DisplayId,
     a_space_id: SpaceId,
     b_display_id: DisplayId,
@@ -48,32 +58,36 @@ pub(crate) fn space_manager_swap_space_with_space_on_display(
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
     mouse_drag_state: &mut MouseDragState,
-) -> SpaceOpError {
-    if display_manager_display_is_animating(a_display_id) {
-        return SpaceOpError::DisplayIsAnimating;
+) -> SpaceOperationOutcome {
+    if is_display_animating_a_space_transition(a_display_id) {
+        return SpaceOperationOutcome::DisplayIsAnimating;
     }
-    if display_manager_display_is_animating(b_display_id) {
-        return SpaceOpError::DisplayIsAnimating;
+    if is_display_animating_a_space_transition(b_display_id) {
+        return SpaceOperationOutcome::DisplayIsAnimating;
     }
 
     let window_animation_duration = window_manager.window_animation_duration;
     window_manager.window_animation_duration = 0.0f32;
     compiler_fence(Ordering::SeqCst);
 
-    let a_window_list = space_window_list(a_space_id, true, window_manager).unwrap_or_default();
+    let a_window_list =
+        query_windows_on_space(a_space_id, true, window_manager).unwrap_or_default();
 
-    let b_window_list = space_window_list(b_space_id, true, window_manager).unwrap_or_default();
+    let b_window_list =
+        query_windows_on_space(b_space_id, true, window_manager).unwrap_or_default();
 
     let Some(mut a_view) = space_manager.view.remove(&a_space_id) else {
         compiler_fence(Ordering::SeqCst);
         window_manager.window_animation_duration = window_animation_duration;
-        return SpaceOpError::InvalidSrc;
+        return SpaceOperationOutcome::InvalidSource;
     };
     let Some(mut b_view) = space_manager.view.remove(&b_space_id) else {
-        space_manager.view.add(a_space_id, a_view);
+        space_manager
+            .view
+            .add_unless_key_already_present(a_space_id, a_view);
         compiler_fence(Ordering::SeqCst);
         window_manager.window_animation_duration = window_animation_duration;
-        return SpaceOpError::InvalidDst;
+        return SpaceOperationOutcome::InvalidDestination;
     };
 
     a_view.space_id = b_space_id;
@@ -81,29 +95,35 @@ pub(crate) fn space_manager_swap_space_with_space_on_display(
 
     std::mem::swap(&mut a_view.uuid, &mut b_view.uuid);
 
-    space_manager.view.add(a_space_id, b_view);
-    space_manager.view.add(b_space_id, a_view);
+    space_manager
+        .view
+        .add_unless_key_already_present(a_space_id, b_view);
+    space_manager
+        .view
+        .add_unless_key_already_present(b_space_id, a_view);
 
-    space_manager_point_view_handles_at_rekeyed_views(
-        window_manager,
-        mouse_drag_state,
-        |space_id| {
-            if space_id == a_space_id {
-                b_space_id
-            } else if space_id == b_space_id {
-                a_space_id
-            } else {
-                space_id
-            }
-        },
-    );
+    point_view_handles_at_rekeyed_views(window_manager, mouse_drag_state, |space_id| {
+        if space_id == a_space_id {
+            b_space_id
+        } else if space_id == b_space_id {
+            a_space_id
+        } else {
+            space_id
+        }
+    });
 
     if !a_window_list.is_empty() {
-        space_manager_move_window_list_to_space(b_space_id, &a_window_list);
+        move_windows_to_space_by_whichever_mechanism_this_macos_supports(
+            b_space_id,
+            &a_window_list,
+        );
     }
 
     if !b_window_list.is_empty() {
-        space_manager_move_window_list_to_space(a_space_id, &b_window_list);
+        move_windows_to_space_by_whichever_mechanism_this_macos_supports(
+            a_space_id,
+            &b_window_list,
+        );
     }
 
     for label in space_manager.labels.iter_mut() {
@@ -114,18 +134,36 @@ pub(crate) fn space_manager_swap_space_with_space_on_display(
         }
     }
 
-    view_update(space_manager, b_space_id, display_manager, window_manager);
-    view_update(space_manager, a_space_id, display_manager, window_manager);
+    recompute_view_areas_from_display_bounds_and_padding(
+        space_manager,
+        b_space_id,
+        display_manager,
+        window_manager,
+    );
+    recompute_view_areas_from_display_bounds_and_padding(
+        space_manager,
+        a_space_id,
+        display_manager,
+        window_manager,
+    );
 
-    view_flush(space_manager, b_space_id, window_manager);
-    view_flush(space_manager, a_space_id, window_manager);
+    move_view_windows_into_their_areas_or_defer_until_space_is_visible(
+        space_manager,
+        b_space_id,
+        window_manager,
+    );
+    move_view_windows_into_their_areas_or_defer_until_space_is_visible(
+        space_manager,
+        a_space_id,
+        window_manager,
+    );
 
     compiler_fence(Ordering::SeqCst);
     window_manager.window_animation_duration = window_animation_duration;
-    SpaceOpError::Success
+    SpaceOperationOutcome::Success
 }
 
-pub(crate) fn space_manager_swap_space_with_space(
+pub(crate) fn swap_space_with_space(
     acting_space_id: SpaceId,
     selector_space_id: SpaceId,
     display_manager: &mut DisplayManager,
@@ -133,20 +171,20 @@ pub(crate) fn space_manager_swap_space_with_space(
     space_manager: &mut SpaceManager,
     mission_control_mode: &mut MissionControlMode,
     mouse_drag_state: &mut MouseDragState,
-) -> SpaceOpError {
-    let is_in_mission_control = mission_control_is_active(mission_control_mode);
+) -> SpaceOperationOutcome {
+    let is_in_mission_control = is_mission_control_active(mission_control_mode);
     if is_in_mission_control {
-        return SpaceOpError::InMissionControl;
+        return SpaceOperationOutcome::MissionControlIsActive;
     }
 
-    let acting_display_id = space_display_id(acting_space_id);
-    let selector_display_id = space_display_id(selector_space_id);
+    let acting_display_id = query_display_holding_space(acting_space_id);
+    let selector_display_id = query_display_holding_space(selector_space_id);
 
     if acting_space_id == selector_space_id {
-        return SpaceOpError::SameSpace;
+        return SpaceOperationOutcome::SameSpace;
     }
     if acting_display_id != selector_display_id {
-        return space_manager_swap_space_with_space_on_display(
+        return swap_spaces_across_displays_by_exchanging_their_windows(
             acting_display_id,
             acting_space_id,
             selector_display_id,
@@ -158,21 +196,22 @@ pub(crate) fn space_manager_swap_space_with_space(
         );
     }
 
-    let is_animating = display_manager_display_is_animating(acting_display_id);
+    let is_animating = is_display_animating_a_space_transition(acting_display_id);
     if is_animating {
-        return SpaceOpError::DisplayIsAnimating;
+        return SpaceOperationOutcome::DisplayIsAnimating;
     }
 
-    let acting_previous_space_id = space_manager_prev_space(acting_space_id);
-    let selector_previous_space_id = space_manager_prev_space(selector_space_id);
+    let acting_previous_space_id = query_previous_space_in_mission_control_order(acting_space_id);
+    let selector_previous_space_id =
+        query_previous_space_in_mission_control_order(selector_space_id);
 
     let acting_previous_display_id = if acting_previous_space_id != SpaceId(0) {
-        space_display_id(acting_previous_space_id)
+        query_display_holding_space(acting_previous_space_id)
     } else {
         DisplayId(0)
     };
     let selector_previous_display_id = if selector_previous_space_id != SpaceId(0) {
-        space_display_id(selector_previous_space_id)
+        query_display_holding_space(selector_previous_space_id)
     } else {
         DisplayId(0)
     };
@@ -182,69 +221,69 @@ pub(crate) fn space_manager_swap_space_with_space(
     let selector_space_id_is_first = selector_previous_space_id == SpaceId(0)
         || selector_previous_display_id != selector_display_id;
 
-    let acting_mission_control_index = space_manager_mission_control_index(acting_space_id);
-    let selector_mission_control_index = space_manager_mission_control_index(selector_space_id);
+    let acting_mission_control_index = query_mission_control_index_of_space(acting_space_id);
+    let selector_mission_control_index = query_mission_control_index_of_space(selector_space_id);
     let mut success = true;
 
     if acting_space_id_is_first
         && !selector_space_id_is_first
         && selector_mission_control_index - acting_mission_control_index == 1
     {
-        success = scripting_addition_move_space_after_space(
+        success = move_space_after_space_through_scripting_addition(
             acting_space_id,
             selector_space_id,
-            acting_space_id == space_manager_active_space(window_manager),
+            acting_space_id == query_current_space_of_the_focused_display(window_manager),
         );
     } else if !acting_space_id_is_first
         && selector_space_id_is_first
         && acting_mission_control_index - selector_mission_control_index == 1
     {
-        success = scripting_addition_move_space_after_space(
+        success = move_space_after_space_through_scripting_addition(
             selector_space_id,
             acting_space_id,
-            selector_space_id == space_manager_active_space(window_manager),
+            selector_space_id == query_current_space_of_the_focused_display(window_manager),
         );
     } else if acting_space_id_is_first && !selector_space_id_is_first {
-        success = scripting_addition_move_space_after_space(
+        success = move_space_after_space_through_scripting_addition(
             selector_space_id,
             acting_space_id,
             false,
         );
-        success &= scripting_addition_move_space_after_space(
+        success &= move_space_after_space_through_scripting_addition(
             acting_space_id,
             selector_previous_space_id,
-            acting_space_id == space_manager_active_space(window_manager),
+            acting_space_id == query_current_space_of_the_focused_display(window_manager),
         );
     } else if !acting_space_id_is_first && selector_space_id_is_first {
-        success = scripting_addition_move_space_after_space(
+        success = move_space_after_space_through_scripting_addition(
             acting_space_id,
             selector_space_id,
-            acting_space_id == space_manager_active_space(window_manager),
+            acting_space_id == query_current_space_of_the_focused_display(window_manager),
         );
-        success &= scripting_addition_move_space_after_space(
+        success &= move_space_after_space_through_scripting_addition(
             selector_space_id,
             acting_previous_space_id,
             false,
         );
     } else if !acting_space_id_is_first && !selector_space_id_is_first {
         if acting_mission_control_index > selector_mission_control_index {
-            success = scripting_addition_move_space_after_space(
+            success = move_space_after_space_through_scripting_addition(
                 selector_space_id,
                 acting_space_id,
                 false,
             );
-            success &= scripting_addition_move_space_after_space(
+            success &= move_space_after_space_through_scripting_addition(
                 acting_space_id,
                 selector_previous_space_id,
-                acting_space_id == space_manager_active_space(window_manager),
+                acting_space_id == query_current_space_of_the_focused_display(window_manager),
             );
         } else {
-            success = scripting_addition_move_space_after_space(
+            success = move_space_after_space_through_scripting_addition(
                 acting_space_id,
                 selector_space_id,
-                acting_space_id == space_manager_active_space(window_manager),
+                acting_space_id == query_current_space_of_the_focused_display(window_manager),
             );
-            success &= scripting_addition_move_space_after_space(
+            success &= move_space_after_space_through_scripting_addition(
                 selector_space_id,
                 acting_previous_space_id,
                 false,
@@ -253,48 +292,49 @@ pub(crate) fn space_manager_swap_space_with_space(
     }
 
     if success {
-        SpaceOpError::Success
+        SpaceOperationOutcome::Success
     } else {
-        SpaceOpError::ScriptingAddition
+        SpaceOperationOutcome::ScriptingAdditionFailed
     }
 }
 
-pub(crate) fn space_manager_move_space_to_space(
+pub(crate) fn move_space_to_position_of_space(
     acting_space_id: SpaceId,
     selector_space_id: SpaceId,
     window_manager: &mut WindowManager,
     mission_control_mode: &mut MissionControlMode,
-) -> SpaceOpError {
-    let is_in_mission_control = mission_control_is_active(mission_control_mode);
+) -> SpaceOperationOutcome {
+    let is_in_mission_control = is_mission_control_active(mission_control_mode);
     if is_in_mission_control {
-        return SpaceOpError::InMissionControl;
+        return SpaceOperationOutcome::MissionControlIsActive;
     }
 
-    let acting_display_id = space_display_id(acting_space_id);
-    let selector_display_id = space_display_id(selector_space_id);
+    let acting_display_id = query_display_holding_space(acting_space_id);
+    let selector_display_id = query_display_holding_space(selector_space_id);
 
     if acting_space_id == selector_space_id {
-        return SpaceOpError::SameSpace;
+        return SpaceOperationOutcome::SameSpace;
     }
     if acting_display_id != selector_display_id {
-        return SpaceOpError::SameDisplay;
+        return SpaceOperationOutcome::NotOnTheSameDisplay;
     }
 
-    let is_animating = display_manager_display_is_animating(acting_display_id);
+    let is_animating = is_display_animating_a_space_transition(acting_display_id);
     if is_animating {
-        return SpaceOpError::DisplayIsAnimating;
+        return SpaceOperationOutcome::DisplayIsAnimating;
     }
 
-    let acting_previous_space_id = space_manager_prev_space(acting_space_id);
-    let selector_previous_space_id = space_manager_prev_space(selector_space_id);
+    let acting_previous_space_id = query_previous_space_in_mission_control_order(acting_space_id);
+    let selector_previous_space_id =
+        query_previous_space_in_mission_control_order(selector_space_id);
 
     let acting_previous_display_id = if acting_previous_space_id != SpaceId(0) {
-        space_display_id(acting_previous_space_id)
+        query_display_holding_space(acting_previous_space_id)
     } else {
         DisplayId(0)
     };
     let selector_previous_display_id = if selector_previous_space_id != SpaceId(0) {
-        space_display_id(selector_previous_space_id)
+        query_display_holding_space(selector_previous_space_id)
     } else {
         DisplayId(0)
     };
@@ -306,148 +346,152 @@ pub(crate) fn space_manager_move_space_to_space(
     let mut success = true;
 
     if acting_space_id_is_first && !selector_space_id_is_first {
-        success = scripting_addition_move_space_after_space(
+        success = move_space_after_space_through_scripting_addition(
             acting_space_id,
             selector_space_id,
-            acting_space_id == space_manager_active_space(window_manager),
+            acting_space_id == query_current_space_of_the_focused_display(window_manager),
         );
     } else if !acting_space_id_is_first && selector_space_id_is_first {
-        success = scripting_addition_move_space_after_space(
+        success = move_space_after_space_through_scripting_addition(
             acting_space_id,
             selector_space_id,
-            acting_space_id == space_manager_active_space(window_manager),
+            acting_space_id == query_current_space_of_the_focused_display(window_manager),
         );
-        success &= scripting_addition_move_space_after_space(
+        success &= move_space_after_space_through_scripting_addition(
             selector_space_id,
             acting_space_id,
             false,
         );
     } else if !acting_space_id_is_first && !selector_space_id_is_first {
-        if space_manager_mission_control_index(acting_space_id)
-            > space_manager_mission_control_index(selector_space_id)
+        if query_mission_control_index_of_space(acting_space_id)
+            > query_mission_control_index_of_space(selector_space_id)
         {
-            success = scripting_addition_move_space_after_space(
+            success = move_space_after_space_through_scripting_addition(
                 acting_space_id,
                 selector_previous_space_id,
-                acting_space_id == space_manager_active_space(window_manager),
+                acting_space_id == query_current_space_of_the_focused_display(window_manager),
             );
         } else {
-            success = scripting_addition_move_space_after_space(
+            success = move_space_after_space_through_scripting_addition(
                 acting_space_id,
                 selector_space_id,
-                acting_space_id == space_manager_active_space(window_manager),
+                acting_space_id == query_current_space_of_the_focused_display(window_manager),
             );
         }
     }
 
     if success {
-        SpaceOpError::Success
+        SpaceOperationOutcome::Success
     } else {
-        SpaceOpError::ScriptingAddition
+        SpaceOperationOutcome::ScriptingAdditionFailed
     }
 }
 
-pub(crate) fn space_manager_move_space_to_display(
+pub(crate) fn send_space_to_display(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     display_id: DisplayId,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
     mission_control_mode: &mut MissionControlMode,
-) -> SpaceOpError {
-    let is_in_mission_control = mission_control_is_active(mission_control_mode);
+) -> SpaceOperationOutcome {
+    let is_in_mission_control = is_mission_control_active(mission_control_mode);
     if is_in_mission_control {
-        return SpaceOpError::InMissionControl;
+        return SpaceOperationOutcome::MissionControlIsActive;
     }
     if space_id == SpaceId(0) {
-        return SpaceOpError::MissingSrc;
+        return SpaceOperationOutcome::MissingSource;
     }
 
-    let source_display_id = space_display_id(space_id);
+    let source_display_id = query_display_holding_space(space_id);
     if source_display_id == display_id {
-        return SpaceOpError::InvalidDst;
+        return SpaceOperationOutcome::InvalidDestination;
     }
 
-    let is_source_animating = display_manager_display_is_animating(source_display_id);
+    let is_source_animating = is_display_animating_a_space_transition(source_display_id);
     if is_source_animating {
-        return SpaceOpError::DisplayIsAnimating;
+        return SpaceOperationOutcome::DisplayIsAnimating;
     }
 
-    let last_space = space_manager_is_space_last_user_space(space_id);
+    let last_space = is_space_the_last_user_space_of_its_display(space_id);
     if last_space {
-        return SpaceOpError::InvalidSrc;
+        return SpaceOperationOutcome::InvalidSource;
     }
 
-    let is_destination_animating = display_manager_display_is_animating(display_id);
+    let is_destination_animating = is_display_animating_a_space_transition(display_id);
     if is_destination_animating {
-        return SpaceOpError::DisplayIsAnimating;
+        return SpaceOperationOutcome::DisplayIsAnimating;
     }
 
-    let destination_space_id = display_space_id(display_id);
+    let destination_space_id = query_current_space_of_display(display_id);
     if destination_space_id == SpaceId(0) {
-        return SpaceOpError::MissingDst;
+        return SpaceOperationOutcome::MissingDestination;
     }
 
-    let focus_space = space_id == space_manager_active_space(window_manager);
+    let focus_space = space_id == query_current_space_of_the_focused_display(window_manager);
 
-    if scripting_addition_move_space_to_display(
+    if move_space_to_display_through_scripting_addition(
         space_id,
         destination_space_id,
         if focus_space {
-            space_manager_prev_space(space_id)
+            query_previous_space_in_mission_control_order(space_id)
         } else {
             SpaceId(0)
         },
         focus_space,
     ) {
-        space_manager_mark_view_invalid(space_manager, space_id, display_manager, window_manager);
+        mark_view_areas_out_of_date(space_manager, space_id, display_manager, window_manager);
         if focus_space {
-            space_manager_focus_space(space_id, window_manager, mission_control_mode);
+            focus_space_through_the_scripting_addition_or_dock_swipes(
+                space_id,
+                window_manager,
+                mission_control_mode,
+            );
         }
-        return SpaceOpError::Success;
+        return SpaceOperationOutcome::Success;
     }
 
-    SpaceOpError::ScriptingAddition
+    SpaceOperationOutcome::ScriptingAdditionFailed
 }
 
-pub(crate) fn space_manager_destroy_space(
+pub(crate) fn destroy_user_space_unless_it_is_the_last_of_its_display(
     space_id: SpaceId,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
     mouse_drag_state: &mut MouseDragState,
     mission_control_mode: &mut MissionControlMode,
-) -> SpaceOpError {
-    let is_in_mission_control = mission_control_is_active(mission_control_mode);
+) -> SpaceOperationOutcome {
+    let is_in_mission_control = is_mission_control_active(mission_control_mode);
     if is_in_mission_control {
-        return SpaceOpError::InMissionControl;
+        return SpaceOperationOutcome::MissionControlIsActive;
     }
 
     if space_id == SpaceId(0) {
-        return SpaceOpError::MissingSrc;
+        return SpaceOperationOutcome::MissingSource;
     }
-    if !space_is_user(space_id) {
-        return SpaceOpError::InvalidType;
+    if !is_user_space(space_id) {
+        return SpaceOperationOutcome::NotAUserSpace;
     }
-    if space_manager_is_space_last_user_space(space_id) {
-        return SpaceOpError::InvalidSrc;
+    if is_space_the_last_user_space_of_its_display(space_id) {
+        return SpaceOperationOutcome::InvalidSource;
     }
 
-    let display_id = space_display_id(space_id);
-    let first_space_id = space_manager_find_first_user_space_for_display(display_id);
+    let display_id = query_display_holding_space(space_id);
+    let first_space_id = query_first_user_space_of_display(display_id);
 
-    let is_animating = display_manager_display_is_animating(display_id);
+    let is_animating = is_display_animating_a_space_transition(display_id);
     if is_animating {
-        return SpaceOpError::DisplayIsAnimating;
+        return SpaceOperationOutcome::DisplayIsAnimating;
     }
 
-    let success = scripting_addition_destroy_space(space_id);
+    let success = destroy_space_through_scripting_addition(space_id);
     if !success {
-        return SpaceOpError::ScriptingAddition;
+        return SpaceOperationOutcome::ScriptingAdditionFailed;
     }
 
     if first_space_id != SpaceId(0) {
-        window_manager_validate_and_check_for_windows_on_space(
+        reconcile_space_view_with_windows_on_space(
             space_manager,
             window_manager,
             first_space_id,
@@ -456,29 +500,30 @@ pub(crate) fn space_manager_destroy_space(
         );
     }
 
-    SpaceOpError::Success
+    SpaceOperationOutcome::Success
 }
 
-pub(crate) fn space_manager_add_space(
+pub(crate) fn add_space_on_display_of_space(
     space_id: SpaceId,
     mission_control_mode: &mut MissionControlMode,
-) -> SpaceOpError {
-    let is_in_mission_control = mission_control_is_active(mission_control_mode);
+) -> SpaceOperationOutcome {
+    let is_in_mission_control = is_mission_control_active(mission_control_mode);
     if is_in_mission_control {
-        return SpaceOpError::InMissionControl;
+        return SpaceOperationOutcome::MissionControlIsActive;
     }
     if space_id == SpaceId(0) {
-        return SpaceOpError::MissingSrc;
+        return SpaceOperationOutcome::MissingSource;
     }
 
-    let is_animating = display_manager_display_is_animating(space_display_id(space_id));
+    let is_animating =
+        is_display_animating_a_space_transition(query_display_holding_space(space_id));
     if is_animating {
-        return SpaceOpError::DisplayIsAnimating;
+        return SpaceOperationOutcome::DisplayIsAnimating;
     }
 
-    if scripting_addition_create_space(space_id) {
-        SpaceOpError::Success
+    if create_space_on_display_of_space_through_scripting_addition(space_id) {
+        SpaceOperationOutcome::Success
     } else {
-        SpaceOpError::ScriptingAddition
+        SpaceOperationOutcome::ScriptingAdditionFailed
     }
 }

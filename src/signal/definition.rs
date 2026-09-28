@@ -1,5 +1,5 @@
 use crate::support::regex::PosixRegex;
-use crate::support::strings::string_equals;
+use crate::support::strings::are_both_strings_present_and_equal;
 
 #[repr(u32)]
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -36,7 +36,7 @@ pub(crate) enum SignalType {
     MissionControlEnter = 24,
     MissionControlExit = 25,
 
-    DockDidChangePref = 26,
+    DockDidChangePreferences = 26,
     DockDidRestart = 27,
 
     MenuBarHiddenChanged = 28,
@@ -45,7 +45,7 @@ pub(crate) enum SignalType {
 
 #[repr(i32)]
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) enum SignalProp {
+pub(crate) enum SignalPropertyRequirement {
     #[default]
     Undefined = 0,
     Yes = 1,
@@ -59,14 +59,14 @@ pub(crate) struct Signal {
     pub(crate) title_regex_exclude: bool,
     pub(crate) app_regex: Option<PosixRegex>,
     pub(crate) title_regex: Option<PosixRegex>,
-    pub(crate) active: SignalProp,
+    pub(crate) active: SignalPropertyRequirement,
     pub(crate) command: Option<String>,
     pub(crate) label: Option<String>,
 }
 
 pub(crate) const SIGNAL_TYPE_COUNT: usize = 30;
 
-pub(crate) static SIGNAL_TYPE_STR: [&str; 31] = [
+pub(crate) static SIGNAL_TYPE_NAMES: [&str; 31] = [
     "signal_type_unknown",
     "application_launched",
     "application_terminated",
@@ -127,17 +127,17 @@ pub(crate) static SIGNAL_TYPE_BY_DISCRIMINANT: [SignalType; SIGNAL_TYPE_COUNT] =
     SignalType::DisplayChanged,
     SignalType::MissionControlEnter,
     SignalType::MissionControlExit,
-    SignalType::DockDidChangePref,
+    SignalType::DockDidChangePreferences,
     SignalType::DockDidRestart,
     SignalType::MenuBarHiddenChanged,
     SignalType::SystemWoke,
 ];
 
-pub(crate) fn signal_type_from_string(string: &[u8]) -> SignalType {
+pub(crate) fn signal_type_for_event_name(string: &[u8]) -> SignalType {
     let string = std::str::from_utf8(string).ok();
 
     for index in SignalType::ApplicationLaunched as usize..SIGNAL_TYPE_COUNT {
-        if string_equals(string, Some(SIGNAL_TYPE_STR[index])) {
+        if are_both_strings_present_and_equal(string, Some(SIGNAL_TYPE_NAMES[index])) {
             return SIGNAL_TYPE_BY_DISCRIMINANT[index];
         }
     }
@@ -145,13 +145,13 @@ pub(crate) fn signal_type_from_string(string: &[u8]) -> SignalType {
     SignalType::Unknown
 }
 
-pub(crate) fn event_signal_add(
+pub(crate) fn add_signal_replacing_any_with_the_same_label(
     signal_type: SignalType,
     signal: Signal,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
 ) {
     if let Some(label) = signal.label.as_deref() {
-        event_signal_remove(label.as_bytes(), signal_event);
+        remove_signal_with_label(label.as_bytes(), signal_event);
     }
     signal_event[signal_type as usize].push(signal);
 }
@@ -167,7 +167,7 @@ impl Drop for Signal {
     }
 }
 
-pub(crate) fn event_signal_remove_by_index(
+pub(crate) fn remove_signal_at_listing_index(
     index: i32,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
 ) -> bool {
@@ -185,7 +185,7 @@ pub(crate) fn event_signal_remove_by_index(
     false
 }
 
-pub(crate) fn event_signal_remove(
+pub(crate) fn remove_signal_with_label(
     label: &[u8],
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
 ) -> bool {
@@ -193,7 +193,10 @@ pub(crate) fn event_signal_remove(
 
     for index in SignalType::ApplicationLaunched as usize..SIGNAL_TYPE_COUNT {
         for inner_index in 0..signal_event[index].len() {
-            if string_equals(Some(&label), signal_event[index][inner_index].label.as_deref()) {
+            if are_both_strings_present_and_equal(
+                Some(&label),
+                signal_event[index][inner_index].label.as_deref(),
+            ) {
                 signal_event[index].swap_remove(inner_index);
                 return true;
             }

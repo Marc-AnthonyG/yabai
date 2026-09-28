@@ -3,32 +3,34 @@ use std::sync::atomic::Ordering;
 use crate::display::manager::DisplayManager;
 use crate::ffi::core_foundation::{CGPoint, CGRect, CGSize};
 use crate::ffi::core_graphics::CGRectContainsPoint;
-use crate::layout::settings::ViewType;
+use crate::layout::settings::ViewLayout;
 use crate::layout::tree::{
-    NODE_MAX_WINDOW_COUNT, WindowNodeChild, WindowNodeSplit,
-    view_add_window_node_with_insertion_point, view_find_window_node, view_remove_window_node,
-    view_stack_window_node, window_node_capture_windows, window_node_contains_window,
-    window_node_flush, window_node_swap_window_list,
+    MOST_WINDOWS_A_NODE_CAN_HOLD, WindowNodeChild, WindowNodeSplit,
+    add_window_to_view_tree_preferring_insertion_point,
+    collect_windows_below_node_with_their_target_areas, is_window_in_node, leaf_holding_window,
+    move_windows_below_node_into_their_areas, remove_window_from_view_tree,
+    stack_window_in_node_as_its_front_window, swap_windows_between_nodes_clearing_their_zoom,
 };
-use crate::mouse::drag::{MouseDragState, MouseWindowInfo};
+use crate::mouse::drag::{DraggedWindowFrameDelta, MouseDragState};
 use crate::mouse::tap::{MOUSE_TAP_STATE, MouseMode};
-use crate::scripting_addition::client::scripting_addition_order_window;
+use crate::scripting_addition::client::order_window_relative_to_other_window_through_scripting_addition;
 use crate::space::manager::SpaceManager;
-use crate::space::tiling::{space_manager_tile_window_on_space, space_manager_untile_window};
-use crate::support::geometry::triangle_contains_point;
+use crate::space::tiling::{tile_window_on_space, untile_window_from_view_of_space};
+use crate::support::geometry::is_point_strictly_inside_triangle;
 use crate::support::handles::{NodeId, SpaceId, WindowId};
 use crate::support::layer::LAYER_BELOW;
 use crate::support::resize_handle::ResizeHandle;
 use crate::window::animation::{
-    WindowCapture, window_manager_animate_window, window_manager_animate_window_list,
+    WindowWithTargetFrame, move_window_to_its_target_frame_animating_if_enabled,
+    move_windows_to_their_target_frames_animating_if_enabled,
 };
-use crate::window::frame::window_manager_resize_window_relative;
-use crate::window::layer::window_manager_adjust_layer;
+use crate::window::frame::resize_window_by_dragging_edges_or_to_absolute_size;
+use crate::window::layer::set_window_layer_unless_explicitly_set;
 use crate::window::manager::{
-    WindowManager, WindowOpError, window_manager_add_managed_window, window_manager_find_window,
-    window_manager_remove_managed_window,
+    WindowManager, WindowOperationOutcome, forget_managed_window,
+    record_managed_window_on_space_updating_its_shadow, tracked_window_with_id,
 };
-use crate::window::shadow::window_manager_purify_window;
+use crate::window::shadow::apply_shadow_removal_mode_to_window;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[repr(i32)]
@@ -42,7 +44,7 @@ pub(crate) enum MouseDropAction {
     WarpLeft = 6,
 }
 
-pub(crate) fn mouse_determine_drop_action(
+pub(crate) fn determine_drop_action_for_dragged_window(
     source_space_id: SpaceId,
     source_node_id: NodeId,
     destination_window_id: WindowId,
@@ -65,7 +67,7 @@ pub(crate) fn mouse_determine_drop_action(
     let drop_action_setting =
         MouseMode::from_discriminant(MOUSE_TAP_STATE.drop_action.load(Ordering::Relaxed));
 
-    mouse_drop_action_for_point_over_window_frame(
+    drop_action_for_point_over_window_frame(
         destination_window_frame,
         point,
         source_node_window_count,
@@ -73,7 +75,7 @@ pub(crate) fn mouse_determine_drop_action(
     )
 }
 
-fn mouse_drop_action_for_point_over_window_frame(
+fn drop_action_for_point_over_window_frame(
     destination_window_frame: CGRect,
     point: CGPoint,
     source_node_window_count: Option<i32>,
@@ -158,20 +160,20 @@ fn mouse_drop_action_for_point_over_window_frame(
         } else {
             MouseDropAction::Swap
         };
-    } else if triangle_contains_point(&top_triangle, point_relative_to_frame_origin) {
+    } else if is_point_strictly_inside_triangle(&top_triangle, point_relative_to_frame_origin) {
         return MouseDropAction::WarpTop;
-    } else if triangle_contains_point(&right_triangle, point_relative_to_frame_origin) {
+    } else if is_point_strictly_inside_triangle(&right_triangle, point_relative_to_frame_origin) {
         return MouseDropAction::WarpRight;
-    } else if triangle_contains_point(&bottom_triangle, point_relative_to_frame_origin) {
+    } else if is_point_strictly_inside_triangle(&bottom_triangle, point_relative_to_frame_origin) {
         return MouseDropAction::WarpBottom;
-    } else if triangle_contains_point(&left_triangle, point_relative_to_frame_origin) {
+    } else if is_point_strictly_inside_triangle(&left_triangle, point_relative_to_frame_origin) {
         return MouseDropAction::WarpLeft;
     }
 
     MouseDropAction::None
 }
 
-pub(crate) fn mouse_drop_action_stack(
+pub(crate) fn stack_dropped_window_onto_destination_window(
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
     source_space_id: SpaceId,
@@ -181,7 +183,7 @@ pub(crate) fn mouse_drop_action_stack(
     display_manager: &mut DisplayManager,
     mouse_drag_state: &mut MouseDragState,
 ) {
-    space_manager_untile_window(
+    untile_window_from_view_of_space(
         space_manager,
         source_space_id,
         source_window_id,
@@ -189,10 +191,10 @@ pub(crate) fn mouse_drop_action_stack(
         window_manager,
         mouse_drag_state,
     );
-    window_manager_remove_managed_window(window_manager, source_window_id);
+    forget_managed_window(window_manager, source_window_id);
 
     let destination_node =
-        view_find_window_node(space_manager, destination_space_id, destination_window_id);
+        leaf_holding_window(space_manager, destination_space_id, destination_window_id);
     let Some(destination_node) = destination_node else {
         return;
     };
@@ -204,20 +206,20 @@ pub(crate) fn mouse_drop_action_stack(
     else {
         return;
     };
-    if destination_node_window_count + 1 < NODE_MAX_WINDOW_COUNT as i32 {
-        view_stack_window_node(
+    if destination_node_window_count + 1 < MOST_WINDOWS_A_NODE_CAN_HOLD as i32 {
+        stack_window_in_node_as_its_front_window(
             destination_space_id,
             destination_node,
             source_window_id,
             space_manager,
         );
-        window_manager_add_managed_window(
+        record_managed_window_on_space_updating_its_shadow(
             window_manager,
             source_window_id,
             space_manager,
             destination_space_id,
         );
-        window_manager_adjust_layer(source_window_id, LAYER_BELOW, window_manager);
+        set_window_layer_unless_explicitly_set(source_window_id, LAYER_BELOW, window_manager);
 
         let Some(view) = space_manager.view.find(&destination_space_id) else {
             return;
@@ -225,14 +227,18 @@ pub(crate) fn mouse_drop_action_stack(
         let Some(node) = view.find_node(destination_node) else {
             return;
         };
-        scripting_addition_order_window(source_window_id, 1, node.window_order[1]);
+        order_window_relative_to_other_window_through_scripting_addition(
+            source_window_id,
+            1,
+            node.window_order[1],
+        );
 
         let area = match node.zoom.and_then(|zoom| view.find_node(zoom)) {
             Some(zoom) => zoom.area,
             None => node.area,
         };
-        window_manager_animate_window(
-            WindowCapture {
+        move_window_to_its_target_frame_animating_if_enabled(
+            WindowWithTargetFrame {
                 window_id: source_window_id,
                 x: area.x,
                 y: area.y,
@@ -244,7 +250,7 @@ pub(crate) fn mouse_drop_action_stack(
     }
 }
 
-pub(crate) fn mouse_drop_action_swap(
+pub(crate) fn swap_dropped_window_with_destination_window(
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
     source_space_id: SpaceId,
@@ -262,7 +268,7 @@ pub(crate) fn mouse_drop_action_swap(
         .view
         .find(&destination_space_id)
         .map_or(WindowId(0), |view| view.insertion_point);
-    if window_node_contains_window(
+    if is_window_in_node(
         source_space_id,
         source_node_id,
         source_view_insertion_point,
@@ -271,7 +277,7 @@ pub(crate) fn mouse_drop_action_swap(
         if let Some(source_view) = space_manager.view.find_mut(&source_space_id) {
             source_view.insertion_point = destination_window_id;
         }
-    } else if window_node_contains_window(
+    } else if is_window_in_node(
         destination_space_id,
         destination_node_id,
         destination_view_insertion_point,
@@ -282,7 +288,7 @@ pub(crate) fn mouse_drop_action_swap(
         }
     }
 
-    window_node_swap_window_list(
+    swap_windows_between_nodes_clearing_their_zoom(
         source_space_id,
         source_node_id,
         destination_space_id,
@@ -299,11 +305,11 @@ pub(crate) fn mouse_drop_action_swap(
                 node.window_list[..node.window_count as usize].to_vec()
             });
         for index in 0..source_node_window_list.len() {
-            window_manager_remove_managed_window(window_manager, source_node_window_list[index]);
+            forget_managed_window(window_manager, source_node_window_list[index]);
             if let Some(window) =
-                window_manager_find_window(window_manager, source_node_window_list[index])
+                tracked_window_with_id(window_manager, source_node_window_list[index])
             {
-                window_manager_add_managed_window(
+                record_managed_window_on_space_updating_its_shadow(
                     window_manager,
                     window,
                     space_manager,
@@ -320,14 +326,11 @@ pub(crate) fn mouse_drop_action_swap(
                 node.window_list[..node.window_count as usize].to_vec()
             });
         for index in 0..destination_node_window_list.len() {
-            window_manager_remove_managed_window(
-                window_manager,
-                destination_node_window_list[index],
-            );
+            forget_managed_window(window_manager, destination_node_window_list[index]);
             if let Some(window) =
-                window_manager_find_window(window_manager, destination_node_window_list[index])
+                tracked_window_with_id(window_manager, destination_node_window_list[index])
             {
-                window_manager_add_managed_window(
+                record_managed_window_on_space_updating_its_shadow(
                     window_manager,
                     window,
                     space_manager,
@@ -337,25 +340,25 @@ pub(crate) fn mouse_drop_action_swap(
         }
     }
 
-    let mut window_list: Vec<WindowCapture> = Vec::new();
-    window_node_capture_windows(
+    let mut window_list: Vec<WindowWithTargetFrame> = Vec::new();
+    collect_windows_below_node_with_their_target_areas(
         source_space_id,
         source_node_id,
         &mut window_list,
         window_manager,
         space_manager,
     );
-    window_node_capture_windows(
+    collect_windows_below_node_with_their_target_areas(
         destination_space_id,
         destination_node_id,
         &mut window_list,
         window_manager,
         space_manager,
     );
-    window_manager_animate_window_list(&window_list, window_manager);
+    move_windows_to_their_target_frames_animating_if_enabled(&window_list, window_manager);
 }
 
-pub(crate) fn mouse_drop_action_warp(
+pub(crate) fn warp_dropped_window_beside_destination_window(
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
     source_space_id: SpaceId,
@@ -399,7 +402,7 @@ pub(crate) fn mouse_drop_action_warp(
             return;
         };
         if destination_node_parent.split == split {
-            mouse_drop_action_swap(
+            swap_dropped_window_with_destination_window(
                 window_manager,
                 space_manager,
                 source_space_id,
@@ -423,7 +426,7 @@ pub(crate) fn mouse_drop_action_warp(
         destination_node.child = child;
     }
 
-    let source_node_remove = view_remove_window_node(
+    let source_node_remove = remove_window_from_view_tree(
         space_manager,
         source_space_id,
         source_window_id,
@@ -431,10 +434,10 @@ pub(crate) fn mouse_drop_action_warp(
         window_manager,
         mouse_drag_state,
     );
-    window_manager_remove_managed_window(window_manager, source_window_id);
-    window_manager_purify_window(window_manager, source_window_id);
+    forget_managed_window(window_manager, source_window_id);
+    apply_shadow_removal_mode_to_window(window_manager, source_window_id);
 
-    let source_node_add = view_add_window_node_with_insertion_point(
+    let source_node_add = add_window_to_view_tree_preferring_insertion_point(
         space_manager,
         destination_space_id,
         source_window_id,
@@ -442,17 +445,17 @@ pub(crate) fn mouse_drop_action_warp(
         display_manager,
         window_manager,
     );
-    window_manager_add_managed_window(
+    record_managed_window_on_space_updating_its_shadow(
         window_manager,
         source_window_id,
         space_manager,
         destination_space_id,
     );
 
-    let mut window_list: Vec<WindowCapture> = Vec::new();
+    let mut window_list: Vec<WindowWithTargetFrame> = Vec::new();
 
     if let Some(source_node_remove) = source_node_remove {
-        window_node_capture_windows(
+        collect_windows_below_node_with_their_target_areas(
             source_space_id,
             source_node_remove,
             &mut window_list,
@@ -472,7 +475,7 @@ pub(crate) fn mouse_drop_action_warp(
             && source_node_remove
                 != source_node_add_parent.map(|node_id| (destination_space_id, node_id))
         {
-            window_node_capture_windows(
+            collect_windows_below_node_with_their_target_areas(
                 destination_space_id,
                 source_node_add,
                 &mut window_list,
@@ -482,10 +485,10 @@ pub(crate) fn mouse_drop_action_warp(
         }
     }
 
-    window_manager_animate_window_list(&window_list, window_manager);
+    move_windows_to_their_target_frames_animating_if_enabled(&window_list, window_manager);
 }
 
-pub(crate) fn mouse_drop_no_target(
+pub(crate) fn retile_window_dropped_on_no_target_window(
     space_manager: &mut SpaceManager,
     window_manager: &mut WindowManager,
     source_space_id: SpaceId,
@@ -496,9 +499,14 @@ pub(crate) fn mouse_drop_no_target(
     mouse_drag_state: &mut MouseDragState,
 ) {
     if source_space_id == destination_space_id {
-        window_node_flush(source_space_id, node_id, window_manager, space_manager);
+        move_windows_below_node_into_their_areas(
+            source_space_id,
+            node_id,
+            window_manager,
+            space_manager,
+        );
     } else {
-        space_manager_untile_window(
+        untile_window_from_view_of_space(
             space_manager,
             source_space_id,
             window_id,
@@ -506,33 +514,38 @@ pub(crate) fn mouse_drop_no_target(
             window_manager,
             mouse_drag_state,
         );
-        window_manager_remove_managed_window(window_manager, window_id);
-        window_manager_purify_window(window_manager, window_id);
+        forget_managed_window(window_manager, window_id);
+        apply_shadow_removal_mode_to_window(window_manager, window_id);
 
-        let view = space_manager_tile_window_on_space(
+        let view = tile_window_on_space(
             space_manager,
             window_id,
             destination_space_id,
             display_manager,
             window_manager,
         );
-        window_manager_add_managed_window(window_manager, window_id, space_manager, view);
+        record_managed_window_on_space_updating_its_shadow(
+            window_manager,
+            window_id,
+            space_manager,
+            view,
+        );
     }
 }
 
-pub(crate) fn mouse_drop_try_adjust_bsp_grid(
+pub(crate) fn adjust_split_ratios_to_mouse_moved_window_or_restore_its_frame(
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     window_id: WindowId,
-    info: &MouseWindowInfo,
+    info: &DraggedWindowFrameDelta,
     display_manager: &mut DisplayManager,
 ) {
     let mut success = true;
 
     'end: {
         let view_layout = space_manager.view.find(&space_id).map(|view| view.layout);
-        if view_layout != Some(ViewType::Bsp) {
+        if view_layout != Some(ViewLayout::BinarySpacePartitioning) {
             success = false;
             break 'end;
         }
@@ -545,7 +558,7 @@ pub(crate) fn mouse_drop_try_adjust_bsp_grid(
             if info.changed_y {
                 direction |= ResizeHandle::TOP.0;
             }
-            if window_manager_resize_window_relative(
+            if resize_window_by_dragging_edges_or_to_absolute_size(
                 window_manager,
                 window_id,
                 direction as i32,
@@ -554,7 +567,7 @@ pub(crate) fn mouse_drop_try_adjust_bsp_grid(
                 true,
                 display_manager,
                 space_manager,
-            ) == WindowOpError::InvalidDstNode
+            ) == WindowOperationOutcome::InvalidDestinationNode
             {
                 success = false;
             }
@@ -568,7 +581,7 @@ pub(crate) fn mouse_drop_try_adjust_bsp_grid(
             if info.changed_height && !info.changed_y {
                 direction |= ResizeHandle::BOTTOM.0;
             }
-            if window_manager_resize_window_relative(
+            if resize_window_by_dragging_edges_or_to_absolute_size(
                 window_manager,
                 window_id,
                 direction as i32,
@@ -577,7 +590,7 @@ pub(crate) fn mouse_drop_try_adjust_bsp_grid(
                 true,
                 display_manager,
                 space_manager,
-            ) == WindowOpError::InvalidDstNode
+            ) == WindowOperationOutcome::InvalidDestinationNode
             {
                 success = false;
             }
@@ -585,16 +598,16 @@ pub(crate) fn mouse_drop_try_adjust_bsp_grid(
     }
 
     if !success {
-        let node = view_find_window_node(space_manager, space_id, window_id);
+        let node = leaf_holding_window(space_manager, space_id, window_id);
         if let Some(node) = node {
-            window_node_flush(space_id, node, window_manager, space_manager);
+            move_windows_below_node_into_their_areas(space_id, node, window_manager, space_manager);
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{MouseDropAction, mouse_drop_action_for_point_over_window_frame};
+    use super::{MouseDropAction, drop_action_for_point_over_window_frame};
     use crate::ffi::core_foundation::{CGPoint, CGRect, CGSize};
     use crate::mouse::tap::MouseMode;
 
@@ -623,7 +636,7 @@ mod tests {
                 height: 600.0,
             },
         };
-        name_of_drop_action(mouse_drop_action_for_point_over_window_frame(
+        name_of_drop_action(drop_action_for_point_over_window_frame(
             destination_window_frame,
             CGPoint { x, y },
             source_node_window_count,

@@ -2,9 +2,10 @@
 
 use std::time::{Duration, Instant};
 
-use crate::event::queue::{Event, event_loop_post};
+use crate::event::queue::{Event, post_event_to_event_loop};
 use crate::ffi::core_foundation::{
-    CFType, CGPoint, CGRect, CGSize, sls_window_disable_shadow, take_create_rule_result,
+    CFType, CGPoint, CGRect, CGSize, disable_window_shadow_through_skylight,
+    take_create_rule_result,
 };
 use crate::ffi::core_graphics::{
     CGContext, CGContextAddPath, CGContextClearRect, CGContextDrawPath, CGContextFlush,
@@ -18,11 +19,13 @@ use crate::ffi::skylight::{
     SLSReleaseWindow, SLSSetWindowAlpha, SLSSetWindowLevel, SLSSetWindowOpacity,
     SLSSetWindowResolution, SLSSetWindowShape, SLSSetWindowSubLevel, SLWindowContextCreate,
 };
-use crate::state::process_wide::CONNECTION;
+use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
 use crate::support::color::RgbaColor;
 use crate::support::handles::WindowId;
-use crate::support::macos_version::workspace_is_macos_tahoe;
-use crate::window::model::{window_level, window_sub_level};
+use crate::support::macos_version::is_running_on_macos_tahoe;
+use crate::window::model::{
+    query_window_level_from_window_server, query_window_sub_level_from_window_server,
+};
 
 pub(crate) struct FeedbackWindow {
     pub(crate) id: WindowId,
@@ -32,7 +35,7 @@ pub(crate) struct FeedbackWindow {
 
 impl Drop for FeedbackWindow {
     fn drop(&mut self) {
-        let connection = *CONNECTION.get().unwrap();
+        let connection = *SKYLIGHT_CONNECTION_ID.get().unwrap();
         if self.id.0 != 0 {
             unsafe { SLSOrderWindow(connection, self.id.0, 0, 0) };
             drop(unsafe { take_create_rule_result(self.context.cast_const()) });
@@ -60,18 +63,18 @@ pub(crate) const FEEDBACK_WINDOW_FADE_IN_DURATION: Duration = Duration::from_mil
 pub(crate) const DELAY_BETWEEN_FEEDBACK_WINDOW_FADE_IN_STEPS_IN_NANOSECONDS: i64 = 16_666_667;
 
 pub(crate) fn macos_window_corner_radius() -> f64 {
-    if workspace_is_macos_tahoe() {
+    if is_running_on_macos_tahoe() {
         MACOS_WINDOW_CORNER_RADIUS_ON_TAHOE
     } else {
         MACOS_WINDOW_CORNER_RADIUS_BEFORE_TAHOE
     }
 }
 
-pub(crate) fn feedback_window_create_transparent_above_window(
+pub(crate) fn create_transparent_feedback_window_above_window(
     frame: CGRect,
     window_id: WindowId,
 ) -> FeedbackWindow {
-    let connection = *CONNECTION.get().unwrap();
+    let connection = *SKYLIGHT_CONNECTION_ID.get().unwrap();
 
     let mut frame = frame;
     let mut frame_region: *mut CFType = std::ptr::null_mut();
@@ -98,7 +101,7 @@ pub(crate) fn feedback_window_create_transparent_above_window(
     drop(unsafe { take_create_rule_result(empty_region.cast_const()) });
     drop(unsafe { take_create_rule_result(frame_region.cast_const()) });
 
-    sls_window_disable_shadow(feedback_window_id);
+    disable_window_shadow_through_skylight(feedback_window_id);
     unsafe {
         SLSSetWindowResolution(
             connection,
@@ -108,8 +111,20 @@ pub(crate) fn feedback_window_create_transparent_above_window(
     };
     unsafe { SLSSetWindowOpacity(connection, feedback_window_id, false) };
     unsafe { SLSSetWindowAlpha(connection, feedback_window_id, 0.0f32) };
-    unsafe { SLSSetWindowLevel(connection, feedback_window_id, window_level(window_id)) };
-    unsafe { SLSSetWindowSubLevel(connection, feedback_window_id, window_sub_level(window_id)) };
+    unsafe {
+        SLSSetWindowLevel(
+            connection,
+            feedback_window_id,
+            query_window_level_from_window_server(window_id),
+        )
+    };
+    unsafe {
+        SLSSetWindowSubLevel(
+            connection,
+            feedback_window_id,
+            query_window_sub_level_from_window_server(window_id),
+        )
+    };
     let feedback_window_context =
         unsafe { SLWindowContextCreate(connection, feedback_window_id, std::ptr::null()) };
 
@@ -130,12 +145,12 @@ pub(crate) fn feedback_window_create_transparent_above_window(
     }
 }
 
-pub(crate) fn feedback_window_draw_ghost_of_frame(
+pub(crate) fn draw_ghost_of_frame_in_feedback_window(
     feedback_window: &FeedbackWindow,
     frame: CGRect,
     color: RgbaColor,
 ) {
-    let connection = *CONNECTION.get().unwrap();
+    let connection = *SKYLIGHT_CONNECTION_ID.get().unwrap();
 
     let mut frame = frame;
     let mut frame_region: *mut CFType = std::ptr::null_mut();
@@ -204,11 +219,11 @@ pub(crate) fn feedback_window_draw_ghost_of_frame(
     drop(unsafe { take_create_rule_result(frame_region.cast_const()) });
 }
 
-pub(crate) fn feedback_window_is_fading_in(feedback_window: &FeedbackWindow) -> bool {
+pub(crate) fn is_feedback_window_fading_in(feedback_window: &FeedbackWindow) -> bool {
     feedback_window.fade_in_started_at.is_some()
 }
 
-pub(crate) fn feedback_window_advance_fade_in(feedback_window: &mut FeedbackWindow) {
+pub(crate) fn advance_the_fade_in_of_feedback_window(feedback_window: &mut FeedbackWindow) {
     let Some(fade_in_started_at) = feedback_window.fade_in_started_at else {
         return;
     };
@@ -218,7 +233,7 @@ pub(crate) fn feedback_window_advance_fade_in(feedback_window: &mut FeedbackWind
     .min(1.0f32);
     unsafe {
         SLSSetWindowAlpha(
-            *CONNECTION.get().unwrap(),
+            *SKYLIGHT_CONNECTION_ID.get().unwrap(),
             feedback_window.id.0,
             fraction_of_the_fade_in_elapsed,
         )
@@ -232,6 +247,6 @@ pub(crate) fn feedback_window_advance_fade_in(feedback_window: &mut FeedbackWind
 pub(crate) fn schedule_the_next_feedback_window_fade_in_step() {
     dispatch_after_on_main_queue(
         DELAY_BETWEEN_FEEDBACK_WINDOW_FADE_IN_STEPS_IN_NANOSECONDS,
-        || event_loop_post(Event::InsertFeedbackFadeInStep),
+        || post_event_to_event_loop(Event::InsertFeedbackFadeInStep),
     );
 }

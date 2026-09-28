@@ -11,32 +11,38 @@ use crate::ffi::accessibility::{
 use crate::ffi::core_foundation::{CGPoint, CGRect, CGSize, as_cftype};
 use crate::layout::settings::ViewFlag;
 use crate::layout::tree::{
-    view_find_window_node, window_node_fence, window_node_flush, window_node_update,
+    ancestor_whose_split_borders_node_in_direction, leaf_holding_window,
+    move_windows_below_node_into_their_areas, recompute_areas_below_node_redrawing_insert_feedback,
 };
-use crate::layout::view::{view_flush, view_update};
-use crate::space::managed_space::space_is_visible;
+use crate::layout::view::{
+    move_view_windows_into_their_areas_or_defer_until_space_is_visible,
+    recompute_view_areas_from_display_bounds_and_padding,
+};
+use crate::space::managed_space::is_space_visible_on_its_display;
 use crate::space::manager::SpaceManager;
-use crate::support::arithmetic::{clampf_range, max};
-use crate::support::direction::{DIR_EAST, DIR_NORTH, DIR_SOUTH, DIR_WEST};
+use crate::support::arithmetic::{clamp_float_to_range, greater_of_two_values};
+use crate::support::direction::{DIRECTION_EAST, DIRECTION_NORTH, DIRECTION_SOUTH, DIRECTION_WEST};
 use crate::support::handles::{NodeId, WindowId};
 use crate::support::resize_handle::ResizeHandle;
-use crate::support::type_of_change::{TYPE_ABS, TYPE_REL};
-use crate::window::animation::{WindowCapture, window_manager_animate_window};
-use crate::window::manager::{WindowManager, WindowOpError, window_manager_find_managed_window};
-use crate::window::model::window_ax_frame;
+use crate::support::type_of_change::{CHANGE_TYPE_ABSOLUTE, CHANGE_TYPE_RELATIVE};
+use crate::window::animation::{
+    WindowWithTargetFrame, move_window_to_its_target_frame_animating_if_enabled,
+};
+use crate::window::manager::{WindowManager, WindowOperationOutcome, space_managing_window};
+use crate::window::model::read_window_frame_through_accessibility;
 
-pub(crate) fn window_manager_adjust_window_ratio(
+pub(crate) fn adjust_split_ratio_of_managed_window_parent_node(
     window_manager: &mut WindowManager,
     window_id: WindowId,
     type_of_change: i32,
     ratio: f32,
     space_manager: &mut SpaceManager,
-) -> WindowOpError {
-    let Some(space_id) = window_manager_find_managed_window(window_manager, window_id) else {
-        return WindowOpError::InvalidSrcView;
+) -> WindowOperationOutcome {
+    let Some(space_id) = space_managing_window(window_manager, window_id) else {
+        return WindowOperationOutcome::InvalidSourceView;
     };
 
-    let node_id = view_find_window_node(space_manager, space_id, window_id);
+    let node_id = leaf_holding_window(space_manager, space_id, window_id);
     let parent_node_id = node_id.and_then(|node_id| {
         space_manager
             .view
@@ -45,65 +51,75 @@ pub(crate) fn window_manager_adjust_window_ratio(
             .and_then(|node| node.parent)
     });
     let Some(parent_node_id) = parent_node_id else {
-        return WindowOpError::InvalidSrcNode;
+        return WindowOperationOutcome::InvalidSourceNode;
     };
 
     match type_of_change {
-        TYPE_REL => {
+        CHANGE_TYPE_RELATIVE => {
             if let Some(view) = space_manager.view.find_mut(&space_id)
                 && let Some(parent_node) = view.find_node_mut(parent_node_id)
             {
-                parent_node.ratio = clampf_range(parent_node.ratio + ratio, 0.1f32, 0.9f32);
+                parent_node.ratio = clamp_float_to_range(parent_node.ratio + ratio, 0.1f32, 0.9f32);
             }
         }
-        TYPE_ABS => {
+        CHANGE_TYPE_ABSOLUTE => {
             if let Some(view) = space_manager.view.find_mut(&space_id)
                 && let Some(parent_node) = view.find_node_mut(parent_node_id)
             {
-                parent_node.ratio = clampf_range(ratio, 0.1f32, 0.9f32);
+                parent_node.ratio = clamp_float_to_range(ratio, 0.1f32, 0.9f32);
             }
         }
         _ => {}
     }
 
-    window_node_update(space_manager, space_id, parent_node_id, window_manager);
+    recompute_areas_below_node_redrawing_insert_feedback(
+        space_manager,
+        space_id,
+        parent_node_id,
+        window_manager,
+    );
 
-    if space_is_visible(space_id) {
-        window_node_flush(space_id, parent_node_id, window_manager, space_manager);
+    if is_space_visible_on_its_display(space_id) {
+        move_windows_below_node_into_their_areas(
+            space_id,
+            parent_node_id,
+            window_manager,
+            space_manager,
+        );
     } else if let Some(view) = space_manager.view.find_mut(&space_id) {
-        view.set_flag(ViewFlag::IS_DIRTY);
+        view.set_flag(ViewFlag::WINDOWS_AWAIT_THEIR_AREAS);
     }
 
-    WindowOpError::Success
+    WindowOperationOutcome::Success
 }
 
-pub(crate) fn window_manager_move_window_relative(
+pub(crate) fn move_floating_window_by_offset_or_to_position(
     window_manager: &mut WindowManager,
     window_id: WindowId,
     type_of_change: i32,
     delta_x: f32,
     delta_y: f32,
-) -> WindowOpError {
-    let view = window_manager_find_managed_window(window_manager, window_id);
+) -> WindowOperationOutcome {
+    let view = space_managing_window(window_manager, window_id);
     if view.is_some() {
-        return WindowOpError::InvalidSrcView;
+        return WindowOperationOutcome::InvalidSourceView;
     }
 
     let Some(window) = window_manager.window.find(&window_id) else {
-        return WindowOpError::Success;
+        return WindowOperationOutcome::Success;
     };
     let window_frame = window.frame;
 
     let mut delta_x = delta_x;
     let mut delta_y = delta_y;
 
-    if type_of_change == TYPE_REL {
+    if type_of_change == CHANGE_TYPE_RELATIVE {
         delta_x = (delta_x as f64 + window_frame.origin.x) as f32;
         delta_y = (delta_y as f64 + window_frame.origin.y) as f32;
     }
 
-    window_manager_animate_window(
-        WindowCapture {
+    move_window_to_its_target_frame_animating_if_enabled(
+        WindowWithTargetFrame {
             window_id,
             x: delta_x,
             y: delta_y,
@@ -112,10 +128,10 @@ pub(crate) fn window_manager_move_window_relative(
         },
         window_manager,
     );
-    WindowOpError::Success
+    WindowOperationOutcome::Success
 }
 
-pub(crate) fn window_manager_resize_window_relative_internal(
+pub(crate) fn resize_floating_window_by_dragging_edges(
     window_id: WindowId,
     frame: CGRect,
     direction: i32,
@@ -139,11 +155,11 @@ pub(crate) fn window_manager_resize_window_relative_internal(
         0
     };
 
-    let frame_width = max(
+    let frame_width = greater_of_two_values(
         1.0f64,
         frame.size.width + (delta_x * x_modifier as f32) as f64,
     ) as f32;
-    let frame_height = max(
+    let frame_height = greater_of_two_values(
         1.0f64,
         frame.size.height + (delta_y * y_modifier as f32) as f64,
     ) as f32;
@@ -159,8 +175,8 @@ pub(crate) fn window_manager_resize_window_relative_internal(
     };
 
     if animate {
-        window_manager_animate_window(
-            WindowCapture {
+        move_window_to_its_target_frame_animating_if_enabled(
+            WindowWithTargetFrame {
                 window_id,
                 x: frame_x,
                 y: frame_y,
@@ -183,13 +199,18 @@ pub(crate) fn window_manager_resize_window_relative_internal(
         let application_element_ref = application.element_ref;
 
         with_enhanced_user_interface_disabled(unsafe { &*application_element_ref }, || {
-            window_manager_move_window(window_id, frame_x, frame_y, window_manager);
-            window_manager_resize_window(window_id, frame_width, frame_height, window_manager);
+            move_window_through_accessibility(window_id, frame_x, frame_y, window_manager);
+            resize_window_through_accessibility(
+                window_id,
+                frame_width,
+                frame_height,
+                window_manager,
+            );
         });
     }
 }
 
-pub(crate) fn window_manager_resize_window_relative(
+pub(crate) fn resize_window_by_dragging_edges_or_to_absolute_size(
     window_manager: &mut WindowManager,
     window_id: WindowId,
     direction: i32,
@@ -198,34 +219,54 @@ pub(crate) fn window_manager_resize_window_relative(
     animate: bool,
     display_manager: &mut DisplayManager,
     space_manager: &mut SpaceManager,
-) -> WindowOpError {
-    let view = window_manager_find_managed_window(window_manager, window_id);
+) -> WindowOperationOutcome {
+    let view = space_managing_window(window_manager, window_id);
     if let Some(space_id) = view {
-        if direction == ResizeHandle::ABS.0 as i32 {
-            return WindowOpError::InvalidOperation;
+        if direction == ResizeHandle::ABSOLUTE.0 as i32 {
+            return WindowOperationOutcome::InvalidOperation;
         }
 
-        let Some(node_id) = view_find_window_node(space_manager, space_id, window_id) else {
-            return WindowOpError::InvalidSrcNode;
+        let Some(node_id) = leaf_holding_window(space_manager, space_id, window_id) else {
+            return WindowOperationOutcome::InvalidSourceNode;
         };
 
         let mut x_fence: Option<NodeId> = None;
         let mut y_fence: Option<NodeId> = None;
 
         if direction & ResizeHandle::TOP.0 as i32 != 0 {
-            x_fence = window_node_fence(space_id, node_id, DIR_NORTH, space_manager);
+            x_fence = ancestor_whose_split_borders_node_in_direction(
+                space_id,
+                node_id,
+                DIRECTION_NORTH,
+                space_manager,
+            );
         }
         if direction & ResizeHandle::BOTTOM.0 as i32 != 0 {
-            x_fence = window_node_fence(space_id, node_id, DIR_SOUTH, space_manager);
+            x_fence = ancestor_whose_split_borders_node_in_direction(
+                space_id,
+                node_id,
+                DIRECTION_SOUTH,
+                space_manager,
+            );
         }
         if direction & ResizeHandle::LEFT.0 as i32 != 0 {
-            y_fence = window_node_fence(space_id, node_id, DIR_WEST, space_manager);
+            y_fence = ancestor_whose_split_borders_node_in_direction(
+                space_id,
+                node_id,
+                DIRECTION_WEST,
+                space_manager,
+            );
         }
         if direction & ResizeHandle::RIGHT.0 as i32 != 0 {
-            y_fence = window_node_fence(space_id, node_id, DIR_EAST, space_manager);
+            y_fence = ancestor_whose_split_borders_node_in_direction(
+                space_id,
+                node_id,
+                DIRECTION_EAST,
+                space_manager,
+            );
         }
         if x_fence.is_none() && y_fence.is_none() {
-            return WindowOpError::InvalidDstNode;
+            return WindowOperationOutcome::InvalidDestinationNode;
         }
 
         if let Some(y_fence) = y_fence
@@ -233,7 +274,7 @@ pub(crate) fn window_manager_resize_window_relative(
             && let Some(y_fence_node) = view.find_node_mut(y_fence)
         {
             let scaled_ratio = y_fence_node.ratio + delta_x / y_fence_node.area.width;
-            y_fence_node.ratio = clampf_range(scaled_ratio, 0.1f32, 0.9f32);
+            y_fence_node.ratio = clamp_float_to_range(scaled_ratio, 0.1f32, 0.9f32);
         }
 
         if let Some(x_fence) = x_fence
@@ -241,20 +282,29 @@ pub(crate) fn window_manager_resize_window_relative(
             && let Some(x_fence_node) = view.find_node_mut(x_fence)
         {
             let scaled_ratio = x_fence_node.ratio + delta_y / x_fence_node.area.height;
-            x_fence_node.ratio = clampf_range(scaled_ratio, 0.1f32, 0.9f32);
+            x_fence_node.ratio = clamp_float_to_range(scaled_ratio, 0.1f32, 0.9f32);
         }
 
-        view_update(space_manager, space_id, display_manager, window_manager);
-        view_flush(space_manager, space_id, window_manager);
+        recompute_view_areas_from_display_bounds_and_padding(
+            space_manager,
+            space_id,
+            display_manager,
+            window_manager,
+        );
+        move_view_windows_into_their_areas_or_defer_until_space_is_visible(
+            space_manager,
+            space_id,
+            window_manager,
+        );
     } else {
-        if direction == ResizeHandle::ABS.0 as i32 {
+        if direction == ResizeHandle::ABSOLUTE.0 as i32 {
             if animate {
                 let Some(window) = window_manager.window.find(&window_id) else {
-                    return WindowOpError::Success;
+                    return WindowOperationOutcome::Success;
                 };
                 let window_frame = window.frame;
-                window_manager_animate_window(
-                    WindowCapture {
+                move_window_to_its_target_frame_animating_if_enabled(
+                    WindowWithTargetFrame {
                         window_id,
                         x: window_frame.origin.x as f32,
                         y: window_frame.origin.y as f32,
@@ -269,24 +319,29 @@ pub(crate) fn window_manager_resize_window_relative(
                     .find(&window_id)
                     .and_then(|window| window.application)
                 else {
-                    return WindowOpError::Success;
+                    return WindowOperationOutcome::Success;
                 };
                 let Some(application) = window_manager.application.find(&application_process_id)
                 else {
-                    return WindowOpError::Success;
+                    return WindowOperationOutcome::Success;
                 };
                 let application_element_ref = application.element_ref;
 
                 with_enhanced_user_interface_disabled(unsafe { &*application_element_ref }, || {
-                    window_manager_resize_window(window_id, delta_x, delta_y, window_manager);
+                    resize_window_through_accessibility(
+                        window_id,
+                        delta_x,
+                        delta_y,
+                        window_manager,
+                    );
                 });
             }
         } else {
             let Some(window) = window_manager.window.find(&window_id) else {
-                return WindowOpError::Success;
+                return WindowOperationOutcome::Success;
             };
-            let frame = window_ax_frame(window);
-            window_manager_resize_window_relative_internal(
+            let frame = read_window_frame_through_accessibility(window);
+            resize_floating_window_by_dragging_edges(
                 window_id,
                 frame,
                 direction,
@@ -298,10 +353,10 @@ pub(crate) fn window_manager_resize_window_relative(
         }
     }
 
-    WindowOpError::Success
+    WindowOperationOutcome::Success
 }
 
-pub(crate) fn window_manager_move_window(
+pub(crate) fn move_window_through_accessibility(
     window_id: WindowId,
     x: f32,
     y: f32,
@@ -333,7 +388,7 @@ pub(crate) fn window_manager_move_window(
     drop(position_ref);
 }
 
-pub(crate) fn window_manager_resize_window(
+pub(crate) fn resize_window_through_accessibility(
     window_id: WindowId,
     width: f32,
     height: f32,
@@ -365,7 +420,7 @@ pub(crate) fn window_manager_resize_window(
     drop(size_ref);
 }
 
-pub(crate) fn window_manager_set_window_frame(
+pub(crate) fn move_and_resize_window_through_accessibility(
     window_id: WindowId,
     x: f32,
     y: f32,

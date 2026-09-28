@@ -6,7 +6,7 @@ pub(crate) struct SpaceLabel {
     pub(crate) label: String,
 }
 
-pub(crate) fn space_manager_get_label_for_space(
+pub(crate) fn label_of_space(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
 ) -> Option<&mut SpaceLabel> {
@@ -16,7 +16,7 @@ pub(crate) fn space_manager_get_label_for_space(
         .find(|space_label| space_label.space_id == space_id)
 }
 
-pub(crate) fn space_manager_get_space_for_label<'space_manager>(
+pub(crate) fn space_label_with_name<'space_manager>(
     space_manager: &'space_manager mut SpaceManager,
     label: &[u8],
 ) -> Option<&'space_manager mut SpaceLabel> {
@@ -28,10 +28,7 @@ pub(crate) fn space_manager_get_space_for_label<'space_manager>(
         .find(|space_label| space_label.label == label)
 }
 
-pub(crate) fn space_manager_remove_label_for_space(
-    space_manager: &mut SpaceManager,
-    space_id: SpaceId,
-) -> bool {
+pub(crate) fn remove_label_of_space(space_manager: &mut SpaceManager, space_id: SpaceId) -> bool {
     for index in 0..space_manager.labels.len() {
         let space_label = &space_manager.labels[index];
         if space_label.space_id == space_id {
@@ -43,12 +40,12 @@ pub(crate) fn space_manager_remove_label_for_space(
     false
 }
 
-pub(crate) fn space_manager_set_label_for_space(
+pub(crate) fn set_label_of_space_removing_it_from_any_other_space(
     space_manager: &mut SpaceManager,
     space_id: SpaceId,
     label: String,
 ) {
-    space_manager_remove_label_for_space(space_manager, space_id);
+    remove_label_of_space(space_manager, space_id);
 
     for index in 0..space_manager.labels.len() {
         let space_label = &space_manager.labels[index];

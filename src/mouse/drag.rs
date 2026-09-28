@@ -15,7 +15,7 @@ pub struct MouseDragState {
 }
 
 #[derive(Default)]
-pub(crate) struct MouseWindowInfo {
+pub(crate) struct DraggedWindowFrameDelta {
     pub delta_x: f32,
     pub delta_y: f32,
     pub delta_width: f32,
@@ -28,9 +28,9 @@ pub(crate) struct MouseWindowInfo {
     pub changed_size: bool,
 }
 
-pub(crate) fn mouse_window_info_populate(
+pub(crate) fn measure_dragged_window_frame_delta(
     mouse_drag_state: &mut MouseDragState,
-    info: &mut MouseWindowInfo,
+    info: &mut DraggedWindowFrameDelta,
     window_manager: &mut WindowManager,
 ) {
     let Some(frame) = mouse_drag_state

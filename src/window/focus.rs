@@ -1,61 +1,66 @@
 #![allow(deprecated)]
 
-use crate::application::model::application_focused_window;
+use crate::application::model::read_focused_window_of_application;
 use crate::ffi::accessibility::{AXUIElementPerformAction, AXUIElementRef, kAXRaiseAction};
 use crate::ffi::carbon_process::{
-    CoreDockSendNotification, GetProcessPID, ProcessSerialNumber, psn_equals,
+    CoreDockSendNotification, GetProcessPID, ProcessSerialNumber, is_same_process_serial_number,
 };
-use crate::ffi::core_foundation::{CGPoint, k_com_apple_expose_front_awake};
+use crate::ffi::core_foundation::{CGPoint, show_front_windows_dock_notification_name};
 use crate::ffi::core_graphics::{CGDisplayBounds, CGRectContainsPoint, CGWarpMouseCursorPosition};
 use crate::ffi::skylight::{
     _SLPSGetFrontProcess, _SLPSSetFrontProcessWithOptions, SLPSPostEventRecordTo,
     SLSGetCurrentCursorLocation,
 };
 use crate::layout::insertion::clear_every_pending_insertion_point_other_than_the_window;
-use crate::layout::tree::view_find_window_node;
+use crate::layout::tree::leaf_holding_window;
 use crate::mouse::drag::MouseDragState;
 use crate::notifications::mouse::{
-    MOUSE_EVENT_MASK, MOUSE_EVENT_MASK_FFM, mouse_handler_begin, mouse_handler_end,
+    MOUSE_EVENT_MASK_FOR_FOCUS_FOLLOWS_MOUSE, MOUSE_EVENT_MASK_WITHOUT_MOUSE_MOVED,
+    start_mouse_event_tap, stop_mouse_event_tap,
 };
 use crate::space::manager::SpaceManager;
-use crate::state::process_wide::CONNECTION;
+use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
 use crate::support::handles::{ProcessId, WindowId};
 use crate::window::manager::{
-    FfmMode, WindowManager, window_manager_find_application, window_manager_find_managed_window,
-    window_manager_find_window,
+    FocusFollowsMouseMode, WindowManager, space_managing_window,
+    tracked_application_with_process_id, tracked_window_with_id,
 };
 use crate::window::model::{
-    WindowRuleFlag, window_check_rule_flag, window_display_id, window_space,
+    WindowRuleFlag, is_window_rule_flag_set, query_display_holding_window,
+    query_space_holding_window,
 };
-use crate::window::opacity::window_manager_set_window_opacity;
+use crate::window::opacity::set_window_opacity_unless_disabled_or_fixed_by_rule;
 
 #[allow(non_upper_case_globals)]
 pub(crate) const kCPSUserGenerated: u32 = 0x200;
 #[allow(non_upper_case_globals)]
 pub(crate) const kCPSNoWindows: u32 = 0x400;
 
-pub(crate) fn window_manager_set_focus_follows_mouse(
+pub(crate) fn set_focus_follows_mouse_mode(
     window_manager: &mut WindowManager,
-    mode: FfmMode,
+    mode: FocusFollowsMouseMode,
 ) {
-    mouse_handler_end();
+    stop_mouse_event_tap();
 
-    if mode == FfmMode::Disabled {
-        mouse_handler_begin(MOUSE_EVENT_MASK);
+    if mode == FocusFollowsMouseMode::Disabled {
+        start_mouse_event_tap(MOUSE_EVENT_MASK_WITHOUT_MOUSE_MOVED);
     } else {
-        mouse_handler_begin(MOUSE_EVENT_MASK_FFM);
+        start_mouse_event_tap(MOUSE_EVENT_MASK_FOR_FOCUS_FOLLOWS_MOUSE);
     }
 
-    window_manager.ffm_mode = mode;
+    window_manager.focus_follows_mouse_mode = mode;
 }
 
-pub(crate) fn window_manager_center_mouse(window_manager: &mut WindowManager, window_id: WindowId) {
+pub(crate) fn warp_cursor_to_window_center_if_mouse_follows_focus(
+    window_manager: &mut WindowManager,
+    window_id: WindowId,
+) {
     let Some(window) = window_manager.window.find(&window_id) else {
         return;
     };
 
-    if window_check_rule_flag(window, WindowRuleFlag::MFF) {
-        if !window_check_rule_flag(window, WindowRuleFlag::MFF_VALUE) {
+    if is_window_rule_flag_set(window, WindowRuleFlag::OVERRIDES_MOUSE_FOLLOWS_FOCUS) {
+        if !is_window_rule_flag_set(window, WindowRuleFlag::MOUSE_FOLLOWS_FOCUS_OVERRIDE_IS_ON) {
             return;
         }
     } else {
@@ -67,12 +72,14 @@ pub(crate) fn window_manager_center_mouse(window_manager: &mut WindowManager, wi
     let window_frame = window.frame;
 
     let mut cursor = CGPoint::new(0.0, 0.0);
-    unsafe { SLSGetCurrentCursorLocation(*CONNECTION.get().unwrap_or(&0), &mut cursor) };
+    unsafe {
+        SLSGetCurrentCursorLocation(*SKYLIGHT_CONNECTION_ID.get().unwrap_or(&0), &mut cursor)
+    };
     if CGRectContainsPoint(window_frame, cursor) {
         return;
     }
 
-    let display_id = window_display_id(window_id);
+    let display_id = query_display_holding_window(window_id);
     if display_id.0 == 0 {
         return;
     }
@@ -90,7 +97,7 @@ pub(crate) fn window_manager_center_mouse(window_manager: &mut WindowManager, wi
     CGWarpMouseCursorPosition(center);
 }
 
-pub(crate) fn window_manager_make_key_window(
+pub(crate) fn make_window_key_with_synthesized_events(
     window_process_serial_number: &ProcessSerialNumber,
     window_id: WindowId,
 ) {
@@ -119,12 +126,12 @@ pub(crate) fn window_manager_make_key_window(
     unsafe { SLPSPostEventRecordTo(&mut window_process_serial_number, event_bytes.as_mut_ptr()) };
 }
 
-pub(crate) fn window_manager_focus_window_without_raise(
+pub(crate) fn focus_window_of_process_without_raising_it(
     window_process_serial_number: &ProcessSerialNumber,
     window_id: WindowId,
     window_manager: &mut WindowManager,
 ) {
-    if psn_equals(
+    if is_same_process_serial_number(
         window_process_serial_number,
         &window_manager.focused_window_process_serial_number,
     ) {
@@ -168,10 +175,10 @@ pub(crate) fn window_manager_focus_window_without_raise(
             kCPSUserGenerated,
         )
     };
-    window_manager_make_key_window(window_process_serial_number, window_id);
+    make_window_key_with_synthesized_events(window_process_serial_number, window_id);
 }
 
-pub(crate) fn window_manager_focus_window_with_raise(
+pub(crate) fn focus_and_raise_window_of_process(
     window_process_serial_number: &ProcessSerialNumber,
     window_id: WindowId,
     window_ref: AXUIElementRef,
@@ -184,16 +191,13 @@ pub(crate) fn window_manager_focus_window_with_raise(
             kCPSUserGenerated,
         )
     };
-    window_manager_make_key_window(window_process_serial_number, window_id);
+    make_window_key_with_synthesized_events(window_process_serial_number, window_id);
     if let Some(window_element) = unsafe { window_ref.as_ref() } {
         unsafe { AXUIElementPerformAction(window_element, kAXRaiseAction()) };
     }
 }
 
-pub(crate) fn window_manager_focus_window_with_raise_resolving_its_application(
-    window_manager: &WindowManager,
-    window_id: WindowId,
-) {
+pub(crate) fn focus_and_raise_tracked_window(window_manager: &WindowManager, window_id: WindowId) {
     let Some(window) = window_manager.window.find(&window_id) else {
         return;
     };
@@ -203,14 +207,14 @@ pub(crate) fn window_manager_focus_window_with_raise_resolving_its_application(
         return;
     };
 
-    window_manager_focus_window_with_raise(
+    focus_and_raise_window_of_process(
         &application.process_serial_number,
         window.id,
         window.element_ref,
     );
 }
 
-pub(crate) fn window_manager_focused_application(
+pub(crate) fn query_focused_tracked_application(
     window_manager: &mut WindowManager,
 ) -> Option<ProcessId> {
     let mut process_serial_number = ProcessSerialNumber {
@@ -222,32 +226,30 @@ pub(crate) fn window_manager_focused_application(
     let mut process_id: libc::pid_t = 0;
     unsafe { GetProcessPID(&process_serial_number, &mut process_id) };
 
-    window_manager_find_application(window_manager, ProcessId(process_id))
+    tracked_application_with_process_id(window_manager, ProcessId(process_id))
 }
 
-pub(crate) fn window_manager_focused_window(
-    window_manager: &mut WindowManager,
-) -> Option<WindowId> {
-    let Some(application_process_id) = window_manager_focused_application(window_manager) else {
+pub(crate) fn query_focused_tracked_window(window_manager: &mut WindowManager) -> Option<WindowId> {
+    let Some(application_process_id) = query_focused_tracked_application(window_manager) else {
         return None;
     };
     let Some(application) = window_manager.application.find(&application_process_id) else {
         return None;
     };
 
-    let window_id = application_focused_window(application);
-    window_manager_find_window(window_manager, window_id)
+    let window_id = read_focused_window_of_application(application);
+    tracked_window_with_id(window_manager, window_id)
 }
 
-pub(crate) fn window_manager_toggle_window_expose(
+pub(crate) fn toggle_application_expose_for_window(
     window_id: WindowId,
     window_manager: &mut WindowManager,
 ) {
-    window_manager_focus_window_with_raise_resolving_its_application(window_manager, window_id);
-    unsafe { CoreDockSendNotification(k_com_apple_expose_front_awake(), 0) };
+    focus_and_raise_tracked_window(window_manager, window_id);
+    unsafe { CoreDockSendNotification(show_front_windows_dock_notification_name(), 0) };
 }
 
-pub(crate) fn window_did_receive_focus(
+pub(crate) fn respond_to_window_receiving_focus(
     window_manager: &mut WindowManager,
     mouse_drag_state: &mut MouseDragState,
     window_id: WindowId,
@@ -260,12 +262,13 @@ pub(crate) fn window_did_receive_focus(
         mouse_drag_state,
     );
 
-    let focused_window =
-        window_manager_find_window(window_manager, window_manager.focused_window_id);
+    let focused_window = tracked_window_with_id(window_manager, window_manager.focused_window_id);
     if let Some(focused_window) = focused_window {
-        if focused_window != window_id && window_space(focused_window) == window_space(window_id) {
+        if focused_window != window_id
+            && query_space_holding_window(focused_window) == query_space_holding_window(window_id)
+        {
             let normal_window_opacity = window_manager.normal_window_opacity;
-            window_manager_set_window_opacity(
+            set_window_opacity_unless_disabled_or_fixed_by_rule(
                 window_manager,
                 focused_window,
                 normal_window_opacity,
@@ -274,11 +277,15 @@ pub(crate) fn window_did_receive_focus(
     }
 
     let active_window_opacity = window_manager.active_window_opacity;
-    window_manager_set_window_opacity(window_manager, window_id, active_window_opacity);
+    set_window_opacity_unless_disabled_or_fixed_by_rule(
+        window_manager,
+        window_id,
+        active_window_opacity,
+    );
 
     if window_manager.focused_window_id != window_id {
         if mouse_drag_state.ffm_window_id != window_id {
-            window_manager_center_mouse(window_manager, window_id);
+            warp_cursor_to_window_center_if_mouse_follows_focus(window_manager, window_id);
         }
 
         window_manager.last_window_id = window_manager.focused_window_id;
@@ -296,11 +303,11 @@ pub(crate) fn window_did_receive_focus(
     }
     mouse_drag_state.ffm_window_id = WindowId(0);
 
-    let Some(view) = window_manager_find_managed_window(window_manager, window_id) else {
+    let Some(view) = space_managing_window(window_manager, window_id) else {
         return;
     };
 
-    let Some(node_id) = view_find_window_node(space_manager, view, window_id) else {
+    let Some(node_id) = leaf_holding_window(space_manager, view, window_id) else {
         return;
     };
     let Some(view) = space_manager.view.find_mut(&view) else {

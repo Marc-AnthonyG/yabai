@@ -1,7 +1,7 @@
 #![allow(deprecated)]
 
 use crate::ffi::core_foundation::{
-    CFRetained, CFType, CGPoint, CGRect, CGSize, create_cfarray_of_cfnumbers,
+    CFType, CGPoint, CGRect, CGSize, create_cfarray_of_cfnumbers,
     disable_window_shadow_through_skylight, kCFNumberSInt32Type, take_create_rule_result,
 };
 use crate::ffi::core_graphics::{
@@ -11,8 +11,8 @@ use crate::ffi::core_graphics::{
     CGSNewRegionWithRect,
 };
 use crate::ffi::core_text::{
-    create_font_of_family_and_style, create_line_of_text_coloured_by_the_context_fill,
-    draw_line_in_context, truncate_line_to_width_ending_with_the_token, typographic_bounds_of_line,
+    CTFont, CTLineTruncationType, create_font_of_family_and_style,
+    create_line_of_text_coloured_by_the_context_fill, typographic_bounds_of_line,
 };
 use crate::ffi::skylight::{
     SLSDisableUpdate, SLSMoveWindowsToManagedSpace, SLSNewWindowWithOpaqueShapeAndContext,
@@ -166,9 +166,7 @@ pub(crate) fn draw_tabs_in_group_header_window(
             (style.inactive_color, style.inactive_text_color)
         };
         fill_rounded_rectangle(context, *tab_frame, tab_color, LARGEST_TAB_CORNER_RADIUS);
-        if let Some(font) = &font {
-            draw_title_inside_tab(context, &tab.title, font, *tab_frame, text_color);
-        }
+        draw_title_inside_tab(context, &tab.title, &font, *tab_frame, text_color);
     }
     CGContextFlush(context);
     unsafe { SLSReenableUpdate(connection) };
@@ -289,7 +287,7 @@ fn fill_rounded_rectangle(
 fn draw_title_inside_tab(
     context: Option<&CGContext>,
     title: &str,
-    font: &CFRetained<CFType>,
+    font: &CTFont,
     tab_frame: CGRect,
     text_color: RgbaColor,
 ) {
@@ -305,11 +303,13 @@ fn draw_title_inside_tab(
     else {
         return;
     };
-    let Some(fitting_title_line) = truncate_line_to_width_ending_with_the_token(
-        &title_line,
-        width_left_for_the_title,
-        &truncation_token,
-    ) else {
+    let Some(fitting_title_line) = (unsafe {
+        title_line.truncated_line(
+            width_left_for_the_title,
+            CTLineTruncationType::End,
+            Some(&truncation_token),
+        )
+    }) else {
         return;
     };
 
@@ -330,7 +330,7 @@ fn draw_title_inside_tab(
         baseline_y,
     );
     if let Some(context) = context {
-        draw_line_in_context(&fitting_title_line, context);
+        unsafe { fitting_title_line.draw(context) };
     }
 }
 

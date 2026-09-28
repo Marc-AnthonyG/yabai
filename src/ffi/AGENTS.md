@@ -2,9 +2,8 @@
 
 The boundary with macOS: the single place the objc2 and mach2 crates are re-exported from, and
 the bindings those crates do not provide, declared by hand. That covers private SkyLight, Carbon,
-ColorSync, CoreText, the `kAX*` string constants, the packed Mach messages, the Mach-O
-symbol-table walker, a few libsystem calls and the wrapper that dispatches work onto the main
-queue.
+ColorSync, the `kAX*` string constants, the packed Mach messages, the Mach-O symbol-table walker,
+a few libsystem calls and the wrapper that dispatches work onto the main queue.
 
 ## Notes
 

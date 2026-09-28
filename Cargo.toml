@@ -58,6 +58,7 @@ objc2-app-kit = { version = "0.3.2", default-features = false, features = [
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = [
     "std",
     "CFArray",
+    "CFAttributedString",
     "CFCGTypes",
     "CFData",
     "CFDate",
@@ -101,6 +102,15 @@ objc2-application-services = { version = "0.3.2", default-features = false, feat
     "HIServices",
     "libc",
     "objc2",
+] }
+
+objc2-core-text = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "CTFont",
+    "CTFontDescriptor",
+    "CTLine",
+    "CTStringAttributes",
+    "objc2-core-graphics",
 ] }
 
 objc2-core-video = { version = "0.3.2", default-features = false, features = [

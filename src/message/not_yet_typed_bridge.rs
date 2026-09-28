@@ -1,5 +1,4 @@
 use crate::display::manager::DisplayManager;
-use crate::message::domain::config::run_config_command;
 use crate::message::domain::display::run_display_command;
 use crate::message::domain::query::run_query_command;
 use crate::message::domain::rule::run_rule_command;
@@ -16,7 +15,6 @@ use crate::state::mission_control_mode::MissionControlMode;
 use crate::support::response::{FailurePiece, Response};
 use crate::window::manager::WindowManager;
 
-const DOMAIN_CONFIG: &str = "config";
 const DOMAIN_DISPLAY: &str = "display";
 const DOMAIN_SPACE: &str = "space";
 const DOMAIN_WINDOW: &str = "window";
@@ -39,17 +37,7 @@ pub(crate) fn run_message_to_a_domain_not_yet_typed(
     let mut message_cursor = MessageCursor::new(&mut message);
     let domain = message_cursor.take_next_token();
 
-    if is_token_equal_to(domain, message_cursor.bytes(), DOMAIN_CONFIG) {
-        run_config_command(
-            &mut response,
-            domain,
-            &mut message_cursor,
-            display_manager,
-            window_manager,
-            space_manager,
-            mouse_drag_state,
-        );
-    } else if is_token_equal_to(domain, message_cursor.bytes(), DOMAIN_DISPLAY) {
+    if is_token_equal_to(domain, message_cursor.bytes(), DOMAIN_DISPLAY) {
         run_display_command(
             &mut response,
             domain,

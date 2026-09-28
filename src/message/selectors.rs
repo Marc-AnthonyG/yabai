@@ -279,7 +279,7 @@ pub(crate) fn parse_display_selector(
                 ]);
             }
         }
-        TokenValueType::Float(_) | TokenValueType::Hexadecimal(_) => {
+        TokenValueType::Float(_) | TokenValueType::Hexadecimal => {
             result.outcome = SelectorOutcome::NotASelector;
             response.write_failure_pieces_unless_silent(&[
                 FailurePiece::Text("value '"),
@@ -422,7 +422,7 @@ pub(crate) fn parse_space_selector(
                 ]);
             }
         }
-        TokenValueType::Float(_) | TokenValueType::Hexadecimal(_) => {
+        TokenValueType::Float(_) | TokenValueType::Hexadecimal => {
             result.outcome = SelectorOutcome::NotASelector;
             response.write_failure_pieces_unless_silent(&[
                 FailurePiece::Text("value '"),
@@ -929,7 +929,7 @@ pub(crate) fn parse_window_selector(
                 ]);
             }
         }
-        TokenValueType::Float(_) | TokenValueType::Hexadecimal(_) => {
+        TokenValueType::Float(_) | TokenValueType::Hexadecimal => {
             result.outcome = SelectorOutcome::NotASelector;
             response.write_failure_pieces_unless_silent(&[
                 FailurePiece::Text("value '"),

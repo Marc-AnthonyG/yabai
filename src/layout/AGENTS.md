@@ -16,8 +16,9 @@ preview, a SkyLight overlay window drawn as a ghost of that frame.
   `NodeId` can never name a reused node.
 - A node's feedback window is a SkyLight window owned by the node and released when the node's
   feedback slot is dropped.
-- The name tables for view layout, split, child, auto-balance and insertion point are the CLI and
-  query spellings; each index is the enum discriminant.
+- The view layout, split, child and insertion point enums carry their command-line and JSON
+  spellings as clap and serde derives; the "none" and "default" variants are never accepted on
+  the command line.
 - The preview is computed by one pure function from the node's area, the insert
   direction, the node's ratio or the global split ratio, and the view's gap, with the same split
   arithmetic the tree runs when it inserts: `window --insert` and a mouse drop both use it, and a

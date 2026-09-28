@@ -1,5 +1,6 @@
 use crate::command::DaemonCommand;
 use crate::display::manager::DisplayManager;
+use crate::message::domain::config::run_config_command;
 use crate::message::not_yet_typed_bridge::run_message_to_a_domain_not_yet_typed;
 use crate::mouse::drag::MouseDragState;
 use crate::process::manager::ProcessManager;
@@ -20,6 +21,15 @@ pub(crate) fn run_daemon_command(
     mission_control_mode: &mut MissionControlMode,
 ) -> DaemonReply {
     match command {
+        DaemonCommand::Config(config_command) => {
+            DaemonReply::printing_or_failing_with_every_failure(run_config_command(
+                config_command,
+                display_manager,
+                window_manager,
+                space_manager,
+                mouse_drag_state,
+            ))
+        }
         DaemonCommand::NotYetTyped { arguments } => run_message_to_a_domain_not_yet_typed(
             &arguments,
             signal_event,

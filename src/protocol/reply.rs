@@ -15,6 +15,21 @@ impl DaemonReply {
             failures: vec![failure],
         }
     }
+
+    pub(crate) fn printing_or_failing_with_every_failure(
+        outcome: Result<String, Vec<String>>,
+    ) -> DaemonReply {
+        match outcome {
+            Ok(standard_output) => DaemonReply {
+                standard_output,
+                failures: Vec::new(),
+            },
+            Err(failures) => DaemonReply {
+                standard_output: String::new(),
+                failures,
+            },
+        }
+    }
 }
 
 pub(crate) fn write_reply(writer: impl Write, reply: &DaemonReply) -> std::io::Result<()> {

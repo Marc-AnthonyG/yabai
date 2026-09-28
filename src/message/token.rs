@@ -45,7 +45,7 @@ pub(crate) enum TokenValueType {
     Invalid,
     Integer(i32),
     Float(f32),
-    Hexadecimal(u32),
+    Hexadecimal,
     String,
 }
 
@@ -127,31 +127,14 @@ pub(crate) fn parse_token_as_non_negative_decimal_integer(
     Some(value)
 }
 
-pub(crate) fn parse_token_as_0x_prefixed_hexadecimal(
-    token: Token,
-    message_bytes: &[u8],
-) -> Option<u32> {
-    if token.length <= 2 {
-        return None;
-    }
-
+pub(crate) fn is_token_0x_prefixed_hexadecimal(token: Token, message_bytes: &[u8]) -> bool {
     let token_bytes = token.bytes(message_bytes);
-    if !(token_bytes[0] == b'0' && (token_bytes[1] == b'x' || token_bytes[1] == b'X')) {
-        return None;
-    }
-
-    let mut value: u32 = 0;
-    for character in &token_bytes[2..] {
-        let digit = match *character {
-            b'0'..=b'9' => *character - b'0',
-            b'a'..=b'f' => *character - b'a' + 0xA,
-            b'A'..=b'F' => *character - b'A' + 0xA,
-            _ => return None,
-        };
-        value = value.wrapping_mul(16).wrapping_add(digit as u32);
-    }
-
-    Some(value)
+    token_bytes.len() > 2
+        && token_bytes[0] == b'0'
+        && (token_bytes[1] == b'x' || token_bytes[1] == b'X')
+        && token_bytes[2..]
+            .iter()
+            .all(|character| character.is_ascii_hexdigit())
 }
 
 pub(crate) fn parse_token_entirely_as_float(token: Token, message_bytes: &[u8]) -> Option<f32> {
@@ -170,8 +153,8 @@ pub(crate) fn parse_token_into_typed_value(token: Token, message_bytes: &[u8]) -
         TokenValueType::Invalid
     } else if let Some(value) = parse_token_as_non_negative_decimal_integer(token, message_bytes) {
         TokenValueType::Integer(value)
-    } else if let Some(value) = parse_token_as_0x_prefixed_hexadecimal(token, message_bytes) {
-        TokenValueType::Hexadecimal(value)
+    } else if is_token_0x_prefixed_hexadecimal(token, message_bytes) {
+        TokenValueType::Hexadecimal
     } else if let Some(value) = parse_token_entirely_as_float(token, message_bytes) {
         TokenValueType::Float(value)
     } else {
@@ -262,7 +245,7 @@ mod tests {
     enum Classification {
         Invalid,
         Int(i32),
-        U32(u32),
+        Hexadecimal,
         FloatBits(u32),
         String,
     }
@@ -297,7 +280,7 @@ mod tests {
         match parse_token_into_typed_value(token, cursor.bytes()).type_of_value {
             TokenValueType::Invalid => Classification::Invalid,
             TokenValueType::Integer(value) => Classification::Int(value),
-            TokenValueType::Hexadecimal(value) => Classification::U32(value),
+            TokenValueType::Hexadecimal => Classification::Hexadecimal,
             TokenValueType::Float(value) => Classification::FloatBits(value.to_bits()),
             TokenValueType::String => Classification::String,
         }
@@ -454,22 +437,13 @@ mod tests {
     }
 
     #[test]
-    fn parse_token_into_typed_value_classifies_0x_prefixed_hexadecimal_digits_as_u32() {
+    fn parse_token_into_typed_value_classifies_0x_prefixed_hexadecimal_digits_as_hexadecimal() {
         assert_each_argument_classifies_as(&[
-            ("0x0", Classification::U32(0)),
-            ("0xff", Classification::U32(255)),
-            ("0XFF", Classification::U32(255)),
-            ("0xDeadBeef", Classification::U32(3735928559)),
-            ("0xFFFFFFFF", Classification::U32(4294967295)),
+            ("0x0", Classification::Hexadecimal),
+            ("0XFF", Classification::Hexadecimal),
+            ("0xDeadBeef", Classification::Hexadecimal),
+            ("0x100000000", Classification::Hexadecimal),
         ]);
-    }
-
-    #[test]
-    fn parse_token_into_typed_value_wraps_hexadecimal_values_past_u32_max() {
-        assert_eq!(
-            classify_the_first_argument("0x100000000"),
-            Classification::U32(0)
-        );
     }
 
     #[test]

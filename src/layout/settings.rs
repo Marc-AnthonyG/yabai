@@ -1,13 +1,18 @@
+use clap::ValueEnum;
+use serde::{Deserialize, Serialize};
+
 use crate::layout::tree::{WindowNodeChild, WindowNodeSplit};
 use crate::space::manager::SpaceManager;
 use crate::support::handles::{NodeId, SpaceId};
 
-pub(crate) static AUTO_BALANCE_NAMES: [&str; 4] = ["off", "vertical", "horizontal", "on"];
-
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 #[repr(i32)]
 pub(crate) enum ViewLayout {
+    #[value(skip)]
     Default = 0,
+    #[value(name = "bsp")]
+    #[serde(rename = "bsp")]
     BinarySpacePartitioning = 1,
     Stack = 2,
     Float = 3,

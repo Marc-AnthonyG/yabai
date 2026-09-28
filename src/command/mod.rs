@@ -1,9 +1,14 @@
+pub mod config;
 pub mod not_yet_typed;
+pub mod selectors;
+pub mod values;
 
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
+
+use crate::command::config::ConfigCommand;
 
 #[derive(Parser)]
 #[command(
@@ -77,6 +82,9 @@ pub(crate) enum ScriptingAdditionAction {
 
 #[derive(Subcommand, Serialize, Deserialize, Debug)]
 pub(crate) enum DaemonCommand {
+    /// Change or print the settings of the window manager
+    #[command(subcommand)]
+    Config(ConfigCommand),
     #[command(skip)]
     NotYetTyped { arguments: Vec<String> },
 }
@@ -185,7 +193,9 @@ mod tests {
         let command_read_back: DaemonCommand =
             serde_json::from_str(&serde_json::to_string(&command).unwrap()).unwrap();
 
-        let DaemonCommand::NotYetTyped { arguments } = command_read_back;
+        let DaemonCommand::NotYetTyped { arguments } = command_read_back else {
+            panic!("the command should come back not yet typed");
+        };
         assert_eq!(arguments, ["space", "--balance"]);
     }
 }

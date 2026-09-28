@@ -1,10 +1,14 @@
+use clap::ValueEnum;
+use serde::{Deserialize, Serialize};
+
 use crate::display::identity::query_display_showing_the_active_menu_bar;
 use crate::display::labels::DisplayLabel;
 use crate::ffi::core_graphics::{CGDisplayRegisterReconfigurationCallback, kCGErrorSuccess};
 use crate::notifications::display::handle_display_reconfiguration_callback;
 use crate::support::handles::DisplayId;
 
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 #[repr(usize)]
 pub(crate) enum DisplayArrangementOrder {
     #[default]
@@ -13,12 +17,17 @@ pub(crate) enum DisplayArrangementOrder {
     Vertical = 2,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 #[repr(i32)]
 pub(crate) enum ExternalBarMode {
     #[default]
     Off = 0,
+    #[value(name = "main")]
+    #[serde(rename = "main")]
     MainDisplayOnly = 1,
+    #[value(name = "all")]
+    #[serde(rename = "all")]
     EveryDisplay = 2,
 }
 
@@ -32,11 +41,6 @@ pub(crate) struct DisplayManager {
     pub(crate) mode: ExternalBarMode,
     pub(crate) labels: Vec<DisplayLabel>,
 }
-
-pub(crate) static DISPLAY_ARRANGEMENT_ORDER_NAMES: [&str; 3] =
-    ["default", "horizontal", "vertical"];
-
-pub(crate) static EXTERNAL_BAR_MODE_NAMES: [&str; 3] = ["off", "main", "all"];
 
 pub(crate) fn start_display_manager_observing_display_reconfiguration(
     display_manager: &mut DisplayManager,

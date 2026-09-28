@@ -1,5 +1,8 @@
 use std::collections::VecDeque;
 
+use clap::ValueEnum;
+use serde::{Deserialize, Serialize};
+
 use crate::display::manager::DisplayManager;
 use crate::layout::area::{
     Area, bottom_right_pixel_inside_area, distance_from_source_area_to_target_area_in_direction,
@@ -39,21 +42,29 @@ pub(crate) struct LeafCountsPerSplitAxis {
     pub(crate) x_count: i32,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 #[repr(i32)]
 pub(crate) enum WindowNodeChild {
     #[default]
+    #[value(skip)]
     None = 0,
+    #[value(name = "second-child")]
+    #[serde(rename = "second-child")]
     Second = 1,
+    #[value(name = "first-child")]
+    #[serde(rename = "first-child")]
     First = 2,
 }
 
 pub(crate) static WINDOW_NODE_CHILD_NAMES: [&str; 3] = ["none", "second_child", "first_child"];
 
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 #[repr(u32)]
 pub(crate) enum WindowNodeSplit {
     #[default]
+    #[value(skip)]
     None = 0,
     Vertical = 1,
     Horizontal = 2,

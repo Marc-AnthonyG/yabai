@@ -12,8 +12,8 @@ the event loop tracks while a window is moved or resized, and what a drop does t
   out releases it.
 - Drop handling runs on the event-loop thread and takes the managers it touches as explicit
   parameters.
-- The modifier and mode name tables are CLI spellings. The modifier table is indexed by the flag
-  bit value, so its gaps are deliberate.
+- The command line names a modifier key and a button or drop action with its own enums; they
+  turn into the modifier bits and the mode stored in the tap state.
 - The tap swallows a plain click, and its mouse-up, that lands on a visible group header, whether
   or not the window server would let it through to what lies under the header. The frames it
   checks are a mutex-guarded list the event loop replaces after every header refresh; the lock is

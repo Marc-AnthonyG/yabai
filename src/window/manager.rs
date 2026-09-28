@@ -3,6 +3,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
+use clap::ValueEnum;
+use serde::{Deserialize, Serialize};
+
 use crate::application::Application;
 use crate::ffi::accessibility::{
     AXUIElementCreateSystemWide, AXUIElementRef, AXUIElementSetMessagingTimeout,
@@ -45,30 +48,47 @@ pub(crate) enum WindowOperationOutcome {
     SameStack,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 #[repr(i32)]
 pub(crate) enum ShadowRemovalMode {
     #[default]
+    #[value(name = "on")]
+    #[serde(rename = "on")]
     Never = 0,
+    #[value(name = "float")]
+    #[serde(rename = "float")]
     FromManagedWindows = 1,
+    #[value(name = "off")]
+    #[serde(rename = "off")]
     FromEveryWindow = 2,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 #[repr(i32)]
 pub(crate) enum FocusFollowsMouseMode {
     #[default]
+    #[value(name = "off")]
+    #[serde(rename = "off")]
     Disabled = 0,
     Autofocus = 1,
     Autoraise = 2,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 #[repr(i32)]
 pub(crate) enum WindowOriginDisplayMode {
     #[default]
+    #[value(name = "default")]
+    #[serde(rename = "default")]
     DisplayTheWindowOpenedOn = 0,
+    #[value(name = "focused")]
+    #[serde(rename = "focused")]
     FocusedDisplay = 1,
+    #[value(name = "cursor")]
+    #[serde(rename = "cursor")]
     DisplayUnderTheCursor = 2,
 }
 
@@ -103,13 +123,6 @@ pub(crate) struct WindowManager {
     pub(crate) group_header_style: GroupHeaderStyle,
     pub(crate) group_headers_are_hidden_during_mission_control: bool,
 }
-
-pub(crate) static SHADOW_REMOVAL_MODE_NAMES: [&str; 3] = ["on", "float", "off"];
-
-pub(crate) static FOCUS_FOLLOWS_MOUSE_MODE_NAMES: [&str; 3] =
-    ["disabled", "autofocus", "autoraise"];
-
-pub(crate) static WINDOW_ORIGIN_DISPLAY_MODE_NAMES: [&str; 3] = ["default", "focused", "cursor"];
 
 pub(crate) fn is_window_eligible_for_management(
     window_id: WindowId,

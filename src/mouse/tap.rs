@@ -83,44 +83,6 @@ impl MouseTapState {
 
 pub static MOUSE_TAP_STATE: MouseTapState = MouseTapState::new();
 
-pub(crate) static MOUSE_MODIFIER_NAMES: [Option<&str>; 33] = [
-    None,
-    Some("none"),
-    Some("alt"),
-    None,
-    Some("shift"),
-    None,
-    None,
-    None,
-    Some("cmd"),
-    None,
-    None,
-    None,
-    None,
-    None,
-    None,
-    None,
-    Some("ctrl"),
-    None,
-    None,
-    None,
-    None,
-    None,
-    None,
-    None,
-    None,
-    None,
-    None,
-    None,
-    None,
-    None,
-    None,
-    None,
-    Some("fn"),
-];
-
-pub(crate) static MOUSE_MODE_NAMES: [&str; 5] = ["none", "move", "resize", "swap", "stack"];
-
 pub(crate) fn set_default_mouse_modifier_and_actions() {
     MOUSE_TAP_STATE
         .modifier

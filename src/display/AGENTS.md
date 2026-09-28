@@ -17,5 +17,5 @@ taken out, the spaces SkyLight assigns each display, and focusing a display.
   uses is broken on Apple Silicon.
 - Whether a display is animating is only asked of SkyLight on Big Sur to Ventura; later
   versions always report that it is not.
-- The arrangement-order and external-bar name tables are CLI spellings indexed by the enum
-  discriminant.
+- The arrangement-order and external-bar enums carry their command-line and JSON spellings as
+  clap and serde derives.

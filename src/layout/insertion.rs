@@ -1,3 +1,6 @@
+use clap::ValueEnum;
+use serde::{Deserialize, Serialize};
+
 use crate::layout::area::{
     Area, area_a_window_inserted_in_direction_takes_from_node_area, cgrect_from_area,
 };
@@ -16,15 +19,14 @@ use crate::support::handles::{NodeId, SpaceId, WindowId};
 use crate::support::macos_version::{is_running_on_macos_sequoia, is_running_on_macos_tahoe};
 use crate::window::manager::WindowManager;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, ValueEnum, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 #[repr(u32)]
 pub(crate) enum WindowInsertionPoint {
     Focused = 0,
     First = 1,
     Last = 2,
 }
-
-pub(crate) static WINDOW_INSERTION_POINT_NAMES: [&str; 3] = ["focused", "first", "last"];
 
 pub(crate) fn area_the_insert_feedback_previews(
     space_id: SpaceId,

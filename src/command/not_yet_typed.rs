@@ -1,8 +1,7 @@
 use crate::command::DaemonCommand;
 
-const DOMAINS_STILL_REACHED_THROUGH_THE_MESSAGE_OPTION: [&str; 7] = [
-    "config", "display", "space", "window", "query", "rule", "signal",
-];
+const DOMAINS_STILL_REACHED_THROUGH_THE_MESSAGE_OPTION: [&str; 6] =
+    ["display", "space", "window", "query", "rule", "signal"];
 
 pub(crate) fn command_not_yet_typed_from_the_message_arguments(
     arguments: Vec<String>,
@@ -31,6 +30,14 @@ mod tests {
                 "window", "--focus", "west"
             ]))
             .is_ok()
+        );
+    }
+
+    #[test]
+    fn a_message_to_a_typed_domain_is_refused() {
+        assert!(
+            command_not_yet_typed_from_the_message_arguments(arguments(&["config", "layout"]))
+                .is_err()
         );
     }
 

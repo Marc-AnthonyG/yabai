@@ -1,12 +1,14 @@
 # serialise
 
 The JSON yabai prints for one window (tracked or untracked), space, display, rule or signal, the
-arrays the rule and signal listings print, and the property tables that name each field a query
-can select.
+arrays the rule and signal listings print, the property tables that name each field a query can
+select, and the effective configuration `config get` prints.
 
 ## Notes
 
-- These bytes are the public query wire format and are written with hand-rolled
+- The effective configuration is a serde struct whose snake_case keys are the setting names;
+  each value prints in the spelling `config set` takes.
+- The query bytes are the public query wire format and are written with hand-rolled
   format strings: field names and their order, the tab indentation, the `,\n`
   between fields, the `, ` inside the `spaces` and `windows` arrays of a display and a space,
   `{:.4}` for frames and opacity, ids printed as signed integers. None of it is to be "cleaned

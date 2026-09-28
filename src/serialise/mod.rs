@@ -1,3 +1,4 @@
+pub mod configuration;
 pub mod display;
 pub mod rule;
 pub mod signal;

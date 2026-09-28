@@ -565,39 +565,23 @@ pub(crate) fn query_window_sub_level_with_a_raw_mach_message(
 
     let mut message = WindowSubLevelMachMessage {
         header: mach_msg_header_t {
-            msgh_bits: 0,
-            msgh_size: 0,
-            msgh_remote_port: 0,
-            msgh_local_port: 0,
-            msgh_voucher_port: 0,
-            msgh_id: 0,
+            msgh_bits: 0x1513,
+            msgh_remote_port: unsafe {
+                resolved_cgs_get_connection_port_by_id_function(connection_id)
+            },
+            msgh_local_port: unsafe { mig_get_special_reply_port() },
+            msgh_id: if is_running_on_macos_tahoe() {
+                0x76E3
+            } else {
+                0x73C3
+            },
+            ..mach_msg_header_t::default()
         },
-        NDR_record: NDR_record_t {
-            mig_vers: 0,
-            if_vers: 0,
-            reserved1: 0,
-            mig_encoding: 0,
-            int_rep: 0,
-            char_rep: 0,
-            float_rep: 0,
-            reserved2: 0,
-        },
-        window_id: 0,
+        NDR_record: unsafe { NDR_record },
+        window_id: window_id.0,
         sub_level: 0,
         padding1: 0,
         padding2: 0,
-    };
-
-    message.NDR_record = unsafe { NDR_record };
-    message.window_id = window_id.0;
-    message.header.msgh_bits = 0x1513;
-    message.header.msgh_remote_port =
-        unsafe { resolved_cgs_get_connection_port_by_id_function(connection_id) };
-    message.header.msgh_local_port = unsafe { mig_get_special_reply_port() };
-    message.header.msgh_id = if is_running_on_macos_tahoe() {
-        0x76E3
-    } else {
-        0x73C3
     };
     unsafe {
         mach_msg(

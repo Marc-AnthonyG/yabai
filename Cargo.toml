@@ -130,6 +130,7 @@ regex = { version = "1.13.1", default-features = false, features = [
 ] }
 
 simple-easing = { version = "1.0.2", default-features = false }
+mach2 = { version = "0.7.0", default-features = false }
 
 [profile.dev]
 opt-level       = 0

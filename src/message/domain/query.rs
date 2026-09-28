@@ -1,429 +1,270 @@
-use crate::daemon_fail;
-use crate::display::identity::query_display_showing_the_active_menu_bar;
+use crate::command::query::{
+    DisplaysQueryFilter, QueryCommand, SpacesQueryFilter, WindowsQueryFilter,
+};
+use crate::display::identity::query_displays_active_for_drawing;
 use crate::display::manager::DisplayManager;
-use crate::message::common_failures::{
-    daemon_fail_with_unknown_command_for_domain,
-    daemon_fail_with_unknown_option_given_to_command_for_domain,
+use crate::message::selector_resolution::{
+    resolve_display_selector_or_the_display_showing_the_active_menu_bar,
+    resolve_space_selector_or_the_focused_space, resolve_window_selector_or_the_focused_window,
 };
-use crate::message::properties::parse_comma_separated_properties;
-use crate::message::selectors::{
-    parse_display_selector, parse_space_selector, parse_window_selector,
-};
-use crate::message::token::{MessageCursor, Token, is_token_equal_to};
 use crate::mouse::drag::MouseDragState;
-use crate::query::displays::write_every_display_as_json_array;
 use crate::query::spaces::{
-    write_space_as_json_object_followed_by_newline, write_spaces_of_display_as_json_array,
-    write_spaces_of_every_display_as_json_array, write_spaces_of_window_as_json_array,
+    find_view_for_query_creating_it_once_space_manager_started, spaces_holding_window_with_a_view,
+    spaces_of_display_with_a_view, spaces_of_every_display_with_a_view,
 };
 use crate::query::windows::{
-    write_windows_on_display_as_json_array, write_windows_on_every_display_as_json_array,
-    write_windows_on_spaces_as_json_array,
+    snapshots_of_the_windows_on_display, snapshots_of_the_windows_on_every_display,
+    snapshots_of_the_windows_on_spaces,
 };
-use crate::serialise::display::{
-    DISPLAY_PROPERTY_NAMES, DISPLAY_PROPERTY_SELECTION_BITS, write_display_as_json_object,
-};
-use crate::serialise::space::{SPACE_PROPERTY_NAMES, SPACE_PROPERTY_SELECTION_BITS};
-use crate::serialise::window::{
-    WINDOW_PROPERTY_NAMES, WINDOW_PROPERTY_SELECTION_BITS, write_tracked_window_as_json_object,
-};
-use crate::space::focus::query_current_space_of_the_focused_display;
+use crate::serialise::display::{DisplaySnapshot, snapshot_of_display};
+use crate::serialise::field_selection::pretty_json_keeping_only_the_selected_fields;
+use crate::serialise::space::{SpaceSnapshot, snapshot_of_the_space_of_a_view};
+use crate::serialise::window::{WindowSnapshot, snapshot_of_tracked_window};
 use crate::space::managed_space::query_display_holding_space;
 use crate::space::manager::SpaceManager;
-use crate::support::response::Response;
-use crate::window::focus::query_focused_tracked_window;
+use crate::support::handles::{DisplayId, SpaceId};
 use crate::window::manager::WindowManager;
 use crate::window::model::query_display_holding_window;
 
-/* --------------------------------DOMAIN QUERY--------------------------------- */
-pub(crate) const COMMAND_QUERY_DISPLAYS: &str = "--displays";
-pub(crate) const COMMAND_QUERY_SPACES: &str = "--spaces";
-pub(crate) const COMMAND_QUERY_WINDOWS: &str = "--windows";
-
-pub(crate) const ARGUMENT_QUERY_DISPLAY: &str = "--display";
-pub(crate) const ARGUMENT_QUERY_SPACE: &str = "--space";
-pub(crate) const ARGUMENT_QUERY_WINDOW: &str = "--window";
-/* ----------------------------------------------------------------------------- */
-
 pub(crate) fn run_query_command(
-    response: &mut Response,
-    domain: Token,
-    message_cursor: &mut MessageCursor,
+    command: QueryCommand,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
     space_manager: &mut SpaceManager,
-    mouse_drag_state: &mut MouseDragState,
-) {
-    let command = message_cursor.take_next_token();
-    if is_token_equal_to(command, message_cursor.bytes(), COMMAND_QUERY_DISPLAYS) {
-        let token = message_cursor.take_next_token();
-        let properties = parse_comma_separated_properties(
-            response,
-            message_cursor.bytes_mut(),
-            token,
-            &DISPLAY_PROPERTY_SELECTION_BITS,
-            &DISPLAY_PROPERTY_NAMES,
-        );
-        if properties.did_error {
-            return;
+    mouse_drag_state: &MouseDragState,
+) -> Result<String, String> {
+    let json = match command {
+        QueryCommand::Displays {
+            filter,
+            field_selection,
+        } => pretty_json_keeping_only_the_selected_fields(
+            &snapshots_of_the_displays_the_filter_covers(
+                &filter,
+                display_manager,
+                window_manager,
+                space_manager,
+            )?,
+            &field_selection.fields,
+        ),
+        QueryCommand::Spaces {
+            filter,
+            field_selection,
+        } => pretty_json_keeping_only_the_selected_fields(
+            &snapshots_of_the_spaces_the_filter_covers(
+                &filter,
+                display_manager,
+                window_manager,
+                space_manager,
+            )?,
+            &field_selection.fields,
+        ),
+        QueryCommand::Windows {
+            filter,
+            field_selection,
+        } => pretty_json_keeping_only_the_selected_fields(
+            &snapshots_of_the_windows_the_filter_covers(
+                &filter,
+                display_manager,
+                window_manager,
+                space_manager,
+                mouse_drag_state,
+            )?,
+            &field_selection.fields,
+        ),
+        QueryCommand::Display {
+            display,
+            field_selection,
+        } => {
+            let display_id = resolve_display_selector_or_the_display_showing_the_active_menu_bar(
+                display.as_ref(),
+                display_manager,
+            )?;
+            pretty_json_keeping_only_the_selected_fields(
+                &snapshot_of_display(display_id, display_manager),
+                &field_selection.fields,
+            )
         }
-
-        let option = if properties.did_parse {
-            message_cursor.take_next_token()
-        } else {
-            properties.token
-        };
-        if is_token_equal_to(option, message_cursor.bytes(), ARGUMENT_QUERY_DISPLAY) {
-            let mut acting_display_id = query_display_showing_the_active_menu_bar();
-            let selector = parse_display_selector(
-                response,
-                message_cursor,
-                acting_display_id,
-                true,
-                display_manager,
-            );
-
-            if selector.token.is_not_empty() {
-                if let Some(selector_display_id) = selector.resolved_target() {
-                    acting_display_id = selector_display_id;
-                } else {
-                    return;
-                }
-            }
-
-            write_display_as_json_object(
-                response,
-                acting_display_id,
-                properties.flags,
-                display_manager,
-            );
-            response.write(format_args!("\n"));
-        } else if is_token_equal_to(option, message_cursor.bytes(), ARGUMENT_QUERY_SPACE) {
-            let mut acting_space_id = query_current_space_of_the_focused_display(window_manager);
-            let selector = parse_space_selector(
-                response,
-                message_cursor,
-                acting_space_id,
-                true,
-                space_manager,
-            );
-
-            if selector.token.is_not_empty() {
-                if let Some(selector_space_id) = selector.resolved_target() {
-                    acting_space_id = selector_space_id;
-                } else {
-                    return;
-                }
-            }
-
-            write_display_as_json_object(
-                response,
-                query_display_holding_space(acting_space_id),
-                properties.flags,
-                display_manager,
-            );
-            response.write(format_args!("\n"));
-        } else if is_token_equal_to(option, message_cursor.bytes(), ARGUMENT_QUERY_WINDOW) {
-            let mut acting_window_id = query_focused_tracked_window(window_manager);
-            let selector = parse_window_selector(
-                response,
-                message_cursor,
-                acting_window_id,
-                true,
-                display_manager,
+        QueryCommand::Space {
+            space,
+            field_selection,
+        } => {
+            let space_id = resolve_space_selector_or_the_focused_space(
+                space.as_ref(),
                 window_manager,
                 space_manager,
-            );
-
-            if selector.token.is_not_empty() {
-                if let Some(selector_window_id) = selector.resolved_target() {
-                    acting_window_id = Some(selector_window_id);
-                } else {
-                    return;
-                }
-            }
-
-            if let Some(acting_window) = acting_window_id {
-                write_display_as_json_object(
-                    response,
-                    query_display_holding_window(acting_window),
-                    properties.flags,
-                    display_manager,
-                );
-                response.write(format_args!("\n"));
-            } else {
-                daemon_fail!(
-                    response,
-                    "could not find window to retrieve display details.\n"
-                );
-            }
-        } else if option.is_not_empty() {
-            daemon_fail_with_unknown_option_given_to_command_for_domain(
-                response,
-                message_cursor.bytes(),
-                option,
-                command,
-                domain,
-            );
-        } else {
-            write_every_display_as_json_array(response, properties.flags, display_manager);
+            )?;
+            pretty_json_keeping_only_the_selected_fields(
+                &snapshot_of_one_space(space_id, display_manager, window_manager, space_manager)?,
+                &field_selection.fields,
+            )
         }
-    } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_QUERY_SPACES) {
-        let token = message_cursor.take_next_token();
-        let properties = parse_comma_separated_properties(
-            response,
-            message_cursor.bytes_mut(),
-            token,
-            &SPACE_PROPERTY_SELECTION_BITS,
-            &SPACE_PROPERTY_NAMES,
-        );
-        if properties.did_error {
-            return;
+        QueryCommand::Window {
+            window,
+            field_selection,
+        } => {
+            let window_id = resolve_window_selector_or_the_focused_window(
+                window.as_ref(),
+                display_manager,
+                window_manager,
+                space_manager,
+            )?;
+            let snapshot = snapshot_of_tracked_window(
+                window_id,
+                display_manager,
+                window_manager,
+                space_manager,
+                mouse_drag_state,
+            )
+            .ok_or_else(|| String::from("could not retrieve window details."))?;
+            pretty_json_keeping_only_the_selected_fields(&snapshot, &field_selection.fields)
         }
+    };
+    Ok(json + "\n")
+}
 
-        let option = if properties.did_parse {
-            message_cursor.take_next_token()
-        } else {
-            properties.token
-        };
-        if is_token_equal_to(option, message_cursor.bytes(), ARGUMENT_QUERY_DISPLAY) {
-            let mut acting_display_id = query_display_showing_the_active_menu_bar();
-            let selector = parse_display_selector(
-                response,
-                message_cursor,
-                acting_display_id,
-                true,
-                display_manager,
-            );
-
-            if selector.token.is_not_empty() {
-                if let Some(selector_display_id) = selector.resolved_target() {
-                    acting_display_id = selector_display_id;
-                } else {
-                    return;
-                }
-            }
-
-            if !write_spaces_of_display_as_json_array(
-                response,
-                acting_display_id,
-                properties.flags,
+fn snapshots_of_the_displays_the_filter_covers(
+    filter: &DisplaysQueryFilter,
+    display_manager: &mut DisplayManager,
+    window_manager: &mut WindowManager,
+    space_manager: &mut SpaceManager,
+) -> Result<Vec<DisplaySnapshot>, String> {
+    let display_list: Vec<DisplayId> = match (&filter.space, &filter.window) {
+        (Some(space), _) => {
+            let space_id = resolve_space_selector_or_the_focused_space(
+                space.as_ref(),
+                window_manager,
+                space_manager,
+            )?;
+            vec![query_display_holding_space(space_id)]
+        }
+        (_, Some(window)) => {
+            let window_id = resolve_window_selector_or_the_focused_window(
+                window.as_ref(),
                 display_manager,
                 window_manager,
                 space_manager,
-            ) {
-                daemon_fail!(response, "could not retrieve spaces for display.\n");
-            }
-        } else if is_token_equal_to(option, message_cursor.bytes(), ARGUMENT_QUERY_SPACE) {
-            let mut acting_space_id = query_current_space_of_the_focused_display(window_manager);
-            let selector = parse_space_selector(
-                response,
-                message_cursor,
-                acting_space_id,
-                true,
-                space_manager,
-            );
+            )?;
+            vec![query_display_holding_window(window_id)]
+        }
+        (None, None) => query_displays_active_for_drawing(),
+    };
 
-            if selector.token.is_not_empty() {
-                if let Some(selector_space_id) = selector.resolved_target() {
-                    acting_space_id = selector_space_id;
-                } else {
-                    return;
-                }
-            }
+    Ok(display_list
+        .into_iter()
+        .map(|display_id| snapshot_of_display(display_id, display_manager))
+        .collect())
+}
 
-            if !write_space_as_json_object_followed_by_newline(
-                response,
-                acting_space_id,
-                properties.flags,
+fn snapshots_of_the_spaces_the_filter_covers(
+    filter: &SpacesQueryFilter,
+    display_manager: &mut DisplayManager,
+    window_manager: &mut WindowManager,
+    space_manager: &mut SpaceManager,
+) -> Result<Vec<SpaceSnapshot>, String> {
+    let space_list = match (&filter.display, &filter.window) {
+        (Some(display), _) => {
+            let display_id = resolve_display_selector_or_the_display_showing_the_active_menu_bar(
+                display.as_ref(),
+                display_manager,
+            )?;
+            spaces_of_display_with_a_view(
+                display_id,
                 display_manager,
                 window_manager,
                 space_manager,
-            ) {
-                daemon_fail!(response, "could not retrieve space details.\n");
-            }
-        } else if is_token_equal_to(option, message_cursor.bytes(), ARGUMENT_QUERY_WINDOW) {
-            let mut acting_window_id = query_focused_tracked_window(window_manager);
-            let selector = parse_window_selector(
-                response,
-                message_cursor,
-                acting_window_id,
-                true,
+            )
+            .ok_or_else(|| String::from("could not retrieve spaces for display."))?
+        }
+        (_, Some(window)) => {
+            let window_id = resolve_window_selector_or_the_focused_window(
+                window.as_ref(),
                 display_manager,
                 window_manager,
                 space_manager,
-            );
+            )?;
+            spaces_holding_window_with_a_view(
+                window_id,
+                display_manager,
+                window_manager,
+                space_manager,
+            )
+        }
+        (None, None) => {
+            spaces_of_every_display_with_a_view(display_manager, window_manager, space_manager)
+        }
+    };
 
-            if selector.token.is_not_empty() {
-                if let Some(selector_window_id) = selector.resolved_target() {
-                    acting_window_id = Some(selector_window_id);
-                } else {
-                    return;
-                }
-            }
+    Ok(space_list
+        .into_iter()
+        .filter_map(|space_id| {
+            snapshot_of_the_space_of_a_view(
+                space_id,
+                display_manager,
+                window_manager,
+                space_manager,
+            )
+        })
+        .collect())
+}
 
-            if let Some(acting_window) = acting_window_id {
-                write_spaces_of_window_as_json_array(
-                    response,
-                    acting_window,
-                    properties.flags,
-                    display_manager,
-                    window_manager,
-                    space_manager,
-                );
-            } else {
-                daemon_fail!(
-                    response,
-                    "could not find window to retrieve space details.\n"
-                );
-            }
-        } else if option.is_not_empty() {
-            daemon_fail_with_unknown_option_given_to_command_for_domain(
-                response,
-                message_cursor.bytes(),
-                option,
-                command,
-                domain,
-            );
-        } else if !write_spaces_of_every_display_as_json_array(
-            response,
-            properties.flags,
+fn snapshot_of_one_space(
+    space_id: SpaceId,
+    display_manager: &mut DisplayManager,
+    window_manager: &mut WindowManager,
+    space_manager: &mut SpaceManager,
+) -> Result<SpaceSnapshot, String> {
+    find_view_for_query_creating_it_once_space_manager_started(
+        space_manager,
+        space_id,
+        display_manager,
+        window_manager,
+    )
+    .and_then(|space_id| {
+        snapshot_of_the_space_of_a_view(space_id, display_manager, window_manager, space_manager)
+    })
+    .ok_or_else(|| String::from("could not retrieve space details."))
+}
+
+fn snapshots_of_the_windows_the_filter_covers(
+    filter: &WindowsQueryFilter,
+    display_manager: &mut DisplayManager,
+    window_manager: &mut WindowManager,
+    space_manager: &mut SpaceManager,
+    mouse_drag_state: &MouseDragState,
+) -> Result<Vec<WindowSnapshot>, String> {
+    Ok(match (&filter.display, &filter.space) {
+        (Some(display), _) => {
+            let display_id = resolve_display_selector_or_the_display_showing_the_active_menu_bar(
+                display.as_ref(),
+                display_manager,
+            )?;
+            snapshots_of_the_windows_on_display(
+                display_id,
+                display_manager,
+                window_manager,
+                space_manager,
+                mouse_drag_state,
+            )
+        }
+        (_, Some(space)) => {
+            let space_id = resolve_space_selector_or_the_focused_space(
+                space.as_ref(),
+                window_manager,
+                space_manager,
+            )?;
+            snapshots_of_the_windows_on_spaces(
+                &[space_id],
+                display_manager,
+                window_manager,
+                space_manager,
+                mouse_drag_state,
+            )
+        }
+        (None, None) => snapshots_of_the_windows_on_every_display(
             display_manager,
             window_manager,
             space_manager,
-        ) {
-            daemon_fail!(response, "could not retrieve spaces for displays.\n");
-        }
-    } else if is_token_equal_to(command, message_cursor.bytes(), COMMAND_QUERY_WINDOWS) {
-        let token = message_cursor.take_next_token();
-        let properties = parse_comma_separated_properties(
-            response,
-            message_cursor.bytes_mut(),
-            token,
-            &WINDOW_PROPERTY_SELECTION_BITS,
-            &WINDOW_PROPERTY_NAMES,
-        );
-        if properties.did_error {
-            return;
-        }
-
-        let option = if properties.did_parse {
-            message_cursor.take_next_token()
-        } else {
-            properties.token
-        };
-        if is_token_equal_to(option, message_cursor.bytes(), ARGUMENT_QUERY_DISPLAY) {
-            let mut acting_display_id = query_display_showing_the_active_menu_bar();
-            let selector = parse_display_selector(
-                response,
-                message_cursor,
-                acting_display_id,
-                true,
-                display_manager,
-            );
-
-            if selector.token.is_not_empty() {
-                if let Some(selector_display_id) = selector.resolved_target() {
-                    acting_display_id = selector_display_id;
-                } else {
-                    return;
-                }
-            }
-
-            write_windows_on_display_as_json_array(
-                response,
-                acting_display_id,
-                properties.flags,
-                display_manager,
-                window_manager,
-                space_manager,
-                mouse_drag_state,
-            );
-        } else if is_token_equal_to(option, message_cursor.bytes(), ARGUMENT_QUERY_SPACE) {
-            let mut acting_space_id = query_current_space_of_the_focused_display(window_manager);
-            let selector = parse_space_selector(
-                response,
-                message_cursor,
-                acting_space_id,
-                true,
-                space_manager,
-            );
-
-            if selector.token.is_not_empty() {
-                if let Some(selector_space_id) = selector.resolved_target() {
-                    acting_space_id = selector_space_id;
-                } else {
-                    return;
-                }
-            }
-
-            write_windows_on_spaces_as_json_array(
-                response,
-                &[acting_space_id],
-                properties.flags,
-                display_manager,
-                window_manager,
-                space_manager,
-                mouse_drag_state,
-            );
-        } else if is_token_equal_to(option, message_cursor.bytes(), ARGUMENT_QUERY_WINDOW) {
-            let mut acting_window_id = query_focused_tracked_window(window_manager);
-            let selector = parse_window_selector(
-                response,
-                message_cursor,
-                acting_window_id,
-                true,
-                display_manager,
-                window_manager,
-                space_manager,
-            );
-
-            if selector.token.is_not_empty() {
-                if let Some(selector_window_id) = selector.resolved_target() {
-                    acting_window_id = Some(selector_window_id);
-                } else {
-                    return;
-                }
-            }
-
-            if let Some(acting_window) = acting_window_id {
-                write_tracked_window_as_json_object(
-                    response,
-                    acting_window,
-                    properties.flags,
-                    display_manager,
-                    window_manager,
-                    space_manager,
-                    mouse_drag_state,
-                );
-                response.write(format_args!("\n"));
-            } else {
-                daemon_fail!(response, "could not retrieve window details.\n");
-            }
-        } else if option.is_not_empty() {
-            daemon_fail_with_unknown_option_given_to_command_for_domain(
-                response,
-                message_cursor.bytes(),
-                option,
-                command,
-                domain,
-            );
-        } else {
-            write_windows_on_every_display_as_json_array(
-                response,
-                properties.flags,
-                display_manager,
-                window_manager,
-                space_manager,
-                mouse_drag_state,
-            );
-        }
-    } else {
-        daemon_fail_with_unknown_command_for_domain(
-            response,
-            message_cursor.bytes(),
-            command,
-            domain,
-        );
-    }
+            mouse_drag_state,
+        ),
+    })
 }

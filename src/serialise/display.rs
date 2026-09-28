@@ -1,158 +1,90 @@
+use serde::Serialize;
+
 use crate::display::arrangement::query_arrangement_index_of_display;
 use crate::display::identity::copy_uuid_of_display;
 use crate::display::labels::label_of_display;
 use crate::display::manager::DisplayManager;
 use crate::display::spaces::query_spaces_of_display;
 use crate::ffi::core_graphics::CGDisplayBounds;
+use crate::serialise::frame::{FrameSnapshot, snapshot_of_frame};
 use crate::space::lookup::query_mission_control_index_of_space;
 use crate::support::handles::DisplayId;
-use crate::support::json::json_literal_for_boolean;
-use crate::support::printf_float_format::format_float_with_decimals_as_printf_does;
-use crate::support::response::Response;
 
-macro_rules! with_every_display_property {
-    ($display_property_entry:ident) => {
-        $display_property_entry! {
-            ("id", DISPLAY_PROPERTY_ID, 0x01),
-            ("uuid", DISPLAY_PROPERTY_UUID, 0x02),
-            ("index", DISPLAY_PROPERTY_INDEX, 0x04),
-            ("label", DISPLAY_PROPERTY_LABEL, 0x08),
-            ("frame", DISPLAY_PROPERTY_FRAME, 0x10),
-            ("spaces", DISPLAY_PROPERTY_SPACES, 0x20),
-            ("has-focus", DISPLAY_PROPERTY_HAS_FOCUS, 0x40),
-        }
-    };
+#[derive(Serialize, Debug, Default)]
+pub(crate) struct DisplaySnapshot {
+    pub(crate) id: u32,
+    pub(crate) uuid: Option<String>,
+    pub(crate) index: i32,
+    pub(crate) label: Option<String>,
+    pub(crate) frame: FrameSnapshot,
+    pub(crate) spaces: Vec<i32>,
+    pub(crate) has_focus: bool,
 }
 
-macro_rules! define_display_property_bits_and_names {
-    ($(($name:literal, $identifier:ident, $value:literal)),* $(,)?) => {
-        $(pub(crate) const $identifier: u64 = $value;)*
-
-        pub(crate) static DISPLAY_PROPERTY_SELECTION_BITS: [u64; 7] = [$($value),*];
-
-        pub(crate) static DISPLAY_PROPERTY_NAMES: [&str; 7] = [$($name),*];
-    };
-}
-
-with_every_display_property!(define_display_property_bits_and_names);
-
-pub(crate) fn write_display_as_json_object(
-    response: &mut Response,
+pub(crate) fn snapshot_of_display(
     display_id: DisplayId,
-    flags: u64,
     display_manager: &mut DisplayManager,
-) {
-    let mut flags = flags;
-    if flags == 0x0 {
-        flags |= !flags;
+) -> DisplaySnapshot {
+    DisplaySnapshot {
+        id: display_id.0,
+        uuid: copy_uuid_of_display(display_id).map(|uuid| uuid.as_ref().to_string()),
+        index: query_arrangement_index_of_display(display_id, display_manager),
+        label: label_of_display(display_manager, display_id)
+            .map(|display_label| display_label.label.clone()),
+        frame: snapshot_of_frame(CGDisplayBounds(display_id.0)),
+        spaces: mission_control_indexes_of_the_spaces_of_display(display_id),
+        has_focus: display_id == display_manager.current_display_id,
+    }
+}
+
+fn mission_control_indexes_of_the_spaces_of_display(display_id: DisplayId) -> Vec<i32> {
+    let space_list = query_spaces_of_display(display_id).unwrap_or_default();
+    let Some(first_space_id) = space_list.first() else {
+        return Vec::new();
+    };
+    let first_mission_control_index = query_mission_control_index_of_space(*first_space_id);
+    (0..space_list.len() as i32)
+        .map(|offset| first_mission_control_index + offset)
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::ValueEnum;
+
+    use super::DisplaySnapshot;
+    use crate::command::query::DisplayFieldName;
+
+    #[test]
+    fn a_display_prints_snake_case_keys_named_like_its_fields() {
+        let keys: Vec<String> = serde_json::to_value(DisplaySnapshot::default())
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
+
+        let names_of_the_fields: Vec<String> = DisplayFieldName::value_variants()
+            .iter()
+            .map(|field| {
+                serde_json::to_value(field)
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            })
+            .collect();
+
+        assert_eq!(keys, names_of_the_fields);
     }
 
-    let mut did_output = false;
-    response.write(format_args!("{{\n"));
+    #[test]
+    fn a_display_without_a_label_or_uuid_prints_them_as_null() {
+        let display = serde_json::to_value(DisplaySnapshot::default()).unwrap();
 
-    if flags & DISPLAY_PROPERTY_ID != 0 {
-        response.write(format_args!("\t\"id\":{}", display_id.0 as i32));
-        did_output = true;
+        assert_eq!(display["label"], serde_json::Value::Null);
+        assert_eq!(display["uuid"], serde_json::Value::Null);
+        assert_eq!(display["has_focus"], false);
     }
-
-    if flags & DISPLAY_PROPERTY_UUID != 0 {
-        if did_output {
-            response.write(format_args!(",\n"));
-        }
-
-        let mut uuid: Option<String> = None;
-        let uuid_ref = copy_uuid_of_display(display_id);
-        if let Some(uuid_ref) = uuid_ref {
-            uuid = Some(uuid_ref.as_ref().to_string());
-        }
-
-        response.write(format_args!(
-            "\t\"uuid\":\"{}\"",
-            uuid.as_deref().unwrap_or("<unknown>")
-        ));
-        did_output = true;
-    }
-
-    if flags & DISPLAY_PROPERTY_INDEX != 0 {
-        if did_output {
-            response.write(format_args!(",\n"));
-        }
-
-        response.write(format_args!(
-            "\t\"index\":{}",
-            query_arrangement_index_of_display(display_id, display_manager)
-        ));
-        did_output = true;
-    }
-
-    if flags & DISPLAY_PROPERTY_LABEL != 0 {
-        if did_output {
-            response.write(format_args!(",\n"));
-        }
-
-        let display_label = label_of_display(display_manager, display_id);
-        response.write(format_args!(
-            "\t\"label\":\"{}\"",
-            match &display_label {
-                Some(display_label) => display_label.label.as_str(),
-                None => "",
-            }
-        ));
-        did_output = true;
-    }
-
-    if flags & DISPLAY_PROPERTY_FRAME != 0 {
-        if did_output {
-            response.write(format_args!(",\n"));
-        }
-
-        let frame = CGDisplayBounds(display_id.0);
-        response.write(format_args!(
-            "\t\"frame\":{{\n\t\t\"x\":{},\n\t\t\"y\":{},\n\t\t\"w\":{},\n\t\t\"h\":{}\n\t}}",
-            format_float_with_decimals_as_printf_does(frame.origin.x, 4),
-            format_float_with_decimals_as_printf_does(frame.origin.y, 4),
-            format_float_with_decimals_as_printf_does(frame.size.width, 4),
-            format_float_with_decimals_as_printf_does(frame.size.height, 4)
-        ));
-        did_output = true;
-    }
-
-    if flags & DISPLAY_PROPERTY_SPACES != 0 {
-        if did_output {
-            response.write(format_args!(",\n"));
-        }
-
-        let space_list = query_spaces_of_display(display_id);
-
-        response.write(format_args!("\t\"spaces\":["));
-        if let Some(space_list) = space_list {
-            let count = space_list.len() as i32;
-            if let Some(first_space_id) = space_list.first() {
-                let first_mission_control_index =
-                    query_mission_control_index_of_space(*first_space_id);
-                for index in 0..count {
-                    if index < count - 1 {
-                        response.write(format_args!("{}, ", first_mission_control_index + index));
-                    } else {
-                        response.write(format_args!("{}", first_mission_control_index + index));
-                    }
-                }
-            }
-        }
-        response.write(format_args!("]"));
-        did_output = true;
-    }
-
-    if flags & DISPLAY_PROPERTY_HAS_FOCUS != 0 {
-        if did_output {
-            response.write(format_args!(",\n"));
-        }
-
-        response.write(format_args!(
-            "\t\"has-focus\":{}",
-            json_literal_for_boolean(display_id == display_manager.current_display_id)
-        ));
-    }
-
-    response.write(format_args!("\n}}"));
 }

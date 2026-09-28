@@ -1,6 +1,8 @@
+use serde::Serialize;
+
 use crate::display::arrangement::query_arrangement_index_of_display;
 use crate::display::manager::DisplayManager;
-use crate::layout::settings::VIEW_LAYOUT_NAMES;
+use crate::layout::settings::ViewLayout;
 use crate::layout::tree::{first_leaf_below_node, last_leaf_below_node};
 use crate::space::labels::label_of_space;
 use crate::space::lookup::query_mission_control_index_of_space;
@@ -9,229 +11,123 @@ use crate::space::managed_space::{
     query_windows_on_space,
 };
 use crate::space::manager::SpaceManager;
-use crate::support::handles::{ROOT_NODE_ID, SpaceId, WindowId};
-use crate::support::json::json_literal_for_boolean;
-use crate::support::response::Response;
+use crate::support::handles::{NodeId, ROOT_NODE_ID, SpaceId, WindowId};
 use crate::window::manager::WindowManager;
 
-macro_rules! with_every_space_property {
-    ($space_property_entry:ident) => {
-        $space_property_entry! {
-            ("id", SPACE_PROPERTY_ID, 0x001),
-            ("uuid", SPACE_PROPERTY_UUID, 0x002),
-            ("index", SPACE_PROPERTY_INDEX, 0x004),
-            ("label", SPACE_PROPERTY_LABEL, 0x008),
-            ("type", SPACE_PROPERTY_TYPE, 0x010),
-            ("display", SPACE_PROPERTY_DISPLAY, 0x020),
-            ("windows", SPACE_PROPERTY_WINDOWS, 0x040),
-            ("first-window", SPACE_PROPERTY_FIRST_WINDOW, 0x080),
-            ("last-window", SPACE_PROPERTY_LAST_WINDOW, 0x100),
-            ("has-focus", SPACE_PROPERTY_HAS_FOCUS, 0x200),
-            ("is-visible", SPACE_PROPERTY_IS_VISIBLE, 0x400),
-            ("is-native-fullscreen", SPACE_PROPERTY_IS_FULLSCREEN, 0x800),
-        }
-    };
+#[derive(Serialize, Debug)]
+pub(crate) struct SpaceSnapshot {
+    pub(crate) id: u64,
+    pub(crate) uuid: Option<String>,
+    pub(crate) index: i32,
+    pub(crate) label: Option<String>,
+    #[serde(rename = "type")]
+    pub(crate) layout: ViewLayout,
+    pub(crate) display: i32,
+    pub(crate) windows: Vec<u32>,
+    pub(crate) first_window: u32,
+    pub(crate) last_window: u32,
+    pub(crate) has_focus: bool,
+    pub(crate) is_visible: bool,
+    pub(crate) is_native_fullscreen: bool,
 }
 
-macro_rules! define_space_property_bits_and_names {
-    ($(($name:literal, $identifier:ident, $value:literal)),* $(,)?) => {
-        $(pub(crate) const $identifier: u64 = $value;)*
-
-        pub(crate) static SPACE_PROPERTY_SELECTION_BITS: [u64; 12] = [$($value),*];
-
-        pub(crate) static SPACE_PROPERTY_NAMES: [&str; 12] = [$($name),*];
-    };
-}
-
-with_every_space_property!(define_space_property_bits_and_names);
-
-pub(crate) fn write_space_as_json_object(
-    response: &mut Response,
-    space_manager: &mut SpaceManager,
+pub(crate) fn snapshot_of_the_space_of_a_view(
     space_id: SpaceId,
-    flags: u64,
     display_manager: &mut DisplayManager,
     window_manager: &mut WindowManager,
-) {
-    let Some(view) = space_manager.view.get(&space_id) else {
-        return;
-    };
+    space_manager: &mut SpaceManager,
+) -> Option<SpaceSnapshot> {
+    let view = space_manager.view.get(&space_id)?;
     let layout = view.layout;
+    let uuid = view.uuid.as_ref().map(|uuid| uuid.as_ref().to_string());
 
-    let mut flags = flags;
-    if flags == 0x0 {
-        flags |= !flags;
-    }
+    let first_leaf = first_leaf_below_node(space_id, ROOT_NODE_ID, space_manager);
+    let last_leaf = last_leaf_below_node(space_id, ROOT_NODE_ID, space_manager);
 
-    let mut did_output = false;
-    response.write(format_args!("{{\n"));
+    Some(SpaceSnapshot {
+        id: space_id.0,
+        uuid,
+        index: query_mission_control_index_of_space(space_id),
+        label: label_of_space(space_manager, space_id).map(|space_label| space_label.label.clone()),
+        layout,
+        display: query_arrangement_index_of_display(
+            query_display_holding_space(space_id),
+            display_manager,
+        ),
+        windows: query_windows_on_space(space_id, true, window_manager)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|window_id| window_id.0)
+            .collect(),
+        first_window: front_window_of_leaf(space_id, first_leaf, space_manager).0,
+        last_window: front_window_of_leaf(space_id, last_leaf, space_manager).0,
+        has_focus: space_id == space_manager.current_space_id,
+        is_visible: is_space_visible_on_its_display(space_id),
+        is_native_fullscreen: is_native_fullscreen_space(space_id),
+    })
+}
 
-    if (flags & SPACE_PROPERTY_ID) != 0 {
-        response.write(format_args!("\t\"id\":{}", space_id.0 as i64));
-        did_output = true;
-    }
+fn front_window_of_leaf(space_id: SpaceId, leaf: NodeId, space_manager: &SpaceManager) -> WindowId {
+    space_manager
+        .find_node_in_view_of_space(space_id, leaf)
+        .map_or(WindowId(0), |node| node.window_order[0])
+}
 
-    if (flags & SPACE_PROPERTY_UUID) != 0 {
-        if did_output {
-            response.write(format_args!(",\n"));
+#[cfg(test)]
+mod tests {
+    use clap::ValueEnum;
+
+    use super::SpaceSnapshot;
+    use crate::command::query::SpaceFieldName;
+    use crate::layout::settings::ViewLayout;
+
+    fn snapshot_of_a_bsp_space() -> SpaceSnapshot {
+        SpaceSnapshot {
+            id: 3,
+            uuid: None,
+            index: 1,
+            label: Some(String::from("code")),
+            layout: ViewLayout::BinarySpacePartitioning,
+            display: 1,
+            windows: vec![101, 102],
+            first_window: 101,
+            last_window: 102,
+            has_focus: true,
+            is_visible: true,
+            is_native_fullscreen: false,
         }
-
-        let uuid = space_manager
-            .view
-            .get(&space_id)
-            .and_then(|view| view.uuid.as_ref())
-            .map(|uuid| uuid.as_ref().to_string());
-        response.write(format_args!(
-            "\t\"uuid\":\"{}\"",
-            uuid.as_deref().unwrap_or("<unknown>")
-        ));
-        did_output = true;
     }
 
-    if (flags & SPACE_PROPERTY_INDEX) != 0 {
-        if did_output {
-            response.write(format_args!(",\n"));
-        }
+    #[test]
+    fn a_space_prints_snake_case_keys_named_like_its_fields() {
+        let keys: Vec<String> = serde_json::to_value(snapshot_of_a_bsp_space())
+            .unwrap()
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
 
-        response.write(format_args!(
-            "\t\"index\":{}",
-            query_mission_control_index_of_space(space_id)
-        ));
-        did_output = true;
+        let names_of_the_fields: Vec<String> = SpaceFieldName::value_variants()
+            .iter()
+            .map(|field| {
+                serde_json::to_value(field)
+                    .unwrap()
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            })
+            .collect();
+
+        assert_eq!(keys, names_of_the_fields);
     }
 
-    if (flags & SPACE_PROPERTY_LABEL) != 0 {
-        if did_output {
-            response.write(format_args!(",\n"));
-        }
+    #[test]
+    fn a_space_prints_its_layout_as_type_in_the_spelling_config_set_takes() {
+        let space = serde_json::to_value(snapshot_of_a_bsp_space()).unwrap();
 
-        let space_label = label_of_space(space_manager, space_id);
-        response.write(format_args!(
-            "\t\"label\":\"{}\"",
-            match &space_label {
-                Some(space_label) => space_label.label.as_str(),
-                None => "",
-            }
-        ));
-        did_output = true;
+        assert_eq!(space["type"], "bsp");
+        assert_eq!(space["label"], "code");
+        assert_eq!(space["windows"], serde_json::json!([101, 102]));
     }
-
-    if (flags & SPACE_PROPERTY_TYPE) != 0 {
-        if did_output {
-            response.write(format_args!(",\n"));
-        }
-
-        response.write(format_args!(
-            "\t\"type\":\"{}\"",
-            VIEW_LAYOUT_NAMES[layout as usize]
-        ));
-        did_output = true;
-    }
-
-    if (flags & SPACE_PROPERTY_DISPLAY) != 0 {
-        if did_output {
-            response.write(format_args!(",\n"));
-        }
-
-        response.write(format_args!(
-            "\t\"display\":{}",
-            query_arrangement_index_of_display(
-                query_display_holding_space(space_id),
-                display_manager
-            )
-        ));
-        did_output = true;
-    }
-
-    if (flags & SPACE_PROPERTY_WINDOWS) != 0 {
-        if did_output {
-            response.write(format_args!(",\n"));
-        }
-
-        let window_list =
-            query_windows_on_space(space_id, true, window_manager).unwrap_or_default();
-        let window_count = window_list.len() as i32;
-
-        response.write(format_args!("\t\"windows\":["));
-        for index in 0..window_count {
-            if index < window_count - 1 {
-                response.write(format_args!("{}, ", window_list[index as usize].0 as i32));
-            } else {
-                response.write(format_args!("{}", window_list[index as usize].0 as i32));
-            }
-        }
-        response.write(format_args!("]"));
-        did_output = true;
-    }
-
-    if (flags & SPACE_PROPERTY_FIRST_WINDOW) != 0 {
-        if did_output {
-            response.write(format_args!(",\n"));
-        }
-
-        let first_leaf = first_leaf_below_node(space_id, ROOT_NODE_ID, space_manager);
-        let first_window_id = space_manager
-            .view
-            .get(&space_id)
-            .map_or(WindowId(0), |view| view.node(first_leaf).window_order[0]);
-        response.write(format_args!(
-            "\t\"first-window\":{}",
-            first_window_id.0 as i32
-        ));
-        did_output = true;
-    }
-
-    if (flags & SPACE_PROPERTY_LAST_WINDOW) != 0 {
-        if did_output {
-            response.write(format_args!(",\n"));
-        }
-
-        let last_leaf = last_leaf_below_node(space_id, ROOT_NODE_ID, space_manager);
-        let last_window_id = space_manager
-            .view
-            .get(&space_id)
-            .map_or(WindowId(0), |view| view.node(last_leaf).window_order[0]);
-        response.write(format_args!(
-            "\t\"last-window\":{}",
-            last_window_id.0 as i32
-        ));
-        did_output = true;
-    }
-
-    if (flags & SPACE_PROPERTY_HAS_FOCUS) != 0 {
-        if did_output {
-            response.write(format_args!(",\n"));
-        }
-
-        response.write(format_args!(
-            "\t\"has-focus\":{}",
-            json_literal_for_boolean(space_id == space_manager.current_space_id)
-        ));
-        did_output = true;
-    }
-
-    if (flags & SPACE_PROPERTY_IS_VISIBLE) != 0 {
-        if did_output {
-            response.write(format_args!(",\n"));
-        }
-
-        response.write(format_args!(
-            "\t\"is-visible\":{}",
-            json_literal_for_boolean(is_space_visible_on_its_display(space_id))
-        ));
-        did_output = true;
-    }
-
-    if (flags & SPACE_PROPERTY_IS_FULLSCREEN) != 0 {
-        if did_output {
-            response.write(format_args!(",\n"));
-        }
-
-        response.write(format_args!(
-            "\t\"is-native-fullscreen\":{}",
-            json_literal_for_boolean(is_native_fullscreen_space(space_id))
-        ));
-    }
-
-    response.write(format_args!("\n}}"));
 }

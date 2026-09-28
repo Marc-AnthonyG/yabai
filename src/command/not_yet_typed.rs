@@ -1,7 +1,7 @@
 use crate::command::DaemonCommand;
 
-const DOMAINS_STILL_REACHED_THROUGH_THE_MESSAGE_OPTION: [&str; 6] =
-    ["display", "space", "window", "query", "rule", "signal"];
+const DOMAINS_STILL_REACHED_THROUGH_THE_MESSAGE_OPTION: [&str; 5] =
+    ["display", "space", "window", "rule", "signal"];
 
 pub(crate) fn command_not_yet_typed_from_the_message_arguments(
     arguments: Vec<String>,

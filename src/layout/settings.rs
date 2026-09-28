@@ -18,8 +18,6 @@ pub(crate) enum ViewLayout {
     Float = 3,
 }
 
-pub(crate) static VIEW_LAYOUT_NAMES: [&str; 4] = ["default", "bsp", "stack", "float"];
-
 bitflags::bitflags! {
     #[derive(Clone, Copy, PartialEq, Eq, Default)]
     pub(crate) struct ViewFlag: u64 {

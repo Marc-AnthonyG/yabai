@@ -35,13 +35,12 @@ use crate::notifications::workspace::{
 use crate::process::manager::{PROCESS_TABLE, ProcessManager};
 use crate::process::model::Process;
 use crate::process::running_application::is_process_observable_refreshing_its_activation_policy;
-use crate::serialise::window::write_tracked_window_as_json_object;
+use crate::serialise::window::snapshot_of_tracked_window;
 use crate::space::managed_space::query_windows_on_spaces_owned_by_connection;
 use crate::space::manager::SpaceManager;
 use crate::state::mission_control_mode::MissionControlMode;
 use crate::support::handles::{ProcessId, SpaceId, WindowId};
 use crate::support::log::{is_verbose_debug_output_enabled, text_or_printf_null_placeholder};
-use crate::support::response::Response;
 use crate::window::focus::query_focused_tracked_window;
 use crate::window::manager::{
     WindowManager, forget_focused_event_that_arrived_before_window_was_tracked,
@@ -237,26 +236,13 @@ pub(crate) fn track_newly_discovered_window_applying_its_rules(
                 window.flags.insert(WindowFlag::FLOATING);
             }
 
-            //
-            // NOTE(asmvik): Print window information when debug_output is enabled.
-            // Useful for identifying and creating rules if this window should in fact be managed.
-            //
-
-            if is_verbose_debug_output_enabled() {
-                let mut response = Response::collecting();
-                write_tracked_window_as_json_object(
-                    &mut response,
-                    window_id,
-                    0,
-                    display_manager,
-                    window_manager,
-                    space_manager,
-                    mouse_drag_state,
-                );
-                let (window_information, _) =
-                    response.into_standard_output_and_one_failure_per_line();
-                print!("window info: \n{window_information}\n");
-            }
+            print_the_window_to_help_write_a_rule_when_debug_output_is_enabled(
+                window_id,
+                display_manager,
+                window_manager,
+                space_manager,
+                mouse_drag_state,
+            );
         }
     } else {
         crate::debug!(
@@ -269,27 +255,40 @@ pub(crate) fn track_newly_discovered_window_applying_its_rules(
             window.flags.insert(WindowFlag::FLOATING);
         }
 
-        //
-        // NOTE(asmvik): Print window information when debug_output is enabled.
-        //
-
-        if is_verbose_debug_output_enabled() {
-            let mut response = Response::collecting();
-            write_tracked_window_as_json_object(
-                &mut response,
-                window_id,
-                0,
-                display_manager,
-                window_manager,
-                space_manager,
-                mouse_drag_state,
-            );
-            let (window_information, _) = response.into_standard_output_and_one_failure_per_line();
-            print!("window info: \n{window_information}\n");
-        }
+        print_the_window_to_help_write_a_rule_when_debug_output_is_enabled(
+            window_id,
+            display_manager,
+            window_manager,
+            space_manager,
+            mouse_drag_state,
+        );
     }
 
     Some(window_id)
+}
+
+fn print_the_window_to_help_write_a_rule_when_debug_output_is_enabled(
+    window_id: WindowId,
+    display_manager: &mut DisplayManager,
+    window_manager: &mut WindowManager,
+    space_manager: &mut SpaceManager,
+    mouse_drag_state: &MouseDragState,
+) {
+    if !is_verbose_debug_output_enabled() {
+        return;
+    }
+    if let Some(snapshot) = snapshot_of_tracked_window(
+        window_id,
+        display_manager,
+        window_manager,
+        space_manager,
+        mouse_drag_state,
+    ) {
+        println!(
+            "window info: \n{}",
+            serde_json::to_string_pretty(&snapshot).unwrap_or_default()
+        );
+    }
 }
 
 pub(crate) fn track_untracked_windows_of_application_applying_one_shot_rules(

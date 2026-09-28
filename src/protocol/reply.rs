@@ -16,6 +16,12 @@ impl DaemonReply {
         }
     }
 
+    pub(crate) fn printing_or_failing_with(outcome: Result<String, String>) -> DaemonReply {
+        DaemonReply::printing_or_failing_with_every_failure(
+            outcome.map_err(|failure| vec![failure]),
+        )
+    }
+
     pub(crate) fn printing_or_failing_with_every_failure(
         outcome: Result<String, Vec<String>>,
     ) -> DaemonReply {

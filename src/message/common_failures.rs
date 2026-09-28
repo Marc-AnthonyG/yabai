@@ -19,24 +19,6 @@ pub(crate) fn daemon_fail_with_unknown_value_given_to_command_for_domain(
     ]);
 }
 
-pub(crate) fn daemon_fail_with_unknown_option_given_to_command_for_domain(
-    response: &mut Response,
-    message_bytes: &[u8],
-    option: Token,
-    command: Token,
-    domain: Token,
-) {
-    response.write_failure_pieces_unless_silent(&[
-        FailurePiece::Text("unknown option '"),
-        FailurePiece::Bytes(option.bytes(message_bytes)),
-        FailurePiece::Text("' given to command '"),
-        FailurePiece::Bytes(command.bytes(message_bytes)),
-        FailurePiece::Text("' for domain '"),
-        FailurePiece::Bytes(domain.bytes(message_bytes)),
-        FailurePiece::Text("'\n"),
-    ]);
-}
-
 pub(crate) fn daemon_fail_with_invalid_value_for_key(
     response: &mut Response,
     value: &[u8],

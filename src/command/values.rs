@@ -142,6 +142,18 @@ impl From<ExternalBarPadding> for String {
     }
 }
 
+// serde reads a null as None, so without this a filter given without a selector, serialised as
+// null, would come back as no filter at all.
+pub(crate) fn deserialize_a_present_field_as_some<'de, Deserializer, Value>(
+    deserializer: Deserializer,
+) -> Result<Option<Value>, Deserializer::Error>
+where
+    Deserializer: serde::Deserializer<'de>,
+    Value: Deserialize<'de>,
+{
+    Value::deserialize(deserializer).map(Some)
+}
+
 fn parse_finite_number(text: &str) -> Result<f32, String> {
     text.parse::<f32>()
         .ok()

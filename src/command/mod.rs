@@ -1,5 +1,6 @@
 pub mod config;
 pub mod not_yet_typed;
+pub mod query;
 pub mod selectors;
 pub mod values;
 
@@ -9,6 +10,7 @@ use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
 use crate::command::config::ConfigCommand;
+use crate::command::query::QueryCommand;
 
 #[derive(Parser)]
 #[command(
@@ -85,6 +87,9 @@ pub(crate) enum DaemonCommand {
     /// Change or print the settings of the window manager
     #[command(subcommand)]
     Config(ConfigCommand),
+    /// Print displays, spaces and windows as JSON
+    #[command(subcommand)]
+    Query(QueryCommand),
     #[command(skip)]
     NotYetTyped { arguments: Vec<String> },
 }

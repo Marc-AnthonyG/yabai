@@ -57,8 +57,6 @@ pub(crate) enum WindowNodeChild {
     First = 2,
 }
 
-pub(crate) static WINDOW_NODE_CHILD_NAMES: [&str; 3] = ["none", "second_child", "first_child"];
-
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug, ValueEnum, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 #[repr(u32)]
@@ -70,8 +68,6 @@ pub(crate) enum WindowNodeSplit {
     Horizontal = 2,
     Auto = 3,
 }
-
-pub(crate) static WINDOW_NODE_SPLIT_NAMES: [&str; 4] = ["none", "vertical", "horizontal", "auto"];
 
 pub(crate) fn window_node_split_and_child_placing_a_window_inserted_in_direction(
     insert_direction: i32,

@@ -1,6 +1,5 @@
 use crate::display::manager::DisplayManager;
 use crate::message::domain::display::run_display_command;
-use crate::message::domain::query::run_query_command;
 use crate::message::domain::rule::run_rule_command;
 use crate::message::domain::signal::run_signal_command;
 use crate::message::domain::space::run_space_command;
@@ -18,7 +17,6 @@ use crate::window::manager::WindowManager;
 const DOMAIN_DISPLAY: &str = "display";
 const DOMAIN_SPACE: &str = "space";
 const DOMAIN_WINDOW: &str = "window";
-const DOMAIN_QUERY: &str = "query";
 const DOMAIN_RULE: &str = "rule";
 const DOMAIN_SIGNAL: &str = "signal";
 
@@ -69,16 +67,6 @@ pub(crate) fn run_message_to_a_domain_not_yet_typed(
             space_manager,
             mouse_drag_state,
             mission_control_mode,
-        );
-    } else if is_token_equal_to(domain, message_cursor.bytes(), DOMAIN_QUERY) {
-        run_query_command(
-            &mut response,
-            domain,
-            &mut message_cursor,
-            display_manager,
-            window_manager,
-            space_manager,
-            mouse_drag_state,
         );
     } else if is_token_equal_to(domain, message_cursor.bytes(), DOMAIN_RULE) {
         run_rule_command(

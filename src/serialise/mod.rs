@@ -1,5 +1,7 @@
 pub mod configuration;
 pub mod display;
+pub mod field_selection;
+pub mod frame;
 pub mod rule;
 pub mod signal;
 pub mod space;

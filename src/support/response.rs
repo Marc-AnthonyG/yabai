@@ -30,14 +30,6 @@ impl Response {
         }
     }
 
-    pub fn write_bytes_stopping_at_first_null(&mut self, bytes: &[u8]) {
-        let end = bytes
-            .iter()
-            .position(|byte| *byte == 0)
-            .unwrap_or(bytes.len());
-        self.write_bytes(&bytes[..end]);
-    }
-
     pub fn write(&mut self, arguments: std::fmt::Arguments) {
         self.write_bytes(std::fmt::format(arguments).as_bytes());
     }
@@ -63,9 +55,6 @@ impl Response {
             match piece {
                 FailurePiece::Text(text) => self.write_bytes(text.as_bytes()),
                 FailurePiece::Bytes(bytes) => self.write_bytes(bytes),
-                FailurePiece::BytesStoppingAtFirstNull(bytes) => {
-                    self.write_bytes_stopping_at_first_null(bytes)
-                }
             }
         }
     }
@@ -83,7 +72,6 @@ impl Response {
 pub enum FailurePiece<'message> {
     Text(&'message str),
     Bytes(&'message [u8]),
-    BytesStoppingAtFirstNull(&'message [u8]),
 }
 
 #[macro_export]

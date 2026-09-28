@@ -12,6 +12,7 @@ use crate::layout::settings::ViewLayout;
 use crate::layout::tree::{WindowNodeChild, WindowNodeSplit};
 use crate::layout::view::View;
 use crate::mouse::tap::{MOUSE_TAP_STATE, MouseMode, MouseModifier};
+use crate::serialise::json_value::json_value_keeping_the_shortest_spelling_of_every_float;
 use crate::space::manager::SpaceManager;
 use crate::state::process_wide::{
     RELOAD_CONFIG_FILE_ON_CHANGE_ENABLED, VERBOSE_DEBUG_OUTPUT_ENABLED,
@@ -162,7 +163,7 @@ pub(crate) fn value_of_one_setting_as_bare_text(
     configuration: &EffectiveConfiguration,
     setting: ConfigurationSettingName,
 ) -> String {
-    let every_setting = serde_json::to_value(configuration).unwrap_or_default();
+    let every_setting = json_value_keeping_the_shortest_spelling_of_every_float(configuration);
     let key_of_the_setting = serde_json::to_value(setting).unwrap_or_default();
     let value_of_the_setting = key_of_the_setting
         .as_str()
@@ -217,6 +218,7 @@ mod tests {
     fn one_setting_prints_bare_in_the_spelling_config_set_takes() {
         let mut window_manager = create_window_manager_tracking_nothing_with_its_initial_settings();
         window_manager.group_header_style.font_family = String::from("JetBrainsMono Nerd Font");
+        window_manager.normal_window_opacity = 0.9;
         let configuration = effective_global_configuration(
             &DisplayManager::default(),
             &window_manager,
@@ -238,6 +240,7 @@ mod tests {
             ),
             (ConfigurationSettingName::GroupHeaderHeight, "24"),
             (ConfigurationSettingName::GroupHeaderFontSize, "12.0"),
+            (ConfigurationSettingName::NormalWindowOpacity, "0.9"),
             (ConfigurationSettingName::ExternalBar, "off:0:0"),
             (ConfigurationSettingName::WindowPlacement, "second-child"),
             (ConfigurationSettingName::FocusFollowsMouse, "off"),

@@ -284,8 +284,8 @@ fn print_the_window_to_help_write_a_rule_when_debug_output_is_enabled(
         space_manager,
         mouse_drag_state,
     ) {
-        println!(
-            "window info: \n{}",
+        crate::debug!(
+            "window info: \n{}\n",
             serde_json::to_string_pretty(&snapshot).unwrap_or_default()
         );
     }

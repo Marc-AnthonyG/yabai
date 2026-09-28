@@ -38,8 +38,8 @@ impl DaemonReply {
     }
 }
 
-pub(crate) fn write_reply(writer: impl Write, reply: &DaemonReply) -> std::io::Result<()> {
-    serde_json::to_writer(writer, reply).map_err(std::io::Error::from)
+pub(crate) fn write_reply(mut writer: impl Write, reply: &DaemonReply) -> std::io::Result<()> {
+    writer.write_all(&serde_json::to_vec(reply)?)
 }
 
 pub(crate) fn read_reply_until_the_daemon_closes_the_stream(

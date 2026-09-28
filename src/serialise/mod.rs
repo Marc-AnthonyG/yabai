@@ -2,6 +2,7 @@ pub mod configuration;
 pub mod display;
 pub mod field_selection;
 pub mod frame;
+pub mod json_value;
 pub mod rule;
 pub mod signal;
 pub mod space;

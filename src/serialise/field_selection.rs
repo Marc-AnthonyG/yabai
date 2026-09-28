@@ -1,6 +1,8 @@
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::serialise::json_value::json_value_keeping_the_shortest_spelling_of_every_float;
+
 pub(crate) fn pretty_json_keeping_only_the_selected_fields<Snapshot, FieldName>(
     snapshot_or_snapshots: &Snapshot,
     selected_fields: &[FieldName],
@@ -9,7 +11,7 @@ where
     Snapshot: Serialize + ?Sized,
     FieldName: Serialize,
 {
-    let mut json = serde_json::to_value(snapshot_or_snapshots).unwrap_or_default();
+    let mut json = json_value_keeping_the_shortest_spelling_of_every_float(snapshot_or_snapshots);
     if !selected_fields.is_empty() {
         let keys_of_the_selected_fields = keys_of_fields(selected_fields);
         match &mut json {
@@ -51,6 +53,7 @@ mod tests {
     struct Snapshot {
         id: u32,
         app: &'static str,
+        opacity: f32,
         is_minimized: bool,
     }
 
@@ -58,6 +61,7 @@ mod tests {
         Snapshot {
             id,
             app: "Finder",
+            opacity: 0.9,
             is_minimized: false,
         }
     }
@@ -71,7 +75,7 @@ mod tests {
 
         assert_eq!(
             json,
-            "{\n  \"id\": 7,\n  \"app\": \"Finder\",\n  \"is_minimized\": false\n}"
+            "{\n  \"id\": 7,\n  \"app\": \"Finder\",\n  \"opacity\": 0.9,\n  \"is_minimized\": false\n}"
         );
     }
 
@@ -79,10 +83,17 @@ mod tests {
     fn selected_fields_keep_declaration_order_whatever_order_they_were_given_in() {
         let json = pretty_json_keeping_only_the_selected_fields(
             &snapshot_of(7),
-            &[WindowFieldName::IsMinimized, WindowFieldName::Id],
+            &[
+                WindowFieldName::IsMinimized,
+                WindowFieldName::Opacity,
+                WindowFieldName::Id,
+            ],
         );
 
-        assert_eq!(json, "{\n  \"id\": 7,\n  \"is_minimized\": false\n}");
+        assert_eq!(
+            json,
+            "{\n  \"id\": 7,\n  \"opacity\": 0.9,\n  \"is_minimized\": false\n}"
+        );
     }
 
     #[test]

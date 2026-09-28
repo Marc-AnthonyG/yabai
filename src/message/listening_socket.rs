@@ -11,7 +11,8 @@ use crate::command::DaemonCommand;
 use crate::event::queue::{Event, post_event_to_event_loop};
 use crate::protocol::reply::{DaemonReply, write_reply};
 use crate::protocol::request::{
-    command_of_a_request_from_a_client_of_the_same_version, read_request_after_its_length,
+    command_of_a_request_from_a_client_of_the_same_version,
+    read_the_json_of_a_request_after_its_length,
 };
 
 const LONGEST_A_CLIENT_MAY_TAKE_TO_SEND_ITS_REQUEST: Duration = Duration::from_secs(1);
@@ -45,8 +46,8 @@ pub(crate) fn accept_message_connections_and_post_them_to_the_event_loop() {
 
 fn read_the_command_a_client_sends(stream: &UnixStream) -> Result<DaemonCommand, String> {
     let _ = stream.set_read_timeout(Some(LONGEST_A_CLIENT_MAY_TAKE_TO_SEND_ITS_REQUEST));
-    let request = read_request_after_its_length(stream)?;
-    command_of_a_request_from_a_client_of_the_same_version(request)
+    let request_as_json = read_the_json_of_a_request_after_its_length(stream)?;
+    command_of_a_request_from_a_client_of_the_same_version(&request_as_json)
 }
 
 pub(crate) fn start_listening_on_message_socket(socket_path: &Path) -> bool {

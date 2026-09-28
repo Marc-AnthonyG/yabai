@@ -1,4 +1,4 @@
-use clap::{Args, Subcommand};
+use clap::{ArgGroup, Args, Subcommand};
 use serde::{Deserialize, Serialize};
 
 use crate::command::selectors::{DisplaySelector, IndexOrLabelSelector, SpaceSelector};
@@ -10,6 +10,7 @@ use crate::support::layer::WindowStackingSubLayer;
 #[derive(Subcommand, Serialize, Deserialize, Debug)]
 pub(crate) enum RuleCommand {
     /// Add a rule for the windows that open from now on
+    #[command(arg_required_else_help = true)]
     Add {
         /// Remove the rule once it has applied to one window
         #[arg(long)]
@@ -37,6 +38,11 @@ pub(crate) enum RuleCommand {
 }
 
 #[derive(Args, Serialize, Deserialize, Debug, Default)]
+#[command(group(
+    ArgGroup::new("where_the_window_is_sent")
+        .args(["display", "space"])
+        .multiple(true)
+))]
 pub(crate) struct RuleDefinition {
     /// A later rule with the same label replaces this one
     #[arg(long)]
@@ -72,7 +78,7 @@ pub(crate) struct RuleDefinition {
     #[arg(long, value_name = "SPACE_SEL")]
     pub(crate) space: Option<SpaceSelector>,
     /// Focus follows the window to the display or space it is sent to
-    #[arg(long)]
+    #[arg(long, requires = "where_the_window_is_sent")]
     pub(crate) follow: bool,
     /// Tile the window (on) or leave it floating (off)
     #[arg(long)]
@@ -177,6 +183,20 @@ mod tests {
         assert!(parse_rule_add(&["--title", "(unclosed"]).is_err());
         assert!(parse_rule_add(&["--app", "Finder", "--manage", "yes"]).is_err());
         assert!(parse_rule_add(&["--app", "Finder", "--opacity", "1.5"]).is_err());
+        assert!(parse_rule_add(&[]).is_err());
+        assert!(parse_rule_add(&["--app", "Finder", "--follow"]).is_err());
+        assert!(
+            parse_rule_add(&[
+                "--app",
+                "Finder",
+                "--display",
+                "2",
+                "--space",
+                "3",
+                "--follow"
+            ])
+            .is_ok()
+        );
     }
 
     #[test]

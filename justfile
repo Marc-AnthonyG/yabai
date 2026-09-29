@@ -9,8 +9,6 @@ examples_directory := "./examples"
 archive_directory := "./archive"
 
 yabai_binary := build_directory / "yabai"
-manual_page_source := documentation_directory / "yabai.asciidoc"
-manual_page := documentation_directory / "yabai.1"
 set_icon_script := scripts_directory / "seticon.py"
 icon_image := assets_directory / "icon/2x/icon-512px@2x.png"
 install_script := scripts_directory / "install.sh"
@@ -39,7 +37,7 @@ install: release sign stop-installed-service-if-there-is-one replace-installed-b
 
 [private]
 stop-installed-service-if-there-is-one:
-    if [ -x {{ installed_yabai_binary }} ]; then {{ installed_yabai_binary }} --stop-service || true; fi
+    if [ -x {{ installed_yabai_binary }} ]; then {{ installed_yabai_binary }} service stop || {{ installed_yabai_binary }} --stop-service || true; fi
 
 [private]
 replace-installed-binary-with-signed-build:
@@ -54,13 +52,13 @@ allow-installed-binary-to-load-scripting-addition-without-password:
     installed_binary_hash="$(shasum -a 256 {{ installed_yabai_binary }} | cut -d " " -f 1)"
     sudoers_draft="$(mktemp)"
     trap 'rm -f "$sudoers_draft"' EXIT
-    echo "$(whoami) ALL=(root) NOPASSWD: sha256:${installed_binary_hash} {{ installed_yabai_binary }} --load-sa" > "$sudoers_draft"
+    echo "$(whoami) ALL=(root) NOPASSWD: sha256:${installed_binary_hash} {{ installed_yabai_binary }} scripting-addition load" > "$sudoers_draft"
     sudo visudo -cf "$sudoers_draft"
     sudo install -m 0440 -o root -g wheel "$sudoers_draft" {{ scripting_addition_sudoers_file }}
 
 [private]
 start-installed-service:
-    {{ installed_yabai_binary }} --start-service
+    {{ installed_yabai_binary }} service start
 
 asan: (build-sanitized-host-binary "address")
 
@@ -94,14 +92,14 @@ lint:
     cargo clippy --all-targets --target {{ intel_target }} -- {{ clippy_denied_lint_groups }}
 
 man:
-    asciidoctor -b manpage {{ manual_page_source }} -o {{ manual_page }}
+    YABAI_WRITE_MANUAL_PAGE=1 cargo test --quiet --target {{ host_target }} the_manual_page_is_the_one_the_command_tree_generates
 
 icon:
     python3 {{ set_icon_script }} {{ icon_image }} {{ yabai_binary }}
 
 publish:
-    sed -i '' "{{ install_script_version_line }}s/^VERSION=.*/VERSION=\"$({{ yabai_binary }} --version | cut -d "v" -f 2)\"/" {{ install_script }}
-    sed -i '' "{{ install_script_expected_hash_line }}s/^EXPECTED_HASH=.*/EXPECTED_HASH=\"$(shasum -a 256 {{ build_directory }}/$({{ yabai_binary }} --version).tar.gz | cut -d " " -f 1)\"/" {{ install_script }}
+    sed -i '' "{{ install_script_version_line }}s/^VERSION=.*/VERSION=\"$({{ yabai_binary }} --version | cut -d " " -f 2)\"/" {{ install_script }}
+    sed -i '' "{{ install_script_expected_hash_line }}s/^EXPECTED_HASH=.*/EXPECTED_HASH=\"$(shasum -a 256 {{ build_directory }}/yabai-v$({{ yabai_binary }} --version | cut -d " " -f 2).tar.gz | cut -d " " -f 1)\"/" {{ install_script }}
 
 archive: man release sign icon
     rm -rf {{ archive_directory }}
@@ -109,7 +107,7 @@ archive: man release sign icon
     cp -r {{ build_directory }} {{ archive_directory }}/
     cp -r {{ documentation_directory }} {{ archive_directory }}/
     cp -r {{ examples_directory }} {{ archive_directory }}/
-    tar -cvzf {{ build_directory }}/$({{ yabai_binary }} --version).tar.gz {{ archive_directory }}
+    tar -cvzf {{ build_directory }}/yabai-v$({{ yabai_binary }} --version | cut -d " " -f 2).tar.gz {{ archive_directory }}
     rm -rf {{ archive_directory }}
 
 sign:

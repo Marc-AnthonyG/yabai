@@ -1,6 +1,8 @@
 pub mod config;
 pub mod display;
 pub mod labels;
+#[cfg(test)]
+mod manual_page;
 pub mod query;
 pub mod rule;
 pub mod scratchpad;
@@ -32,11 +34,16 @@ use crate::command::window::WindowCommand;
     long_about = "Tiling window manager for macOS.\n\nWithout a command, runs the window manager \
                   itself; the launchd service runs it that way. Every other command is sent to \
                   the running window manager, except `service` and `scripting-addition`.",
+    after_long_help = include_str!("help_on_selectors_output_and_exit_status.txt"),
     args_conflicts_with_subcommands = true,
     propagate_version = true
 )]
 pub(crate) struct CommandLine {
     /// Config file the window manager runs at start-up [default: the first yabairc found]
+    ///
+    /// Without this option, the first of $XDG_CONFIG_HOME/yabai/yabairc, ~/.config/yabai/yabairc
+    /// and ~/.yabairc that exists. An executable file runs as `sh -c FILE`, any other as
+    /// `sh FILE`.
     #[arg(short, long, value_name = "FILE")]
     pub(crate) config: Option<PathBuf>,
     /// Print debug information to stdout

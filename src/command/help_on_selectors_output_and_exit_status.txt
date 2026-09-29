@@ -1,0 +1,27 @@
+Selectors:
+  DISPLAY_SEL  north, east, south, west, prev, next, first, last, recent, mouse, an
+               arrangement index from 1, or a label
+  SPACE_SEL    prev, next, first, last, recent, mouse, a mission-control index from 1, or a
+               label
+  WINDOW_SEL   north, east, south, west, prev, next, first, last, recent, mouse, largest,
+               smallest, sibling, first-nephew, second-nephew, uncle, first-cousin,
+               second-cousin, stack.prev, stack.next, stack.first, stack.last, stack.recent,
+               stack.POSITION from 1, or a window id
+  RULE, SIGNAL an index from 0 in the order of `list`, or a label
+
+  Directions, prev, next and the tree and stack relatives start from the acting display,
+  space or window: the one -d, -s or -w names, or else the focused one. A label is any text
+  the selector of its kind would not read as something else.
+
+Output:
+  `query` prints JSON with snake_case keys: an array for displays, spaces and windows, one
+  object for display, space and window. `--fields` keeps the keys it names, and `--help` of
+  each query lists them. `rule list` and `signal list` print arrays whose keys mirror the flags
+  of `add`. `config get` prints every setting as one object, or the bare value of one setting
+  spelled as `config set` takes it.
+
+Exit status:
+  0  success
+  1  the window manager reported a failure, or a service or scripting-addition action failed
+  2  the command line is wrong
+  3  no window manager answered: none runs, or it is a build older than this command line

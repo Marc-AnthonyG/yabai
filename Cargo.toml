@@ -146,6 +146,9 @@ clap = { version = "4.6.7", features = ["derive"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["preserve_order"] }
 
+[dev-dependencies]
+clap_mangen = "0.3.3"
+
 [profile.dev]
 opt-level       = 0
 debug           = true
@@ -160,3 +163,4 @@ overflow-checks  = false
 lto              = "fat"
 codegen-units    = 1
 panic            = "unwind"
+

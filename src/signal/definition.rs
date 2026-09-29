@@ -9,40 +9,75 @@ pub(crate) enum SignalType {
     #[value(skip)]
     Unknown = 0,
 
+    /// An application launched; sets YABAI_PROCESS_ID; filtered by --app
     ApplicationLaunched = 1,
+    /// An application quit; sets YABAI_PROCESS_ID; filtered by --app and --active
     ApplicationTerminated = 2,
+    /// Another application came to the front; sets YABAI_PROCESS_ID and
+    /// YABAI_RECENT_PROCESS_ID
     ApplicationFrontSwitched = 3,
+    /// An application was activated; sets YABAI_PROCESS_ID; filtered by --app
     ApplicationActivated = 4,
+    /// An application was deactivated; sets YABAI_PROCESS_ID; filtered by --app
     ApplicationDeactivated = 5,
+    /// An application was unhidden; sets YABAI_PROCESS_ID; filtered by --app
     ApplicationVisible = 6,
+    /// An application was hidden; sets YABAI_PROCESS_ID; filtered by --app and --active
     ApplicationHidden = 7,
 
+    /// A window opened, also when its application launched; sets YABAI_WINDOW_ID; filtered
+    /// by --app and --title
     WindowCreated = 8,
+    /// A window closed, also when its application quit; sets YABAI_WINDOW_ID; filtered by
+    /// --app and --active
     WindowDestroyed = 9,
+    /// A window became the key window; sets YABAI_WINDOW_ID; filtered by --app and --title
     WindowFocused = 10,
+    /// A window moved; sets YABAI_WINDOW_ID; filtered by --app, --title and --active
     WindowMoved = 11,
+    /// A window changed size; sets YABAI_WINDOW_ID; filtered by --app, --title and --active
     WindowResized = 12,
+    /// A window was minimized; sets YABAI_WINDOW_ID; filtered by --app, --title and --active
     WindowMinimized = 13,
+    /// A window was deminimized; sets YABAI_WINDOW_ID; filtered by --app and --title
     WindowDeminimized = 14,
+    /// A window changed its title; sets YABAI_WINDOW_ID; filtered by --app, --title and
+    /// --active
     WindowTitleChanged = 15,
 
+    /// A space was created; sets YABAI_SPACE_ID and YABAI_SPACE_INDEX
     SpaceCreated = 16,
+    /// A space was destroyed; sets YABAI_SPACE_ID
     SpaceDestroyed = 17,
+    /// Another space became active; sets YABAI_SPACE_ID, YABAI_SPACE_INDEX,
+    /// YABAI_RECENT_SPACE_ID and YABAI_RECENT_SPACE_INDEX
     SpaceChanged = 18,
 
+    /// A display was connected; sets YABAI_DISPLAY_ID and YABAI_DISPLAY_INDEX
     DisplayAdded = 19,
+    /// A display was disconnected; sets YABAI_DISPLAY_ID
     DisplayRemoved = 20,
+    /// The display arrangement changed; sets YABAI_DISPLAY_ID and YABAI_DISPLAY_INDEX
     DisplayMoved = 21,
+    /// A display changed resolution; sets YABAI_DISPLAY_ID and YABAI_DISPLAY_INDEX
     DisplayResized = 22,
+    /// Another display became active; sets YABAI_DISPLAY_ID, YABAI_DISPLAY_INDEX,
+    /// YABAI_RECENT_DISPLAY_ID and YABAI_RECENT_DISPLAY_INDEX
     DisplayChanged = 23,
 
+    /// Mission control opened; sets YABAI_MISSION_CONTROL_MODE
     MissionControlEnter = 24,
+    /// Mission control closed; sets YABAI_MISSION_CONTROL_MODE
     MissionControlExit = 25,
 
+    /// The Dock preferences changed
     DockDidChangePreferences = 26,
+    /// The Dock restarted, which unloads the scripting addition
     DockDidRestart = 27,
 
+    /// The menu bar autohide setting changed
     MenuBarHiddenChanged = 28,
+    /// The system woke from sleep
     SystemWoke = 29,
 }
 

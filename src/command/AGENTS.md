@@ -7,7 +7,11 @@ manager, which crosses the socket as JSON.
 ## Notes
 
 - `///` comments on clap items become the generated `--help` and man page. They are public
-  surface; nothing else here carries doc comments.
+  surface; nothing else here carries doc comments. What fits no clap item (selectors, output,
+  exit status) is the top-level long help after the options, read from a text file whose lines
+  ending in `:` at column 0 become man page sections.
+- `doc/yabai.1` is generated from the tree by `just man`; a test fails while it differs from what
+  the tree generates, so change the tree, then regenerate.
 - Every type that crosses the socket derives `Serialize` and `Deserialize`. Client and daemon are
   the same binary and the protocol refuses a client of another version, so the serde shape only
   has to agree with itself.

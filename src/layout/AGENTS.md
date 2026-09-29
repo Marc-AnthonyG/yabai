@@ -31,7 +31,7 @@ preview, a SkyLight overlay window drawn as a ghost of that frame.
   scheduled only while some overlay is still fading in and no other step is pending, so replacing
   one overlay with another never starts a second chain of steps.
 - The preview colour is the window manager's insert feedback colour. It follows the accent colour
-  the workspace observer reads and posts, until `insert_feedback_color` is set by a client.
+  the workspace observer reads and posts, until a client sets `--insert-feedback-color`.
 - A pending insertion point is cleared when a window yabai tracks gains focus and is not that
   insertion point, the way repeating the same `--insert` clears it. A window that is
   not tracked yet cannot clear it, so the new window still consumes it. A node that is showing the

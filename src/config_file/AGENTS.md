@@ -1,7 +1,7 @@
 # config_file
 
 The user's config file: finding it, running it in a shell, and watching it so that it runs again
-when `reload_config_file_on_change` is on.
+when `--reload-config-file-on-change` is on.
 
 ## Notes
 

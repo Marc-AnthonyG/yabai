@@ -77,7 +77,7 @@ if [ "$FILE_HASH" = "$EXPECTED_HASH" ]; then
     echo "Finished copying files.."
     echo ""
     echo "If you want yabai to be managed by launchd (start automatically upon login):"
-    echo "  yabai --start-service"
+    echo "  yabai service start"
     echo ""
     echo "When running as a launchd service logs will be found in:"
     echo "  /tmp/yabai_<user>.[out|err].log"
@@ -86,7 +86,7 @@ if [ "$FILE_HASH" = "$EXPECTED_HASH" ]; then
     echo "  sudo visudo -f /private/etc/sudoers.d/yabai"
     echo ""
     echo "Sudoers file configuration row:"
-    echo "  $(whoami) ALL=(root) NOPASSWD: sha256:$(shasum -a 256 ${BIN_DIR}/yabai | cut -d " " -f 1) ${BIN_DIR}/yabai --load-sa"
+    echo "  $(whoami) ALL=(root) NOPASSWD: sha256:$(shasum -a 256 ${BIN_DIR}/yabai | cut -d " " -f 1) ${BIN_DIR}/yabai scripting-addition load"
     echo ""
     echo "README: https://github.com/asmvik/yabai/wiki/Installing-yabai-(latest-release)#configure-scripting-addition"
 else

@@ -6,6 +6,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 ### Changed
+- **The command line is new, and scripts written for `yabai -m` must be rewritten.** Every command is `yabai <domain> <action> [arguments]`, parsed by clap, with generated help for every command (`yabai --help`, `yabai window focus --help`) and a man page generated from the same tree:
+  - `yabai service install|uninstall|start|restart|stop` and `yabai scripting-addition load|uninstall` (alias `sa`) replace `--install-service` … `--stop-service`, `--load-sa` and `--uninstall-sa`. A sudoers entry must name `yabai scripting-addition load`.
+  - `yabai config set --<setting> <value>…` and `yabai config get [--space SPACE_SEL] [SETTING]` replace `yabai -m config`. Settings and their values are spelled in kebab-case (`--window-placement second-child`, `--window-animation-easing ease-out-cubic`), every value is checked before any setting changes, and `config get` without a setting prints every setting as JSON.
+  - `yabai display|space|window` take their acting selector as `-d`, `-s` or `-w` and one action as a subcommand: `yabai window focus west`, `yabai window send-to-space 2`, `yabai window send-to-display east`, `yabai space -s 2 layout bsp`, `yabai display focus next`. `abs:`/`rel:` become `to`/`by` followed by plain numbers (`yabai window resize left -20 0`, `yabai space padding by 10 10 0 0`), selectors and resize handles are kebab-case (`first-nephew`, `top-left`), `space destroy` acts on `-s`, and one call runs one action.
+  - `yabai scratchpad assign|unassign|toggle|recover` replaces `window --scratchpad` and `window --toggle <scratchpad>`; any non-empty name is a scratchpad.
+  - `yabai query displays|spaces|windows [--display|--space|--window [SEL]] [--fields a,b]` print a JSON array, and `yabai query display|space|window [SEL]` one object.
+  - `yabai rule add|apply|remove|list` and `yabai signal add|remove|list` take flags instead of `key=value` pairs (`--app`, `--app-not`, `--manage off`, `--follow`). Signal events are kebab-case (`window-focused`, `dock-did-change-preferences`) and `--active on|off` replaces `active=yes|no`.
+  - A display or space label may be any text its selector would not read as something else, floats and hexadecimal text included.
+  - `-v` turns on verbose output and `-V` prints the version, now `yabai 7.1.25`.
+- Exit status: 0 on success, 1 when the window manager reports a failure or a local action fails, 2 on a usage error, 3 when no window manager answers. A client refuses to drive a window manager of another version; run `yabai service restart` after upgrading.
+- Query output, `config get`, `rule list` and `signal list` print pretty JSON with snake_case keys (`has_focus`, `is_minimized`), numbers in their shortest form, unsigned ids and `null` for an unset label or scratchpad.
+- Rule and signal patterns use the [Rust regex crate syntax](https://docs.rs/regex/latest/regex/#syntax) instead of POSIX extended regular expressions, and a pattern that does not compile is refused before it is sent.
+- The window animation easing curves are the [easings.net](https://easings.net) formulas from the simple-easing crate and may differ slightly from the previous ones.
 - Fixed scripting-addition *add_space* pattern for macOS 26.6 Apple Silicon arm64 [#2799](https://github.com/asmvik/yabai/issues/2799)
 - Fixed minor memory leak on space destruction, and added a few missing null checks to SkyLight API calls [#2791](https://github.com/asmvik/yabai/issues/2791)
 

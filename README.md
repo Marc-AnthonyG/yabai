@@ -9,7 +9,7 @@
   <a href="https://github.com/asmvik/yabai/blob/master/LICENSE.txt">
     <img src="https://img.shields.io/github/license/asmvik/yabai.svg?color=green" alt="License Badge">
   </a>
-  <a href="https://github.com/asmvik/yabai/blob/master/doc/yabai.asciidoc">
+  <a href="https://github.com/asmvik/yabai/blob/master/doc/yabai.1">
     <img src="https://img.shields.io/badge/view-documentation-green.svg" alt="Documentation Badge">
   </a>
   <a href="https://github.com/asmvik/yabai/wiki">
@@ -38,6 +38,24 @@ Additional features of yabai include focus-follows-mouse, disabling animations f
 - The [&nearr;&nbsp;yabai&nbsp;wiki][yabai-wiki] has both brief and detailed installation instructions for multiple installation methods, and also explains how to uninstall yabai completely.
 - Sample configuration files can be found in the [&nearr;&nbsp;examples][yabai-examples] directory. Refer to the [&nearr;&nbsp;documentation][yabai-docs] or the wiki for further information.
 - Keyboard shortcuts can be defined with [&nearr;&nbsp;skhd][gh-skhd] or any other suitable software you may prefer.
+
+## Usage
+
+`yabai` without a command runs the window manager; `yabai service start` has launchd run it that way at login.
+Every other command is `yabai <domain> <action>` and is sent to the running window manager:
+
+```sh
+yabai config set --layout bsp --window-gap 6 --window-placement second-child
+yabai window focus west
+yabai window -w 12345 send-to-space 2
+yabai space -s 2 layout stack
+yabai display focus next
+yabai query windows --space 2 --fields id,app,title
+yabai rule add --app '^System Settings$' --manage off
+yabai signal add window-focused --action 'echo "$YABAI_WINDOW_ID"'
+```
+
+`yabai --help`, `yabai <domain> <action> --help` and the [&nearr;&nbsp;manual page][yabai-docs] (`man yabai`) describe every command, selector and output format.
 
 ## Requirements and Caveats
 
@@ -85,7 +103,7 @@ You acknowledge that you understand the potential risk that may come from disabl
 [yabai-license]: LICENSE.txt
 [yabai-examples]: https://github.com/asmvik/yabai/tree/master/examples
 [yabai-wiki]: https://github.com/asmvik/yabai/wiki
-[yabai-docs]: https://github.com/asmvik/yabai/blob/master/doc/yabai.asciidoc
+[yabai-docs]: https://github.com/asmvik/yabai/blob/master/doc/yabai.1
 
 <!-- Links to other GitHub projects/users -->
 [gh-skhd]: https://github.com/asmvik/skhd

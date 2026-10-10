@@ -47,7 +47,8 @@ pub(crate) enum HotkeyCommand {
         #[arg(long, conflicts_with = "hotkey")]
         all: bool,
     },
-    /// Print every hotkey as a JSON array, in the order they were added
+    /// Print every hotkey as a JSON array, in the order they were added, a hotkey that replaced
+    /// others taking the place of the first of them
     List,
 }
 

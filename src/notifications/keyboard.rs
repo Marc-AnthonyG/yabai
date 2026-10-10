@@ -92,6 +92,7 @@ fn run_the_keyboard_event_tap_on_this_thread_for_as_long_as_the_daemon_runs() {
         CFMachPortCreateRunLoopSource(None, Some(handle), 0),
         CFRunLoopGetCurrent(),
     ) else {
+        CFMachPortInvalidate(handle);
         crate::warn!(
             "yabai: could not schedule the keyboard event tap, so hotkeys will not work\n"
         );

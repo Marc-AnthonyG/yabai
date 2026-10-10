@@ -14,7 +14,7 @@ use crate::ffi::core_foundation::{
 use crate::ffi::core_graphics::{
     CGEvent, CGEventField, CGEventFlags, CGEventGetFlags, CGEventGetIntegerValueField, CGEventMask,
     CGEventTapCreate, CGEventTapEnable, CGEventTapIsEnabled, CGEventTapProxy, CGEventType,
-    kCGEventTapOptionDefault, kCGHeadInsertEventTap, kCGSessionEventTap,
+    kCGEventTapOptionDefault, kCGHIDEventTap, kCGHeadInsertEventTap,
 };
 use crate::ffi::skylight::SLSIsSecureEventInputSet;
 use crate::hotkey::action::HotkeyAction;
@@ -64,7 +64,7 @@ fn run_the_keyboard_event_tap_on_this_thread_for_as_long_as_the_daemon_runs() {
     let keyboard_tap_state = &KEYBOARD_TAP_STATE;
     let handle = unsafe {
         CGEventTapCreate(
-            kCGSessionEventTap,
+            kCGHIDEventTap,
             kCGHeadInsertEventTap,
             kCGEventTapOptionDefault,
             KEYBOARD_EVENT_MASK_FOR_HOTKEYS_AND_LONE_MODIFIER_TAPS,

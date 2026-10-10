@@ -20,6 +20,10 @@ to the event loop.
   busy, and posts a typed action to the event loop. It lets everything this process posted
   through untouched, and never swallows a flags change. Failing to create it is a line on
   stderr; the window manager keeps running without hotkeys.
+- Both taps sit where hardware events enter, at the HID level, head inserted. WindowServer
+  handles symbolic hotkeys such as cmd - tab and cmd - ` before a session-level tap sees them,
+  so a keyboard tap there never saw their key down, and releasing the right command key after
+  cmd - tab looked like a lone tap of it.
 - Under secure input, taps stop receiving key downs but still see flags changes, so a lone
   modifier tap is not run while SkyLight reports secure input. That flag lives in shared memory
   SkyLight maps on its first read without a lock; the first read happens on the main thread

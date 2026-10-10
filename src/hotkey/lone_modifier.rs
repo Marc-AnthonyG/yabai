@@ -103,6 +103,9 @@ impl LoneModifier {
     }
 
     fn key(self) -> &'static LoneModifierKey {
-        &EVERY_LONE_MODIFIER_KEY[self as usize - 1]
+        EVERY_LONE_MODIFIER_KEY
+            .iter()
+            .find(|key| key.lone_modifier == self)
+            .expect("every lone modifier has a row in EVERY_LONE_MODIFIER_KEY")
     }
 }

@@ -10,7 +10,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - Keys match by their place on an ANSI keyboard, whatever layout is selected. Alt, shift, cmd and ctrl must match exactly, on either side of the keyboard; caps lock is ignored and fn only counts when the chord names it, so `alt - f2` matches. A held chord repeats, the matched key down is swallowed and its key up passes through.
   - A lone modifier, `lcmd`, `rcmd`, `lalt`, `ralt`, `lctrl`, `rctrl`, `lshift` or `rshift`, runs its action when it is pressed and released within a second with nothing in between, and never while secure input is on.
   - A hotkey with a chord already bound, or with the label of another hotkey, replaces it.
-  - The keyboard tap runs on its own thread; when it cannot be created, yabai says so on stderr and keeps managing windows.
+  - The keyboard tap runs on its own thread; when it cannot be created, yabai says so on stderr and keeps managing windows, and `yabai hotkey add` still adds the hotkey but fails.
 - `yabai input-source cycle` selects the next enabled keyboard layout or input mode, and `yabai input-source select <ID>` the one with that id, failing when it is not installed, not enabled or cannot be selected.
 
 ### Changed

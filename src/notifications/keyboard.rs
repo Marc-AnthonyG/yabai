@@ -19,7 +19,7 @@ use crate::ffi::core_graphics::{
 use crate::ffi::skylight::SLSIsSecureEventInputSet;
 use crate::hotkey::action::HotkeyAction;
 use crate::hotkey::chord::{Chord, HotkeyModifiers};
-use crate::hotkey::keyboard_tap_state::{KEYBOARD_TAP_STATE, KeyboardTapState};
+use crate::hotkey::keyboard_tap_state::{KEYBOARD_TAP_STATE, KeyboardTapState, KeyboardTapStatus};
 use crate::hotkey::lone_modifier::LoneModifier;
 use crate::hotkey::table::HOTKEYS_THE_KEYBOARD_TAP_MATCHES;
 use crate::state::process_wide::DAEMON_PROCESS_ID;
@@ -50,6 +50,7 @@ pub(crate) fn start_keyboard_event_tap_on_its_own_thread() {
         .name(String::from("yabai-keyboard-tap"))
         .spawn(run_the_keyboard_event_tap_on_this_thread_for_as_long_as_the_daemon_runs);
     if let Err(error) = spawned {
+        KEYBOARD_TAP_STATE.record_status(KeyboardTapStatus::FailedToStart);
         crate::warn!(
             "yabai: could not start the keyboard tap thread, so hotkeys will not work: {error}\n"
         );
@@ -61,6 +62,16 @@ fn map_the_shared_memory_secure_event_input_is_read_from_on_the_main_thread() {
 }
 
 fn run_the_keyboard_event_tap_on_this_thread_for_as_long_as_the_daemon_runs() {
+    if let Err(failure) = create_the_keyboard_event_tap_and_schedule_it_on_this_thread() {
+        KEYBOARD_TAP_STATE.record_status(KeyboardTapStatus::FailedToStart);
+        crate::warn!("yabai: {failure}, so hotkeys will not work\n");
+        return;
+    }
+    KEYBOARD_TAP_STATE.record_status(KeyboardTapStatus::Running);
+    CFRunLoopRun();
+}
+
+fn create_the_keyboard_event_tap_and_schedule_it_on_this_thread() -> Result<(), &'static str> {
     let keyboard_tap_state = &KEYBOARD_TAP_STATE;
     let handle = unsafe {
         CGEventTapCreate(
@@ -73,8 +84,7 @@ fn run_the_keyboard_event_tap_on_this_thread_for_as_long_as_the_daemon_runs() {
         )
     };
     let Some(handle) = handle else {
-        crate::warn!("yabai: could not create the keyboard event tap, so hotkeys will not work\n");
-        return;
+        return Err("could not create the keyboard event tap");
     };
     let handle = CFRetained::into_raw(handle);
     keyboard_tap_state
@@ -84,8 +94,7 @@ fn run_the_keyboard_event_tap_on_this_thread_for_as_long_as_the_daemon_runs() {
 
     if !CGEventTapIsEnabled(handle) {
         CFMachPortInvalidate(handle);
-        crate::warn!("yabai: the keyboard event tap is disabled, so hotkeys will not work\n");
-        return;
+        return Err("the keyboard event tap is disabled");
     }
 
     let (Some(run_loop_source), Some(run_loop_of_this_thread)) = (
@@ -93,15 +102,12 @@ fn run_the_keyboard_event_tap_on_this_thread_for_as_long_as_the_daemon_runs() {
         CFRunLoopGetCurrent(),
     ) else {
         CFMachPortInvalidate(handle);
-        crate::warn!(
-            "yabai: could not schedule the keyboard event tap, so hotkeys will not work\n"
-        );
-        return;
+        return Err("could not schedule the keyboard event tap");
     };
     CFRunLoopAddSource(&run_loop_of_this_thread, Some(&run_loop_source), unsafe {
         kCFRunLoopCommonModes
     });
-    CFRunLoopRun();
+    Ok(())
 }
 
 unsafe extern "C-unwind" fn handle_keyboard_event_tap_callback(

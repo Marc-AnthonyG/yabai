@@ -77,7 +77,7 @@ yabai hotkey list
 - Adding a chord that is already bound, or a label another hotkey has, replaces that hotkey, so the config file can run again; `yabai hotkey remove --all` at its top also drops the shortcuts it no longer adds.
 - `yabai hotkey list` prints every hotkey as JSON, with its chord, description and action, for cheatsheets and menus.
 - A yabai command runs inside the window manager without starting a process; a shell command is started at once, even while the window manager is busy. Shell commands inherit the environment of the window manager, whose `PATH` is the one `yabai service install` recorded.
-- Hotkeys rely on the Accessibility permission yabai already holds. Apple Events a shell command sends, through `osascript` for instance, come from yabai, so macOS asks to allow them for yabai.
+- Hotkeys rely on the Accessibility permission yabai already holds; without it the keyboard tap cannot be created and `yabai hotkey add` fails. Apple Events a shell command sends, through `osascript` for instance, come from yabai, so macOS asks to allow them for yabai.
 - `yabai input-source cycle` selects the next enabled keyboard layout or input mode, and `yabai input-source select com.apple.keylayout.US` a given one.
 
 ## Requirements and Caveats

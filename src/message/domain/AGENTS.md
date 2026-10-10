@@ -23,5 +23,5 @@ One executor per domain, each taking its typed command.
   one, except the display or space something is sent to or created on, which starts from the
   focused one.
 - Handlers run on the event-loop thread and take the managers they touch as explicit parameters.
-  The hotkey executor takes the table the keyboard tap reads; the input-source executor hands
-  its Text Input Sources work to the main queue.
+  The hotkey executor takes the table the keyboard tap reads and the tap's state; the
+  input-source executor hands its Text Input Sources work to the main queue.

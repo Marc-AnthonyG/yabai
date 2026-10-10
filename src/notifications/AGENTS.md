@@ -18,8 +18,11 @@ to the event loop.
 - The keyboard tap callback stays short: it reads the hotkey table, swallows the key down of a
   hotkey, spawns a shell action itself, so shell hotkeys keep working while the event loop is
   busy, and posts a typed action to the event loop. It lets everything this process posted
-  through untouched, and never swallows a flags change. Failing to create it is a line on
-  stderr; the window manager keeps running without hotkeys.
+  through untouched, and never swallows a flags change. Failing to start it is a line on
+  stderr and the window manager keeps running without hotkeys.
+- The tap thread records in the tap's state whether the tap is still starting, running or
+  failed to start. The config file's `hotkey add` lines can arrive before the thread has created
+  the tap, so only a failure makes `hotkey add` fail; the hotkey is stored either way.
 - Both taps sit where hardware events enter, at the HID level, head inserted. WindowServer
   handles symbolic hotkeys such as cmd - tab and cmd - ` before a session-level tap sees them,
   so a keyboard tap there never saw their key down, and releasing the right command key after

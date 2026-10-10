@@ -27,6 +27,10 @@ pub(crate) enum HotkeyCommand {
     /// A hotkey whose chord is already bound, or whose label another hotkey has, replaces that
     /// hotkey. The pressed key is swallowed and runs the action again while it repeats; its
     /// release, and every other key, reach the focused application.
+    ///
+    /// When the window manager could not create its keyboard tap, usually because yabai is not
+    /// allowed under Accessibility, the hotkey is still added but the command fails, since no
+    /// hotkey can fire.
     #[command(
         arg_required_else_help = true,
         override_usage = "yabai hotkey add <CHORD> [--label <LABEL>] [--description <TEXT>] \

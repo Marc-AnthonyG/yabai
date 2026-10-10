@@ -1700,6 +1700,8 @@ A lone modifier, lcmd, rcmd, lalt, ralt, lctrl, rctrl, lshift or rshift, runs th
 .PP
 A hotkey whose chord is already bound, or whose label another hotkey has, replaces that hotkey. The pressed key is swallowed and runs the action again while it repeats; its release, and every other key, reach the focused application.
 .PP
+When the window manager could not create its keyboard tap, usually because yabai is not allowed under Accessibility, the hotkey is still added but the command fails, since no hotkey can fire.
+.PP
 .TP
 \fB\-\-label\fR \fI<LABEL>\fR
 A later hotkey with the same label replaces this one

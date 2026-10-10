@@ -1,5 +1,6 @@
 pub mod config;
 pub mod display;
+pub mod input_source;
 pub mod labels;
 #[cfg(test)]
 mod manual_page;
@@ -19,6 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::command::config::ConfigCommand;
 use crate::command::display::DisplayCommand;
+use crate::command::input_source::InputSourceCommand;
 use crate::command::query::QueryCommand;
 use crate::command::rule::RuleCommand;
 use crate::command::scratchpad::ScratchpadCommand;
@@ -117,6 +119,9 @@ pub(crate) enum DaemonCommand {
     /// Add, remove or list the shell commands run after events
     #[command(subcommand)]
     Signal(SignalCommand),
+    /// Switch the keyboard layout or input mode
+    #[command(subcommand)]
+    InputSource(InputSourceCommand),
 }
 
 #[cfg(test)]

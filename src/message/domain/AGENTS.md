@@ -23,3 +23,4 @@ One executor per domain, each taking its typed command.
   one, except the display or space something is sent to or created on, which starts from the
   focused one.
 - Handlers run on the event-loop thread and take the managers they touch as explicit parameters.
+  The input-source executor hands its Text Input Sources work to the main queue.

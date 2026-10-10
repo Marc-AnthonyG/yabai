@@ -5,6 +5,7 @@ mod config_file;
 mod display;
 mod event;
 mod ffi;
+mod input_source;
 mod layout;
 mod message;
 mod mouse;

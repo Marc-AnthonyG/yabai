@@ -1,5 +1,6 @@
 pub mod config;
 pub mod display;
+pub mod input_source;
 pub mod query;
 pub mod rule;
 pub mod scratchpad;

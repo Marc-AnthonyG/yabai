@@ -12,7 +12,7 @@ pub(crate) struct Hotkey {
     pub(crate) action: HotkeyAction,
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub(crate) struct HotkeyTable {
     hotkeys_in_listing_order: Vec<Hotkey>,
 }

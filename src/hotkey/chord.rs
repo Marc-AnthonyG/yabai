@@ -7,7 +7,7 @@ use crate::hotkey::key::{EVERY_KEY_NAME_IN_SHORT, HotkeyKey};
 use crate::hotkey::lone_modifier::{EVERY_LONE_MODIFIER_NAME_IN_SHORT, LoneModifier};
 
 bitflags::bitflags! {
-    #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
     pub(crate) struct HotkeyModifiers: u8 {
         const ALT = 0x01;
         const SHIFT = 0x02;

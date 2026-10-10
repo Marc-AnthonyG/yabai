@@ -6,6 +6,7 @@ use std::sync::PoisonError;
 use std::sync::atomic::Ordering;
 
 use crate::event::queue::{Event, post_event_to_event_loop};
+use crate::ffi::carbon_core::read_system_clock_in_nanoseconds;
 use crate::ffi::core_foundation::{
     CFMachPortCreateRunLoopSource, CFMachPortInvalidate, CFRetained, CFRunLoopAddSource,
     CFRunLoopGetCurrent, CFRunLoopRun, kCFRunLoopCommonModes,
@@ -15,14 +16,25 @@ use crate::ffi::core_graphics::{
     CGEventTapCreate, CGEventTapEnable, CGEventTapIsEnabled, CGEventTapProxy, CGEventType,
     kCGEventTapOptionDefault, kCGHeadInsertEventTap, kCGSessionEventTap,
 };
+use crate::ffi::skylight::SLSIsSecureEventInputSet;
 use crate::hotkey::action::HotkeyAction;
 use crate::hotkey::chord::{Chord, HotkeyModifiers};
 use crate::hotkey::keyboard_tap_state::{KEYBOARD_TAP_STATE, KeyboardTapState};
+use crate::hotkey::lone_modifier::LoneModifier;
 use crate::hotkey::table::HOTKEYS_THE_KEYBOARD_TAP_MATCHES;
 use crate::state::process_wide::DAEMON_PROCESS_ID;
 use crate::support::shell_command::spawn_shell_running_the_command_without_waiting_for_it;
 
-const KEYBOARD_EVENT_MASK_FOR_HOTKEYS: CGEventMask = 1 << CGEventType::KeyDown.0;
+const SYSTEM_DEFINED_EVENT_TYPE_OF_MEDIA_KEYS_NX_SYSDEFINED: u32 = 14;
+
+const KEYBOARD_EVENT_MASK_FOR_HOTKEYS_AND_LONE_MODIFIER_TAPS: CGEventMask = (1
+    << CGEventType::KeyDown.0)
+    | (1 << CGEventType::FlagsChanged.0)
+    | (1 << CGEventType::LeftMouseDown.0)
+    | (1 << CGEventType::RightMouseDown.0)
+    | (1 << CGEventType::OtherMouseDown.0)
+    | (1 << CGEventType::ScrollWheel.0)
+    | (1 << SYSTEM_DEFINED_EVENT_TYPE_OF_MEDIA_KEYS_NX_SYSDEFINED);
 
 const EVENT_FLAG_OF_EACH_HOTKEY_MODIFIER: [(CGEventFlags, HotkeyModifiers); 5] = [
     (CGEventFlags::MaskAlternate, HotkeyModifiers::ALT),
@@ -33,6 +45,7 @@ const EVENT_FLAG_OF_EACH_HOTKEY_MODIFIER: [(CGEventFlags, HotkeyModifiers); 5] =
 ];
 
 pub(crate) fn start_keyboard_event_tap_on_its_own_thread() {
+    map_the_shared_memory_secure_event_input_is_read_from_on_the_main_thread();
     let spawned = std::thread::Builder::new()
         .name(String::from("yabai-keyboard-tap"))
         .spawn(run_the_keyboard_event_tap_on_this_thread_for_as_long_as_the_daemon_runs);
@@ -43,6 +56,10 @@ pub(crate) fn start_keyboard_event_tap_on_its_own_thread() {
     }
 }
 
+fn map_the_shared_memory_secure_event_input_is_read_from_on_the_main_thread() {
+    let _ = is_secure_event_input_on();
+}
+
 fn run_the_keyboard_event_tap_on_this_thread_for_as_long_as_the_daemon_runs() {
     let keyboard_tap_state = &KEYBOARD_TAP_STATE;
     let handle = unsafe {
@@ -50,7 +67,7 @@ fn run_the_keyboard_event_tap_on_this_thread_for_as_long_as_the_daemon_runs() {
             kCGSessionEventTap,
             kCGHeadInsertEventTap,
             kCGEventTapOptionDefault,
-            KEYBOARD_EVENT_MASK_FOR_HOTKEYS,
+            KEYBOARD_EVENT_MASK_FOR_HOTKEYS_AND_LONE_MODIFIER_TAPS,
             Some(handle_keyboard_event_tap_callback),
             keyboard_tap_state as *const KeyboardTapState as *mut c_void,
         )
@@ -93,8 +110,10 @@ unsafe extern "C-unwind" fn handle_keyboard_event_tap_callback(
     context: *mut c_void,
 ) -> *mut CGEvent {
     let keyboard_tap_state = unsafe { &*(context as *const KeyboardTapState) };
+    let lone_modifier_tap_detector = &keyboard_tap_state.lone_modifier_tap_detector;
 
     if let CGEventType::TapDisabledByTimeout | CGEventType::TapDisabledByUserInput = event_type {
+        lone_modifier_tap_detector.forget_the_armed_lone_modifier();
         re_enable_the_keyboard_event_tap(keyboard_tap_state);
         return event.as_ptr();
     }
@@ -104,8 +123,27 @@ unsafe extern "C-unwind" fn handle_keyboard_event_tap_callback(
         return event.as_ptr();
     }
 
-    if event_type == CGEventType::KeyDown && run_the_hotkey_the_key_down_presses(event_reference) {
-        return null_mut();
+    match event_type {
+        CGEventType::KeyDown => {
+            lone_modifier_tap_detector.forget_the_armed_lone_modifier();
+            if run_the_hotkey_the_key_down_presses(event_reference) {
+                return null_mut();
+            }
+        }
+        CGEventType::FlagsChanged => {
+            let tapped_lone_modifier = lone_modifier_tap_detector
+                .lone_modifier_tapped_by_flags_change(
+                    ansi_virtual_keycode_of_event(event_reference),
+                    CGEventGetFlags(Some(event_reference)).0,
+                    read_system_clock_in_nanoseconds(),
+                );
+            if let Some(tapped_lone_modifier) = tapped_lone_modifier {
+                run_the_hotkey_of_the_lone_modifier_tap_unless_input_is_secure(
+                    tapped_lone_modifier,
+                );
+            }
+        }
+        _ => lone_modifier_tap_detector.forget_the_armed_lone_modifier(),
     }
 
     event.as_ptr()
@@ -132,6 +170,20 @@ fn run_the_hotkey_the_key_down_presses(event: &CGEvent) -> bool {
     };
     run_hotkey_action_without_waiting_for_it(chord, action);
     true
+}
+
+fn run_the_hotkey_of_the_lone_modifier_tap_unless_input_is_secure(lone_modifier: LoneModifier) {
+    if is_secure_event_input_on() {
+        return;
+    }
+    let chord_and_action_of_the_tapped_hotkey = HOTKEYS_THE_KEYBOARD_TAP_MATCHES
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .hotkey_of_lone_modifier_tap(lone_modifier)
+        .map(|hotkey| (hotkey.chord, hotkey.action.clone()));
+    if let Some((chord, action)) = chord_and_action_of_the_tapped_hotkey {
+        run_hotkey_action_without_waiting_for_it(chord, action);
+    }
 }
 
 fn run_hotkey_action_without_waiting_for_it(chord: Chord, action: HotkeyAction) {
@@ -173,4 +225,8 @@ fn was_posted_by_this_process(event: &CGEvent) -> bool {
     DAEMON_PROCESS_ID
         .get()
         .is_some_and(|daemon_process_id| i64::from(*daemon_process_id) == process_id_of_the_poster)
+}
+
+fn is_secure_event_input_on() -> bool {
+    unsafe { SLSIsSecureEventInputSet() }
 }

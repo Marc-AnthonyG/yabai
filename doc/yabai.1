@@ -1694,7 +1694,9 @@ Add, remove or list the keyboard shortcuts the window manager answers
 .PP
 Run a yabai command, or a shell command, whenever CHORD is pressed
 .PP
-CHORD is [MODIFIER [+ MODIFIER]... \-] KEY. MODIFIER is alt, shift, cmd, ctrl or fn, on either side of the keyboard; every other one of alt, shift, cmd and ctrl must be up, caps lock does not count, and fn only counts when the chord names it. KEY is a\-z, 0\-9, return, tab, space, escape, backspace, delete (forward delete), f1\-f20, left, right, up, down, home, end, pageup, pagedown, minus, equal, leftbracket, rightbracket, semicolon, quote, comma, period, slash, backslash or grave, named after the key at that place on an ANSI keyboard whatever the layout.
+CHORD is [MODIFIER [+ MODIFIER]... \-] KEY, or a lone modifier. MODIFIER is alt, shift, cmd, ctrl or fn, on either side of the keyboard; every other one of alt, shift, cmd and ctrl must be up, caps lock does not count, and fn only counts when the chord names it. KEY is a\-z, 0\-9, return, tab, space, escape, backspace, delete (forward delete), f1\-f20, left, right, up, down, home, end, pageup, pagedown, minus, equal, leftbracket, rightbracket, semicolon, quote, comma, period, slash, backslash or grave, named after the key at that place on an ANSI keyboard whatever the layout.
+.PP
+A lone modifier, lcmd, rcmd, lalt, ralt, lctrl, rctrl, lshift or rshift, runs the action when that key is pressed and released within a second with nothing else in between, and never while secure input is on, as it is in a password field.
 .PP
 A hotkey whose chord is already bound, or whose label another hotkey has, replaces that hotkey. The pressed key is swallowed and runs the action again while it repeats; its release, and every other key, reach the focused application.
 .PP
@@ -1709,7 +1711,7 @@ What the hotkey does, for `hotkey list` and the cheatsheets built from it
 The shell command to run through /usr/bin/env sh \-c, without waiting for it
 .TP
 <\fICHORD\fR>
-The keys that run the action: [MODIFIER [+ MODIFIER]... \-] KEY
+The keys that run the action: [MODIFIER [+ MODIFIER]... \-] KEY, or a lone modifier
 .TP
 [\fIYABAI COMMAND ARGUMENTS\fR]
 The yabai command to run, written as on the command line after `yabai`

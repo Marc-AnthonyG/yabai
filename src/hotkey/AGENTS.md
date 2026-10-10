@@ -1,9 +1,10 @@
 # hotkey
 
-Keyboard shortcuts the daemon answers itself: the chord vocabulary (side-agnostic modifiers and
-keys named by their ANSI virtual keycode) and the canonical spelling a chord prints in, a hotkey's
-action (a yabai command kept as its arguments, or a shell command), and the table of hotkeys the
-keyboard tap matches.
+Keyboard shortcuts the daemon answers itself: the chord vocabulary (side-agnostic modifiers, keys
+named by their ANSI virtual keycode, lone modifiers told apart by side) and the canonical spelling
+a chord prints in, a hotkey's action (a yabai command kept as its arguments, or a shell command),
+the table of hotkeys the keyboard tap matches, and the state the tap keeps to tell a lone
+modifier tap from a modifier held for a chord.
 
 ## Notes
 
@@ -21,3 +22,7 @@ keyboard tap matches.
 - A typed action is stored as the arguments it was written with and parsed again on every
   press, because `DaemonCommand` is not `Clone`. The client checked that the arguments parse,
   and refused a `hotkey` command among them, when the hotkey was added.
+- The lone modifier detector is only touched by the keyboard tap thread. It arms on the flags
+  change of that physical key with the key's device-dependent bit set, anything else the tap
+  sees disarms it, and the release of the same key within a second is a tap. The flags-changed
+  keycodes and device-dependent bits are the platform's values and must not change.

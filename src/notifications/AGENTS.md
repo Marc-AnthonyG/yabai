@@ -18,8 +18,12 @@ to the event loop.
 - The keyboard tap callback stays short: it reads the hotkey table, swallows the key down of a
   hotkey, spawns a shell action itself, so shell hotkeys keep working while the event loop is
   busy, and posts a typed action to the event loop. It lets everything this process posted
-  through untouched. Failing to create it is a line on stderr; the window manager keeps running
-  without hotkeys.
+  through untouched, and never swallows a flags change. Failing to create it is a line on
+  stderr; the window manager keeps running without hotkeys.
+- Under secure input, taps stop receiving key downs but still see flags changes, so a lone
+  modifier tap is not run while SkyLight reports secure input. That flag lives in shared memory
+  SkyLight maps on its first read without a lock; the first read happens on the main thread
+  before the tap thread starts.
 - No callback dereferences event-loop-owned memory. The only shared state a callback
   writes is atomics, the tap's own state and the process table, whose lock is never held across
   an ObjC or AX call. Everything else is handed to the event loop as an event.
@@ -41,4 +45,4 @@ to the event loop.
   AppKit's system-colours notification reads it at once.
 - The SkyLight notification numbers, the event tap masks and the Dock gesture field numbers are
   the platform's values and must not change. Each tap re-enables itself when macOS disables it by
-  timeout or user input.
+  timeout or user input; the keyboard tap also forgets an armed lone modifier then.

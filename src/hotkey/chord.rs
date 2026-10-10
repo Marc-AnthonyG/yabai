@@ -4,6 +4,7 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 use crate::hotkey::key::{EVERY_KEY_NAME_IN_SHORT, HotkeyKey};
+use crate::hotkey::lone_modifier::{EVERY_LONE_MODIFIER_NAME_IN_SHORT, LoneModifier};
 
 bitflags::bitflags! {
     #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -31,6 +32,7 @@ pub(crate) enum Chord {
         modifiers: HotkeyModifiers,
         key: HotkeyKey,
     },
+    LoneModifierTap(LoneModifier),
 }
 
 impl Chord {
@@ -39,7 +41,9 @@ impl Chord {
         ansi_virtual_keycode: u16,
         modifiers_held: HotkeyModifiers,
     ) -> bool {
-        let Chord::KeyWithModifiers { modifiers, key } = self;
+        let Chord::KeyWithModifiers { modifiers, key } = self else {
+            return false;
+        };
         let modifiers_compared = if modifiers.contains(HotkeyModifiers::FN) {
             HotkeyModifiers::all()
         } else {
@@ -72,9 +76,13 @@ impl FromStr for Chord {
 }
 
 fn chord_without_a_dash(text: &str) -> Result<Chord, String> {
+    if let Some(lone_modifier) = LoneModifier::named(text) {
+        return Ok(Chord::LoneModifierTap(lone_modifier));
+    }
     if modifier_named(text).is_some() {
         return Err(format!(
-            "'{text}' is a modifier without a key: write MODIFIER - KEY"
+            "'{text}' is a modifier without a key: write MODIFIER - KEY, or tap one of \
+             {EVERY_LONE_MODIFIER_NAME_IN_SHORT} on its own"
         ));
     }
     Ok(Chord::KeyWithModifiers {
@@ -125,6 +133,7 @@ fn parse_key(key_name: &str) -> Result<HotkeyKey, String> {
 impl fmt::Display for Chord {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Chord::LoneModifierTap(lone_modifier) => formatter.write_str(lone_modifier.name()),
             Chord::KeyWithModifiers { modifiers, key } if modifiers.is_empty() => {
                 formatter.write_str(key.name())
             }

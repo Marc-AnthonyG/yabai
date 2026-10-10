@@ -12,13 +12,17 @@ use crate::hotkey::chord::Chord;
 pub(crate) enum HotkeyCommand {
     /// Run a yabai command, or a shell command, whenever CHORD is pressed
     ///
-    /// CHORD is [MODIFIER [+ MODIFIER]... -] KEY. MODIFIER is alt, shift,
+    /// CHORD is [MODIFIER [+ MODIFIER]... -] KEY, or a lone modifier. MODIFIER is alt, shift,
     /// cmd, ctrl or fn, on either side of the keyboard; every other one of alt, shift, cmd and
     /// ctrl must be up, caps lock does not count, and fn only counts when the chord names it.
     /// KEY is a-z, 0-9, return, tab, space, escape, backspace, delete (forward delete), f1-f20,
     /// left, right, up, down, home, end, pageup, pagedown, minus, equal, leftbracket,
     /// rightbracket, semicolon, quote, comma, period, slash, backslash or grave, named after the
     /// key at that place on an ANSI keyboard whatever the layout.
+    ///
+    /// A lone modifier, lcmd, rcmd, lalt, ralt, lctrl, rctrl, lshift or rshift, runs the action
+    /// when that key is pressed and released within a second with nothing else in between, and
+    /// never while secure input is on, as it is in a password field.
     ///
     /// A hotkey whose chord is already bound, or whose label another hotkey has, replaces that
     /// hotkey. The pressed key is swallowed and runs the action again while it repeats; its
@@ -58,7 +62,7 @@ pub(crate) struct HotkeyDefinition {
         .required(true)
 ))]
 struct HotkeyDefinitionAsWritten {
-    /// The keys that run the action: [MODIFIER [+ MODIFIER]... -] KEY
+    /// The keys that run the action: [MODIFIER [+ MODIFIER]... -] KEY, or a lone modifier
     #[arg(value_name = "CHORD")]
     chord: Chord,
     /// A later hotkey with the same label replaces this one

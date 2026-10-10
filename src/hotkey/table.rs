@@ -2,6 +2,7 @@ use std::sync::Mutex;
 
 use crate::hotkey::action::HotkeyAction;
 use crate::hotkey::chord::{Chord, HotkeyModifiers};
+use crate::hotkey::lone_modifier::LoneModifier;
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct Hotkey {
@@ -79,5 +80,14 @@ impl HotkeyTable {
                     .is_pressed_by(ansi_virtual_keycode, modifiers_held)
             })
             .max_by_key(|hotkey| hotkey.chord.names_fn())
+    }
+
+    pub(crate) fn hotkey_of_lone_modifier_tap(
+        &self,
+        lone_modifier: LoneModifier,
+    ) -> Option<&Hotkey> {
+        self.hotkeys_in_listing_order
+            .iter()
+            .find(|hotkey| hotkey.chord == Chord::LoneModifierTap(lone_modifier))
     }
 }

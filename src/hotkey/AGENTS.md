@@ -23,8 +23,9 @@ modifier tap from a modifier held for a chord.
   press, because `DaemonCommand` is not `Clone`. The client checked that the arguments parse,
   and refused a `hotkey` command among them, when the hotkey was added.
 - The lone modifier detector arms on the flags change of that physical key with the key's
-  device-dependent bit set, anything else the keyboard tap sees disarms it, and the release of
-  the same key within a second is a tap. The flags-changed keycodes and device-dependent bits
+  device-dependent bit set, anything else the keyboard tap sees disarms it but the momentum
+  scrolling that carries on after the fingers left the trackpad, and the release of the same
+  key within a second is a tap. The flags-changed keycodes and device-dependent bits
   are the platform's values and must not change.
 - The mouse tap also disarms the detector on every mouse down it handles, from the main thread:
   it swallows mouse-modifier clicks, and once focus-follows-mouse re-creates it after the

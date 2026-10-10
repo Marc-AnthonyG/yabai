@@ -144,6 +144,8 @@ unsafe extern "C-unwind" fn handle_keyboard_event_tap_callback(
                 run_the_hotkey_of_the_lone_modifier_tap(tapped_lone_modifier);
             }
         }
+        CGEventType::ScrollWheel
+            if is_momentum_scrolling_the_user_no_longer_drives(event_reference) => {}
         _ => lone_modifier_tap_detector.forget_the_armed_lone_modifier(),
     }
 
@@ -215,6 +217,10 @@ fn hotkey_modifiers_held_according_to_event_flags(event_flags: CGEventFlags) -> 
 
 fn ansi_virtual_keycode_of_event(event: &CGEvent) -> u16 {
     CGEventGetIntegerValueField(Some(event), CGEventField::KeyboardEventKeycode) as u16
+}
+
+fn is_momentum_scrolling_the_user_no_longer_drives(event: &CGEvent) -> bool {
+    CGEventGetIntegerValueField(Some(event), CGEventField::ScrollWheelEventMomentumPhase) != 0
 }
 
 fn was_posted_by_this_process(event: &CGEvent) -> bool {

@@ -24,6 +24,7 @@ use crate::layout::tree::{WindowNodeChild, WindowNodeSplit};
 use crate::message::listening_socket::start_listening_on_message_socket;
 use crate::mouse::drag::MouseDragState;
 use crate::mouse::tap::MouseMode;
+use crate::notifications::keyboard::start_keyboard_event_tap_on_its_own_thread;
 use crate::notifications::mission_control::start_observing_mission_control_through_the_dock;
 use crate::notifications::mouse::{MOUSE_EVENT_MASK_WITHOUT_MOUSE_MOVED, start_mouse_event_tap};
 use crate::notifications::skylight_connection::handle_skylight_connection_notification_callback;
@@ -159,6 +160,8 @@ pub(crate) fn start_the_daemon_and_enter_the_main_run_loop() {
     if !start_mouse_event_tap(MOUSE_EVENT_MASK_WITHOUT_MOUSE_MOVED) {
         error!("yabai: could not start mouse handler! abort..\n");
     }
+
+    start_keyboard_event_tap_on_its_own_thread();
 
     let connection = *SKYLIGHT_CONNECTION_ID.get().unwrap();
 

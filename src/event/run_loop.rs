@@ -12,6 +12,7 @@ use crate::event::handlers::display::{
     handle_display_added_event, handle_display_changed_event, handle_display_moved_event,
     handle_display_removed_event, handle_display_resized_event,
 };
+use crate::event::handlers::hotkey::handle_hotkey_pressed_event;
 use crate::event::handlers::insert_feedback::handle_insert_feedback_fade_in_step_event;
 use crate::event::handlers::menu::{handle_menu_closed_event, handle_menu_opened_event};
 use crate::event::handlers::mission_control::{
@@ -449,6 +450,20 @@ pub(crate) fn run_event_loop_flushing_signals_after_each_event(
                     Event::DaemonCommand { command, reply_to } => handle_daemon_command_event(
                         command,
                         reply_to,
+                        signal_event,
+                        process_manager,
+                        display_manager,
+                        window_manager,
+                        space_manager,
+                        mouse_drag_state,
+                        mission_control_mode,
+                    ),
+                    Event::HotkeyPressed {
+                        chord,
+                        yabai_command_arguments,
+                    } => handle_hotkey_pressed_event(
+                        chord,
+                        yabai_command_arguments,
                         signal_event,
                         process_manager,
                         display_manager,

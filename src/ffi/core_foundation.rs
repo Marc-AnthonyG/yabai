@@ -16,9 +16,9 @@ pub use objc2_core_foundation::{
     CFArrayCreateMutableCopy, CFArrayGetCount, CFArrayGetValueAtIndex, CFArraySortValues,
     CFDataCreateMutable, CFDataGetMutableBytePtr, CFDataIncreaseLength, CFDictionaryGetValue,
     CFEqual, CFMachPortCreateRunLoopSource, CFMachPortInvalidate, CFNumberGetType,
-    CFNumberGetValue, CFRunLoopAddSource, CFRunLoopGetMain, CFRunLoopRemoveSource,
-    CFRunLoopSourceInvalidate, CFUUIDCreateFromString, CFUUIDCreateString, kCFRunLoopCommonModes,
-    kCFRunLoopDefaultMode,
+    CFNumberGetValue, CFRunLoopAddSource, CFRunLoopGetCurrent, CFRunLoopGetMain,
+    CFRunLoopRemoveSource, CFRunLoopRun, CFRunLoopSourceInvalidate, CFUUIDCreateFromString,
+    CFUUIDCreateString, kCFRunLoopCommonModes, kCFRunLoopDefaultMode,
 };
 
 use crate::ffi::skylight::SLSWindowSetShadowProperties;

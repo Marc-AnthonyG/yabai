@@ -1,5 +1,6 @@
 pub mod config;
 pub mod display;
+pub mod hotkey;
 pub mod input_source;
 pub mod labels;
 #[cfg(test)]
@@ -15,11 +16,13 @@ pub mod window;
 
 use std::path::PathBuf;
 
+use clap::error::ErrorKind;
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
 use crate::command::config::ConfigCommand;
 use crate::command::display::DisplayCommand;
+use crate::command::hotkey::HotkeyCommand;
 use crate::command::input_source::InputSourceCommand;
 use crate::command::query::QueryCommand;
 use crate::command::rule::RuleCommand;
@@ -119,19 +122,40 @@ pub(crate) enum DaemonCommand {
     /// Add, remove or list the shell commands run after events
     #[command(subcommand)]
     Signal(SignalCommand),
+    /// Add, remove or list the keyboard shortcuts the window manager answers
+    #[command(subcommand)]
+    Hotkey(HotkeyCommand),
     /// Switch the keyboard layout or input mode
     #[command(subcommand)]
     InputSource(InputSourceCommand),
 }
 
-#[cfg(test)]
-pub(crate) fn parse_daemon_command(arguments: &[&str]) -> Result<DaemonCommand, clap::Error> {
-    let command_line =
-        CommandLine::try_parse_from(std::iter::once("yabai").chain(arguments.iter().copied()))?;
+pub(crate) fn parse_daemon_command<Argument: AsRef<str>>(
+    arguments: &[Argument],
+) -> Result<DaemonCommand, clap::Error> {
+    let command_line = CommandLine::try_parse_from(
+        std::iter::once("yabai").chain(arguments.iter().map(AsRef::as_ref)),
+    )?;
     match command_line.command {
         Some(TopLevelCommand::SentToTheRunningWindowManager(command)) => Ok(command),
-        _ => panic!("{arguments:?} should parse as a command sent to the window manager"),
+        _ => Err(clap::Error::raw(
+            ErrorKind::InvalidSubcommand,
+            "the command is not one the running window manager runs",
+        )),
     }
+}
+
+pub(crate) fn refusal_of_clap_error_without_usage(error: &clap::Error) -> String {
+    let rendered_error = error.render().to_string();
+    let refusal = rendered_error
+        .split("\n\n")
+        .next()
+        .unwrap_or_default()
+        .trim();
+    refusal
+        .strip_prefix("error: ")
+        .unwrap_or(refusal)
+        .to_owned()
 }
 
 #[cfg(test)]

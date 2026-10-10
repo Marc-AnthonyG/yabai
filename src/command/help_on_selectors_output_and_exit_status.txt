@@ -7,7 +7,8 @@ Selectors:
                smallest, sibling, first-nephew, second-nephew, uncle, first-cousin,
                second-cousin, stack.prev, stack.next, stack.first, stack.last, stack.recent,
                stack.POSITION from 1, or a window id
-  RULE, SIGNAL an index from 0 in the order of `list`, or a label
+  RULE, SIGNAL, HOTKEY
+               an index from 0 in the order of `list`, or a label
 
   Directions, prev, next and the tree and stack relatives start from the acting display,
   space or window: the one -d, -s or -w names, or else the focused one. A label is any text
@@ -17,8 +18,10 @@ Output:
   `query` prints JSON with snake_case keys: an array for displays, spaces and windows, one
   object for display, space and window. `--fields` keeps the keys it names, and `--help` of
   each query lists them. `rule list` and `signal list` print arrays whose keys mirror the flags
-  of `add`. `config get` prints every setting as one object, or the bare value of one setting
-  spelled as `config set` takes it.
+  of `add`; `hotkey list` prints each hotkey's index, label, chord, description and action, an
+  object holding either `yabai`, the arguments of a yabai command, or `shell`. `config get`
+  prints every setting as one object, or the bare value of one setting spelled as `config set`
+  takes it.
 
 Exit status:
   0  success

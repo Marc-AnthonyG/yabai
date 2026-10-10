@@ -1,7 +1,9 @@
 use crate::command::DaemonCommand;
 use crate::display::manager::DisplayManager;
+use crate::hotkey::table::HOTKEYS_THE_KEYBOARD_TAP_MATCHES;
 use crate::message::domain::config::run_config_command;
 use crate::message::domain::display::run_display_command;
+use crate::message::domain::hotkey::run_hotkey_command;
 use crate::message::domain::input_source::run_input_source_command;
 use crate::message::domain::query::run_query_command;
 use crate::message::domain::rule::run_rule_command;
@@ -79,6 +81,9 @@ pub(crate) fn run_daemon_command(
         DaemonCommand::Signal(signal_command) => {
             DaemonReply::printing_or_failing_with(run_signal_command(signal_command, signal_event))
         }
+        DaemonCommand::Hotkey(hotkey_command) => DaemonReply::printing_or_failing_with(
+            run_hotkey_command(hotkey_command, &HOTKEYS_THE_KEYBOARD_TAP_MATCHES),
+        ),
         DaemonCommand::InputSource(input_source_command) => {
             DaemonReply::printing_or_failing_with(run_input_source_command(input_source_command))
         }

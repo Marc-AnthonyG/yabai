@@ -1,6 +1,7 @@
 pub mod accent_color;
 pub mod application;
 pub mod display;
+pub mod keyboard;
 pub mod mission_control;
 pub mod mouse;
 pub mod process;

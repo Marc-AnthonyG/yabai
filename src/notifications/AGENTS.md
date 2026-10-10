@@ -24,10 +24,11 @@ to the event loop.
   handles symbolic hotkeys such as cmd - tab and cmd - ` before a session-level tap sees them,
   so a keyboard tap there never saw their key down, and releasing the right command key after
   cmd - tab looked like a lone tap of it.
-- Under secure input, taps stop receiving key downs but still see flags changes, so a lone
-  modifier tap is not run while SkyLight reports secure input. That flag lives in shared memory
-  SkyLight maps on its first read without a lock; the first read happens on the main thread
-  before the tap thread starts.
+- Under secure input, taps stop receiving key downs but still see flags changes, so a flags
+  change while SkyLight reports secure input disarms the lone modifier detector: a modifier
+  pressed then is never armed, and one released then is never a tap. That flag lives in shared
+  memory SkyLight maps on its first read without a lock; the first read happens on the main
+  thread before the tap thread starts.
 - No callback dereferences event-loop-owned memory. The only shared state a callback
   writes is atomics, the tap's own state and the process table, whose lock is never held across
   an ObjC or AX call. Everything else is handed to the event loop as an event.

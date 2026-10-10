@@ -130,6 +130,9 @@ unsafe extern "C-unwind" fn handle_keyboard_event_tap_callback(
                 return null_mut();
             }
         }
+        CGEventType::FlagsChanged if is_secure_event_input_on() => {
+            lone_modifier_tap_detector.forget_the_armed_lone_modifier();
+        }
         CGEventType::FlagsChanged => {
             let tapped_lone_modifier = lone_modifier_tap_detector
                 .lone_modifier_tapped_by_flags_change(
@@ -138,9 +141,7 @@ unsafe extern "C-unwind" fn handle_keyboard_event_tap_callback(
                     read_system_clock_in_nanoseconds(),
                 );
             if let Some(tapped_lone_modifier) = tapped_lone_modifier {
-                run_the_hotkey_of_the_lone_modifier_tap_unless_input_is_secure(
-                    tapped_lone_modifier,
-                );
+                run_the_hotkey_of_the_lone_modifier_tap(tapped_lone_modifier);
             }
         }
         _ => lone_modifier_tap_detector.forget_the_armed_lone_modifier(),
@@ -172,10 +173,7 @@ fn run_the_hotkey_the_key_down_presses(event: &CGEvent) -> bool {
     true
 }
 
-fn run_the_hotkey_of_the_lone_modifier_tap_unless_input_is_secure(lone_modifier: LoneModifier) {
-    if is_secure_event_input_on() {
-        return;
-    }
+fn run_the_hotkey_of_the_lone_modifier_tap(lone_modifier: LoneModifier) {
     let chord_and_action_of_the_tapped_hotkey = HOTKEYS_THE_KEYBOARD_TAP_MATCHES
         .lock()
         .unwrap_or_else(PoisonError::into_inner)

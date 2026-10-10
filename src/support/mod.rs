@@ -13,4 +13,5 @@ pub mod notify;
 pub mod privilege;
 pub mod regex;
 pub mod resize_handle;
+pub mod shell_command;
 pub mod spawned_program_exit_status;

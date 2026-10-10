@@ -1,10 +1,11 @@
 # support
 
 The bottom layer of the daemon: small building blocks that know nothing of windows, spaces or
-displays as state. Geometry helpers, files, the pattern filter rules and signals share, logging
-and user notifications, which macOS version the daemon runs on, the handles that name windows,
-processes, spaces, displays and tree nodes, and the small value vocabularies (window layers,
-directions, resize handles, easing curves, colours) that several modules share.
+displays as state. Geometry helpers, files, the pattern filter rules and signals share, running a
+shell command without waiting for it, logging and user notifications, which macOS version the
+daemon runs on, the handles that name windows, processes, spaces, displays and tree nodes, and the
+small value vocabularies (window layers, directions, resize handles, easing curves, colours) that
+several modules share.
 
 ## Notes
 

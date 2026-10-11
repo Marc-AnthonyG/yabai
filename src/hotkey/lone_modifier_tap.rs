@@ -5,6 +5,18 @@ use crate::hotkey::lone_modifier::LoneModifier;
 const LONGEST_A_LONE_MODIFIER_MAY_BE_HELD_TO_COUNT_AS_A_TAP_IN_NANOSECONDS: u64 = 1_000_000_000;
 const NO_LONE_MODIFIER_IS_ARMED: u8 = 0;
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum KeyboardTapEventSeenByTheLoneModifierTapDetector {
+    FlagsChanged {
+        flags_changed_keycode: u16,
+        event_flags: u64,
+        now_in_nanoseconds: u64,
+    },
+    FlagsChangedUnderSecureEventInput,
+    MomentumScrollingTheUserNoLongerDrives,
+    AnyOtherEvent,
+}
+
 pub(crate) struct LoneModifierTapDetector {
     armed_lone_modifier: AtomicU8,
     armed_at_nanoseconds: AtomicU64,
@@ -18,7 +30,32 @@ impl LoneModifierTapDetector {
         }
     }
 
-    pub(crate) fn lone_modifier_tapped_by_flags_change(
+    pub(crate) fn lone_modifier_tapped_by(
+        &self,
+        event: KeyboardTapEventSeenByTheLoneModifierTapDetector,
+    ) -> Option<LoneModifier> {
+        match event {
+            KeyboardTapEventSeenByTheLoneModifierTapDetector::FlagsChanged {
+                flags_changed_keycode,
+                event_flags,
+                now_in_nanoseconds,
+            } => self.lone_modifier_tapped_by_flags_change(
+                flags_changed_keycode,
+                event_flags,
+                now_in_nanoseconds,
+            ),
+            KeyboardTapEventSeenByTheLoneModifierTapDetector::MomentumScrollingTheUserNoLongerDrives => {
+                None
+            }
+            KeyboardTapEventSeenByTheLoneModifierTapDetector::FlagsChangedUnderSecureEventInput
+            | KeyboardTapEventSeenByTheLoneModifierTapDetector::AnyOtherEvent => {
+                self.forget_the_armed_lone_modifier();
+                None
+            }
+        }
+    }
+
+    fn lone_modifier_tapped_by_flags_change(
         &self,
         flags_changed_keycode: u16,
         event_flags: u64,

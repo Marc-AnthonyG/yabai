@@ -21,6 +21,7 @@ use crate::hotkey::action::HotkeyAction;
 use crate::hotkey::chord::{Chord, HotkeyModifiers};
 use crate::hotkey::keyboard_tap_state::{KEYBOARD_TAP_STATE, KeyboardTapState, KeyboardTapStatus};
 use crate::hotkey::lone_modifier::LoneModifier;
+use crate::hotkey::lone_modifier_tap::KeyboardTapEventSeenByTheLoneModifierTapDetector;
 use crate::hotkey::table::HOTKEYS_THE_KEYBOARD_TAP_MATCHES;
 use crate::state::process_wide::DAEMON_PROCESS_ID;
 use crate::support::shell_command::spawn_shell_running_the_command_without_waiting_for_it;
@@ -130,33 +131,39 @@ unsafe extern "C-unwind" fn handle_keyboard_event_tap_callback(
         return event.as_ptr();
     }
 
-    match event_type {
-        CGEventType::KeyDown => {
-            lone_modifier_tap_detector.forget_the_armed_lone_modifier();
-            if run_the_hotkey_the_key_down_presses(event_reference) {
-                return null_mut();
-            }
-        }
-        CGEventType::FlagsChanged if is_secure_event_input_on() => {
-            lone_modifier_tap_detector.forget_the_armed_lone_modifier();
-        }
-        CGEventType::FlagsChanged => {
-            let tapped_lone_modifier = lone_modifier_tap_detector
-                .lone_modifier_tapped_by_flags_change(
-                    ansi_virtual_keycode_of_event(event_reference),
-                    CGEventGetFlags(Some(event_reference)).0,
-                    read_system_clock_in_nanoseconds(),
-                );
-            if let Some(tapped_lone_modifier) = tapped_lone_modifier {
-                run_the_hotkey_of_the_lone_modifier_tap(tapped_lone_modifier);
-            }
-        }
-        CGEventType::ScrollWheel
-            if is_momentum_scrolling_the_user_no_longer_drives(event_reference) => {}
-        _ => lone_modifier_tap_detector.forget_the_armed_lone_modifier(),
+    let tapped_lone_modifier = lone_modifier_tap_detector.lone_modifier_tapped_by(
+        keyboard_tap_event_as_the_lone_modifier_tap_detector_sees_it(event_type, event_reference),
+    );
+    if let Some(tapped_lone_modifier) = tapped_lone_modifier {
+        run_the_hotkey_of_the_lone_modifier_tap(tapped_lone_modifier);
     }
 
+    if event_type == CGEventType::KeyDown && run_the_hotkey_the_key_down_presses(event_reference) {
+        return null_mut();
+    }
     event.as_ptr()
+}
+
+fn keyboard_tap_event_as_the_lone_modifier_tap_detector_sees_it(
+    event_type: CGEventType,
+    event: &CGEvent,
+) -> KeyboardTapEventSeenByTheLoneModifierTapDetector {
+    match event_type {
+        CGEventType::FlagsChanged if is_secure_event_input_on() => {
+            KeyboardTapEventSeenByTheLoneModifierTapDetector::FlagsChangedUnderSecureEventInput
+        }
+        CGEventType::FlagsChanged => {
+            KeyboardTapEventSeenByTheLoneModifierTapDetector::FlagsChanged {
+                flags_changed_keycode: ansi_virtual_keycode_of_event(event),
+                event_flags: CGEventGetFlags(Some(event)).0,
+                now_in_nanoseconds: read_system_clock_in_nanoseconds(),
+            }
+        }
+        CGEventType::ScrollWheel if is_momentum_scrolling_the_user_no_longer_drives(event) => {
+            KeyboardTapEventSeenByTheLoneModifierTapDetector::MomentumScrollingTheUserNoLongerDrives
+        }
+        _ => KeyboardTapEventSeenByTheLoneModifierTapDetector::AnyOtherEvent,
+    }
 }
 
 fn re_enable_the_keyboard_event_tap(keyboard_tap_state: &KeyboardTapState) {

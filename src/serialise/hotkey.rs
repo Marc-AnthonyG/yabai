@@ -31,3 +31,69 @@ fn snapshot_of_hotkey(index: usize, hotkey: &Hotkey) -> HotkeySnapshot {
         action: hotkey.action.clone(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::every_hotkey_as_pretty_json;
+    use crate::hotkey::action::HotkeyAction;
+    use crate::hotkey::table::{Hotkey, HotkeyTable};
+
+    #[test]
+    fn hotkeys_list_their_index_label_chord_description_and_action_in_that_order() {
+        let mut hotkey_table = HotkeyTable::new();
+        hotkey_table.add_replacing_any_with_the_same_chord_or_label(Hotkey {
+            chord: "cmd+alt-h".parse().unwrap(),
+            label: String::from("focus-west"),
+            description: String::from("Focus the window to the west"),
+            action: HotkeyAction::Yabai(vec![
+                String::from("window"),
+                String::from("focus"),
+                String::from("west"),
+            ]),
+        });
+        hotkey_table.add_replacing_any_with_the_same_chord_or_label(Hotkey {
+            chord: "rcmd".parse().unwrap(),
+            label: String::new(),
+            description: String::new(),
+            action: HotkeyAction::Shell(String::from("yabai input-source cycle")),
+        });
+
+        let listing: serde_json::Value =
+            serde_json::from_str(&every_hotkey_as_pretty_json(&hotkey_table)).unwrap();
+
+        assert_eq!(
+            listing,
+            serde_json::json!([
+                {
+                    "index": 0,
+                    "label": "focus-west",
+                    "chord": "alt + cmd - h",
+                    "description": "Focus the window to the west",
+                    "action": { "yabai": ["window", "focus", "west"] }
+                },
+                {
+                    "index": 1,
+                    "label": "",
+                    "chord": "rcmd",
+                    "description": "",
+                    "action": { "shell": "yabai input-source cycle" }
+                }
+            ])
+        );
+        let keys_in_order: Vec<&str> = listing[0]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            keys_in_order,
+            ["index", "label", "chord", "description", "action"]
+        );
+    }
+
+    #[test]
+    fn no_hotkey_lists_as_an_empty_array() {
+        assert_eq!(every_hotkey_as_pretty_json(&HotkeyTable::new()), "[]");
+    }
+}

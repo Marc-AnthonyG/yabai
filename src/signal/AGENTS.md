@@ -9,7 +9,7 @@ matching subscriber's command in a child process.
 - Everything here runs on the event-loop thread. The subscriptions and the pending queue are
   owned by `EventLoopOwnedState` and passed in explicitly; queued signals own
   their strings.
-- Delivery spawns one `/usr/bin/env sh -c` child per matching subscriber, with the `YABAI_*`
+- Delivery spawns one `/bin/sh -c` child per matching subscriber, with the `YABAI_*`
   variables added to the daemon's environment, and never waits for it: the daemon ignores
   SIGCHLD, so the system reaps it.
 - The signal type carries its command-line and JSON spelling (`window-focused`) as clap and serde

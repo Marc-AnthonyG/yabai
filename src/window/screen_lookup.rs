@@ -3,7 +3,6 @@ use crate::ffi::skylight::{SLSFindWindowAndOwner, SLSGetCurrentCursorLocation};
 use crate::space::managed_space::query_windows_on_space;
 use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
 use crate::support::handles::{SpaceId, WindowId};
-use crate::window::janky_borders::is_window_connection_owned_by_janky_borders;
 use crate::window::manager::{WindowManager, tracked_window_with_id};
 
 pub(crate) fn rank_of_window_in_list(window_id: WindowId, window_list: &[WindowId]) -> i32 {
@@ -86,7 +85,10 @@ pub(crate) fn query_tracked_window_at_point_skipping_window(
         };
     }
 
-    if is_window_connection_owned_by_janky_borders(window_connection_id) {
+    if window_manager
+        .janky_borders_ownership_of_window_connections
+        .is_owned_by_janky_borders(window_connection_id)
+    {
         unsafe {
             SLSFindWindowAndOwner(
                 connection,
@@ -155,7 +157,10 @@ pub(crate) fn query_tracked_window_at_point(
         };
     }
 
-    if is_window_connection_owned_by_janky_borders(window_connection_id) {
+    if window_manager
+        .janky_borders_ownership_of_window_connections
+        .is_owned_by_janky_borders(window_connection_id)
+    {
         unsafe {
             SLSFindWindowAndOwner(
                 connection,

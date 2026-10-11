@@ -7,7 +7,10 @@ when `--reload-config-file-on-change` is on.
 
 - Unless `-c` names one, the config file is the first of `$XDG_CONFIG_HOME/yabai/yabairc`,
   `~/.config/yabai/yabairc` and `~/.yabairc` that exists. It runs in a child
-  `/usr/bin/env sh`, with `-c` when the file is executable, that is never waited for.
+  `/usr/bin/env sh`, with `-c` when the file is executable, that nothing waits for but a
+  short-lived thread watching it exit, which then returns the free pages of every malloc zone
+  to the system: the commands the file sends allocate in a burst whose freed pages the zones
+  would otherwise keep.
 - A reload runs the file again and resets nothing: settings it no longer mentions keep their
   current value, and rules and signals without a label are added a second time.
 - The watcher thread starts the first time the setting is turned on and never stops; turning the

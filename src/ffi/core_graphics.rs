@@ -17,7 +17,7 @@ pub use objc2_core_graphics::{
     CGEventSetDoubleValueField, CGEventSetIntegerValueField, CGEventTapCreate, CGEventTapEnable,
     CGEventTapIsEnabled, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement,
     CGEventTapPostEvent, CGEventTapProxy, CGEventType, CGGetActiveDisplayList, CGImage,
-    CGImageAlphaInfo, CGImageGetHeight, CGImageGetWidth, CGMainDisplayID,
+    CGImageAlphaInfo, CGImageGetColorSpace, CGImageGetHeight, CGImageGetWidth, CGMainDisplayID,
     CGPathCreateWithRoundedRect, CGPathDrawingMode, CGPointEqualToPoint,
     CGPreflightScreenCaptureAccess, CGRectContainsPoint, CGRectContainsRect, CGRectEqualToRect,
     CGRectGetMidX, CGRectGetMidY, CGRequestScreenCaptureAccess,
@@ -42,6 +42,7 @@ pub const kCGHIDEventTap: CGEventTapLocation = CGEventTapLocation::HIDEventTap;
 pub const kCGSessionEventTap: CGEventTapLocation = CGEventTapLocation::SessionEventTap;
 pub const kCGHeadInsertEventTap: CGEventTapPlacement = CGEventTapPlacement::HeadInsertEventTap;
 pub const kCGEventTapOptionDefault: CGEventTapOptions = CGEventTapOptions::Default;
+pub const kCGEventTapOptionListenOnly: CGEventTapOptions = CGEventTapOptions::ListenOnly;
 
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {

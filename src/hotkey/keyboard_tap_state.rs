@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicPtr, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU8, Ordering};
 
 use crate::ffi::core_foundation::CFMachPort;
 use crate::hotkey::lone_modifier_tap::LoneModifierTapDetector;
@@ -29,6 +29,8 @@ impl KeyboardTapStatus {
 pub(crate) struct KeyboardTapState {
     pub(crate) handle: AtomicPtr<CFMachPort>,
     pub(crate) lone_modifier_tap_detector: LoneModifierTapDetector,
+    pub(crate) disarming_tap_handle: AtomicPtr<CFMachPort>,
+    pub(crate) disarming_tap_is_enabled: AtomicBool,
     status: AtomicU8,
 }
 
@@ -39,6 +41,8 @@ impl KeyboardTapState {
         KeyboardTapState {
             handle: AtomicPtr::new(std::ptr::null_mut()),
             lone_modifier_tap_detector: LoneModifierTapDetector::new(),
+            disarming_tap_handle: AtomicPtr::new(std::ptr::null_mut()),
+            disarming_tap_is_enabled: AtomicBool::new(false),
             status: AtomicU8::new(KeyboardTapStatus::StillStarting as u8),
         }
     }

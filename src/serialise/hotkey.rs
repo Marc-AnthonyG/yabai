@@ -1,7 +1,7 @@
 use serde::Serialize;
 
 use crate::hotkey::action::HotkeyAction;
-use crate::hotkey::table::{Hotkey, HotkeyTable};
+use crate::hotkey::table::Hotkey;
 
 #[derive(Serialize, Debug)]
 pub(crate) struct HotkeySnapshot {
@@ -12,9 +12,8 @@ pub(crate) struct HotkeySnapshot {
     pub(crate) action: HotkeyAction,
 }
 
-pub(crate) fn every_hotkey_as_pretty_json(hotkey_table: &HotkeyTable) -> String {
-    let snapshots: Vec<HotkeySnapshot> = hotkey_table
-        .hotkeys_in_listing_order()
+pub(crate) fn every_hotkey_as_pretty_json(every_hotkey_in_listing_order: &[Hotkey]) -> String {
+    let snapshots: Vec<HotkeySnapshot> = every_hotkey_in_listing_order
         .iter()
         .enumerate()
         .map(|(index, hotkey)| snapshot_of_hotkey(index, hotkey))
@@ -35,6 +34,7 @@ fn snapshot_of_hotkey(index: usize, hotkey: &Hotkey) -> HotkeySnapshot {
 #[cfg(test)]
 mod tests {
     use super::every_hotkey_as_pretty_json;
+    use crate::command::yabai_command_of_a_hotkey::YabaiCommandOfAHotkey;
     use crate::hotkey::action::HotkeyAction;
     use crate::hotkey::table::{Hotkey, HotkeyTable};
 
@@ -45,11 +45,14 @@ mod tests {
             chord: "cmd+alt-h".parse().unwrap(),
             label: String::from("focus-west"),
             description: String::from("Focus the window to the west"),
-            action: HotkeyAction::Yabai(vec![
-                String::from("window"),
-                String::from("focus"),
-                String::from("west"),
-            ]),
+            action: HotkeyAction::Yabai(
+                YabaiCommandOfAHotkey::parsed_from_its_arguments(vec![
+                    String::from("window"),
+                    String::from("focus"),
+                    String::from("west"),
+                ])
+                .unwrap(),
+            ),
         });
         hotkey_table.add_replacing_any_with_the_same_chord_or_label(Hotkey {
             chord: "rcmd".parse().unwrap(),
@@ -58,8 +61,10 @@ mod tests {
             action: HotkeyAction::Shell(String::from("yabai input-source cycle")),
         });
 
-        let listing: serde_json::Value =
-            serde_json::from_str(&every_hotkey_as_pretty_json(&hotkey_table)).unwrap();
+        let listing: serde_json::Value = serde_json::from_str(&every_hotkey_as_pretty_json(
+            hotkey_table.hotkeys_in_listing_order(),
+        ))
+        .unwrap();
 
         assert_eq!(
             listing,
@@ -94,6 +99,6 @@ mod tests {
 
     #[test]
     fn no_hotkey_lists_as_an_empty_array() {
-        assert_eq!(every_hotkey_as_pretty_json(&HotkeyTable::new()), "[]");
+        assert_eq!(every_hotkey_as_pretty_json(&[]), "[]");
     }
 }

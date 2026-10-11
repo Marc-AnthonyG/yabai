@@ -16,7 +16,7 @@ use crate::mouse::tap::{MouseMode, MouseModifier};
 use crate::support::easing::AnimationEasingType;
 use crate::window::manager::{FocusFollowsMouseMode, ShadowRemovalMode, WindowOriginDisplayMode};
 
-#[derive(Subcommand, Serialize, Deserialize, Debug)]
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub(crate) enum ConfigCommand {
     /// Change settings; every value is checked before any setting changes
     #[command(arg_required_else_help = true)]
@@ -31,7 +31,7 @@ pub(crate) enum ConfigCommand {
     },
 }
 
-#[derive(Args, Serialize, Deserialize, Debug)]
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub(crate) struct ConfigSetArguments {
     /// Give one space its own values instead of changing the global ones, which the space then
     /// ignores
@@ -49,7 +49,7 @@ pub(crate) struct ConfigSetArguments {
     pub(crate) settings_for_every_space: SettingsForEverySpace,
 }
 
-#[derive(Args, Serialize, Deserialize, Debug, Default)]
+#[derive(Args, Clone, Serialize, Deserialize, Debug, Default)]
 pub(crate) struct SettingsASpaceCanOverride {
     /// Tile windows as a binary tree (bsp), pile them up (stack) or leave them be (float)
     #[arg(long)]
@@ -77,7 +77,7 @@ pub(crate) struct SettingsASpaceCanOverride {
     pub(crate) auto_balance: Option<AutoBalanceAxes>,
 }
 
-#[derive(Args, Serialize, Deserialize, Debug, Default)]
+#[derive(Args, Clone, Serialize, Deserialize, Debug, Default)]
 pub(crate) struct SettingsForEverySpace {
     /// Print debug information to stdout
     #[arg(long)]

@@ -5,6 +5,8 @@ use core::ptr::{NonNull, null_mut};
 use std::sync::PoisonError;
 use std::sync::atomic::Ordering;
 
+use libc::qos_class_t;
+
 use crate::event::queue::{Event, post_event_to_event_loop};
 use crate::ffi::carbon_core::read_system_clock_in_nanoseconds;
 use crate::ffi::core_foundation::{
@@ -16,26 +18,23 @@ use crate::ffi::core_graphics::{
     CGEventTapCreate, CGEventTapEnable, CGEventTapIsEnabled, CGEventTapProxy, CGEventType,
     kCGEventTapOptionDefault, kCGHIDEventTap, kCGHeadInsertEventTap,
 };
+use crate::ffi::libsystem::set_the_quality_of_service_class_of_this_thread;
 use crate::ffi::skylight::SLSIsSecureEventInputSet;
-use crate::hotkey::action::HotkeyAction;
+use crate::hotkey::action::{HotkeyAction, KeyDownOfAHotkey};
 use crate::hotkey::chord::{Chord, HotkeyModifiers};
 use crate::hotkey::keyboard_tap_state::{KEYBOARD_TAP_STATE, KeyboardTapState, KeyboardTapStatus};
 use crate::hotkey::lone_modifier::LoneModifier;
 use crate::hotkey::lone_modifier_tap::KeyboardTapEventSeenByTheLoneModifierTapDetector;
+use crate::hotkey::shell_command_spawner::{
+    ShellCommandOfAPressedHotkey, hand_the_shell_command_to_the_spawner_thread,
+    start_the_thread_that_spawns_shell_hotkeys,
+};
 use crate::hotkey::table::HOTKEYS_THE_KEYBOARD_TAP_MATCHES;
+use crate::notifications::lone_modifier_disarming_tap::create_the_disarming_tap_disabled_and_schedule_it_on_this_thread;
 use crate::state::process_wide::DAEMON_PROCESS_ID;
-use crate::support::shell_command::spawn_shell_running_the_command_without_waiting_for_it;
 
-const SYSTEM_DEFINED_EVENT_TYPE_OF_MEDIA_KEYS_NX_SYSDEFINED: u32 = 14;
-
-const KEYBOARD_EVENT_MASK_FOR_HOTKEYS_AND_LONE_MODIFIER_TAPS: CGEventMask = (1
-    << CGEventType::KeyDown.0)
-    | (1 << CGEventType::FlagsChanged.0)
-    | (1 << CGEventType::LeftMouseDown.0)
-    | (1 << CGEventType::RightMouseDown.0)
-    | (1 << CGEventType::OtherMouseDown.0)
-    | (1 << CGEventType::ScrollWheel.0)
-    | (1 << SYSTEM_DEFINED_EVENT_TYPE_OF_MEDIA_KEYS_NX_SYSDEFINED);
+const KEYBOARD_EVENT_MASK_FOR_HOTKEYS_AND_LONE_MODIFIER_TAPS: CGEventMask =
+    (1 << CGEventType::KeyDown.0) | (1 << CGEventType::FlagsChanged.0);
 
 const EVENT_FLAG_OF_EACH_HOTKEY_MODIFIER: [(CGEventFlags, HotkeyModifiers); 5] = [
     (CGEventFlags::MaskAlternate, HotkeyModifiers::ALT),
@@ -47,6 +46,12 @@ const EVENT_FLAG_OF_EACH_HOTKEY_MODIFIER: [(CGEventFlags, HotkeyModifiers); 5] =
 
 pub(crate) fn start_keyboard_event_tap_on_its_own_thread() {
     map_the_shared_memory_secure_event_input_is_read_from_on_the_main_thread();
+    if let Err(error) = start_the_thread_that_spawns_shell_hotkeys() {
+        crate::warn!(
+            "yabai: could not start the shell hotkey thread, so shell hotkeys will not run: \
+             {error}\n"
+        );
+    }
     let spawned = std::thread::Builder::new()
         .name(String::from("yabai-keyboard-tap"))
         .spawn(run_the_keyboard_event_tap_on_this_thread_for_as_long_as_the_daemon_runs);
@@ -63,10 +68,19 @@ fn map_the_shared_memory_secure_event_input_is_read_from_on_the_main_thread() {
 }
 
 fn run_the_keyboard_event_tap_on_this_thread_for_as_long_as_the_daemon_runs() {
+    set_the_quality_of_service_class_of_this_thread(qos_class_t::QOS_CLASS_USER_INTERACTIVE);
     if let Err(failure) = create_the_keyboard_event_tap_and_schedule_it_on_this_thread() {
         KEYBOARD_TAP_STATE.record_status(KeyboardTapStatus::FailedToStart);
         crate::warn!("yabai: {failure}, so hotkeys will not work\n");
         return;
+    }
+    if let Err(failure) =
+        create_the_disarming_tap_disabled_and_schedule_it_on_this_thread(&KEYBOARD_TAP_STATE)
+    {
+        crate::warn!(
+            "yabai: {failure}, so a click, a scroll or a media key will not cancel a lone \
+             modifier tap\n"
+        );
     }
     KEYBOARD_TAP_STATE.record_status(KeyboardTapStatus::Running);
     CFRunLoopRun();
@@ -159,9 +173,6 @@ fn keyboard_tap_event_as_the_lone_modifier_tap_detector_sees_it(
                 now_in_nanoseconds: read_system_clock_in_nanoseconds(),
             }
         }
-        CGEventType::ScrollWheel if is_momentum_scrolling_the_user_no_longer_drives(event) => {
-            KeyboardTapEventSeenByTheLoneModifierTapDetector::MomentumScrollingTheUserNoLongerDrives
-        }
         _ => KeyboardTapEventSeenByTheLoneModifierTapDetector::AnyOtherEvent,
     }
 }
@@ -177,15 +188,24 @@ fn run_the_hotkey_the_key_down_presses(event: &CGEvent) -> bool {
     let ansi_virtual_keycode = ansi_virtual_keycode_of_event(event);
     let modifiers_held =
         hotkey_modifiers_held_according_to_event_flags(CGEventGetFlags(Some(event)));
-    let chord_and_action_of_the_pressed_hotkey = HOTKEYS_THE_KEYBOARD_TAP_MATCHES
+    let key_down = key_down_as_pressed_or_repeated_while_held(event);
+    let chord_and_action_to_run_of_the_pressed_hotkey = HOTKEYS_THE_KEYBOARD_TAP_MATCHES
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .hotkey_pressed_by(ansi_virtual_keycode, modifiers_held)
-        .map(|hotkey| (hotkey.chord, hotkey.action.clone()));
-    let Some((chord, action)) = chord_and_action_of_the_pressed_hotkey else {
+        .map(|hotkey| {
+            let action_to_run = hotkey
+                .action
+                .runs_on(key_down)
+                .then(|| hotkey.action.clone());
+            (hotkey.chord, action_to_run)
+        });
+    let Some((chord, action_to_run)) = chord_and_action_to_run_of_the_pressed_hotkey else {
         return false;
     };
-    run_hotkey_action_without_waiting_for_it(chord, action);
+    if let Some(action) = action_to_run {
+        run_hotkey_action_without_waiting_for_it(chord, action);
+    }
     true
 }
 
@@ -203,20 +223,15 @@ fn run_the_hotkey_of_the_lone_modifier_tap(lone_modifier: LoneModifier) {
 fn run_hotkey_action_without_waiting_for_it(chord: Chord, action: HotkeyAction) {
     match action {
         HotkeyAction::Shell(shell_command) => {
-            let shell = spawn_shell_running_the_command_without_waiting_for_it(
-                &shell_command,
-                std::iter::empty::<(&str, &str)>(),
-            );
-            if let Err(error) = shell {
-                crate::warn!("yabai: hotkey '{chord}' could not run its shell command: {error}\n");
-            }
-        }
-        HotkeyAction::Yabai(yabai_command_arguments) => {
-            post_event_to_event_loop(Event::HotkeyPressed {
+            hand_the_shell_command_to_the_spawner_thread(ShellCommandOfAPressedHotkey {
                 chord,
-                yabai_command_arguments,
+                shell_command,
             })
         }
+        HotkeyAction::Yabai(yabai_command) => post_event_to_event_loop(Event::HotkeyPressed {
+            chord,
+            yabai_command,
+        }),
     }
 }
 
@@ -233,11 +248,15 @@ fn ansi_virtual_keycode_of_event(event: &CGEvent) -> u16 {
     CGEventGetIntegerValueField(Some(event), CGEventField::KeyboardEventKeycode) as u16
 }
 
-fn is_momentum_scrolling_the_user_no_longer_drives(event: &CGEvent) -> bool {
-    CGEventGetIntegerValueField(Some(event), CGEventField::ScrollWheelEventMomentumPhase) != 0
+fn key_down_as_pressed_or_repeated_while_held(event: &CGEvent) -> KeyDownOfAHotkey {
+    if CGEventGetIntegerValueField(Some(event), CGEventField::KeyboardEventAutorepeat) != 0 {
+        KeyDownOfAHotkey::RepeatedWhileHeld
+    } else {
+        KeyDownOfAHotkey::Pressed
+    }
 }
 
-fn was_posted_by_this_process(event: &CGEvent) -> bool {
+pub(crate) fn was_posted_by_this_process(event: &CGEvent) -> bool {
     let process_id_of_the_poster =
         CGEventGetIntegerValueField(Some(event), CGEventField::EventSourceUnixProcessID);
     DAEMON_PROCESS_ID

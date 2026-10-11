@@ -1,6 +1,7 @@
 use std::sync::Weak;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
+use crate::ffi::libsystem::return_the_free_pages_of_every_malloc_zone_to_the_system;
 use crate::ffi::skylight::SLSReleaseConnection;
 use crate::scripting_addition::client::swap_window_proxies_out_through_scripting_addition;
 use crate::support::handles::WindowId;
@@ -60,6 +61,9 @@ fn run_animation_completion_worker_until_the_animator_is_gone(
             next_completion_job = completion_job_receiver.try_recv().ok();
         }
 
+        let some_proxy_is_released =
+            !proxies_to_swap_out.is_empty() || !proxies_to_release_without_swapping_out.is_empty();
+
         if !proxies_to_swap_out.is_empty() {
             swap_out_and_release_window_proxies(
                 animation_connection,
@@ -70,6 +74,10 @@ fn run_animation_completion_worker_until_the_animator_is_gone(
 
         for proxy in proxies_to_release_without_swapping_out {
             destroy_window_proxy(animation_connection, proxy);
+        }
+
+        if some_proxy_is_released {
+            return_the_free_pages_of_every_malloc_zone_to_the_system();
         }
     }
 

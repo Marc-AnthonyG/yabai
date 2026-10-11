@@ -16,6 +16,7 @@ pub mod fullscreen;
 pub mod grid;
 pub mod group;
 pub mod janky_borders;
+pub mod janky_borders_ownership_of_window_connections;
 pub mod layer;
 pub mod manager;
 pub mod minimize_and_close;

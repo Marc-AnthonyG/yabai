@@ -1575,7 +1575,7 @@ Add, remove or list the shell commands run after events
 .PP
 \fByabai signal add\fR [\fB\-\-label\fR] [\fB\-\-app\fR] [\fB\-\-app\-not\fR] [\fB\-\-title\fR] [\fB\-\-title\-not\fR] [\fB\-\-active\fR] <\fB\-\-action\fR> <\fIEVENT\fR> 
 .PP
-Run a shell command (through /usr/bin/env sh \-c) after every EVENT
+Run a shell command (through /bin/sh \-c) after every EVENT
 .PP
 .TP
 \fB\-\-action\fR \fI<SHELL_COMMAND>\fR
@@ -1698,7 +1698,7 @@ CHORD is [MODIFIER [+ MODIFIER]... \-] KEY, or a lone modifier. MODIFIER is alt,
 .PP
 A lone modifier, lcmd, rcmd, lalt, ralt, lctrl, rctrl, lshift or rshift, runs the action when that key is pressed and released within a second with nothing else in between, and never while secure input is on, as it is in a password field.
 .PP
-A hotkey whose chord is already bound, or whose label another hotkey has, replaces that hotkey. The pressed key is swallowed and runs the action again while it repeats; its release, and every other key, reach the focused application.
+A hotkey whose chord is already bound, or whose label another hotkey has, replaces that hotkey. The pressed key is swallowed, and so is its repeat while it is held; a yabai command runs again on each repeat, a shell command only once per press. The key\*(Aqs release, and every other key, reach the focused application.
 .PP
 When the window manager could not create its keyboard tap, usually because yabai is not allowed under Accessibility, the hotkey is still added but the command fails, since no hotkey can fire.
 .PP
@@ -1710,7 +1710,7 @@ A later hotkey with the same label replaces this one
 What the hotkey does, for `hotkey list` and the cheatsheets built from it
 .TP
 \fB\-\-shell\fR \fI<COMMAND>\fR
-The shell command to run through /usr/bin/env sh \-c, without waiting for it
+The shell command to run through /bin/sh \-c, without waiting for it
 .TP
 <\fICHORD\fR>
 The keys that run the action: [MODIFIER [+ MODIFIER]... \-] KEY, or a lone modifier

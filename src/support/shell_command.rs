@@ -9,8 +9,8 @@ where
     VariableName: AsRef<OsStr>,
     VariableValue: AsRef<OsStr>,
 {
-    Command::new("/usr/bin/env")
-        .args(["sh", "-c", command])
+    Command::new("/bin/sh")
+        .args(["-c", command])
         .envs(variables_added_to_its_environment)
         .spawn()
         .map(drop)

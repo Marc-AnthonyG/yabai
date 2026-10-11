@@ -8,12 +8,13 @@ use crate::ffi::core_foundation::{
 };
 use crate::ffi::core_graphics::{
     CGContext, CGContextClearRect, CGContextDrawImage, CGContextFlush, CGImage,
-    CGRegionCreateEmptyRegion, CGSNewRegionWithRect,
+    CGImageGetColorSpace, CGRegionCreateEmptyRegion, CGSNewRegionWithRect,
 };
 use crate::ffi::skylight::{
     SLSGetWindowAlpha, SLSGetWindowBounds, SLSHWCaptureWindowList,
-    SLSNewWindowWithOpaqueShapeAndContext, SLSReleaseWindow, SLSSetWindowAlpha, SLSSetWindowLevel,
-    SLSSetWindowOpacity, SLSSetWindowResolution, SLSSetWindowSubLevel, SLWindowContextCreate,
+    SLSNewWindowWithOpaqueShapeAndContext, SLSReleaseWindow, SLSSetWindowAlpha,
+    SLSSetWindowColorSpace, SLSSetWindowLevel, SLSSetWindowOpacity, SLSSetWindowResolution,
+    SLSSetWindowSubLevel, SLWindowContextCreate,
 };
 use crate::support::handles::WindowId;
 use crate::support::image::copy_image_undoing_premultiplied_alpha_and_making_it_opaque;
@@ -29,7 +30,6 @@ pub(crate) struct WindowProxy {
     pub(crate) level: i32,
     pub(crate) sub_level: i32,
     pub(crate) context: Option<CFRetainedAssumedSendAndSync<CGContext>>,
-    pub(crate) image: Option<CFRetained<CGImage>>,
 }
 
 impl WindowProxy {
@@ -45,11 +45,8 @@ pub(crate) fn create_window_proxy_showing_its_captured_image(
     animation_connection: i32,
     alpha: f32,
     proxy: &mut WindowProxy,
+    captured_image: &CGImage,
 ) {
-    let Some(image) = proxy.image.as_deref() else {
-        return;
-    };
-
     let mut frame_region: *mut CFType = core::ptr::null_mut();
     unsafe { CGSNewRegionWithRect(&mut proxy.frame, &mut frame_region) };
     let empty_region = unsafe { CGRegionCreateEmptyRegion() };
@@ -77,6 +74,11 @@ pub(crate) fn create_window_proxy_showing_its_captured_image(
         SLSSetWindowAlpha(animation_connection, proxy.id, alpha);
         SLSSetWindowLevel(animation_connection, proxy.id, proxy.level);
         SLSSetWindowSubLevel(animation_connection, proxy.id, proxy.sub_level);
+        SLSSetWindowColorSpace(
+            animation_connection,
+            proxy.id,
+            CGImageGetColorSpace(Some(captured_image)).as_deref(),
+        );
     }
     let context = unsafe {
         take_create_rule_result(SLWindowContextCreate(
@@ -88,7 +90,7 @@ pub(crate) fn create_window_proxy_showing_its_captured_image(
 
     let frame = CGRect::new(CGPoint::new(0.0, 0.0), proxy.frame.size);
     CGContextClearRect(context.as_deref(), frame);
-    CGContextDrawImage(context.as_deref(), frame, Some(image));
+    CGContextDrawImage(context.as_deref(), frame, Some(captured_image));
     CGContextFlush(context.as_deref());
     proxy.context = context.map(CFRetainedAssumedSendAndSync);
     drop(unsafe { take_create_rule_result(frame_region) });
@@ -97,10 +99,6 @@ pub(crate) fn create_window_proxy_showing_its_captured_image(
 
 pub(crate) fn destroy_window_proxy(animation_connection: i32, proxy: WindowProxy) {
     let mut proxy = proxy;
-
-    if let Some(image) = proxy.image.take() {
-        drop(image);
-    }
 
     if let Some(context) = proxy.context.take() {
         drop(context);
@@ -125,7 +123,6 @@ pub(crate) fn build_window_proxy_from_a_capture_of_the_window(
         level: query_window_level_from_window_server(window_id),
         sub_level: query_window_sub_level_from_window_server(window_id),
         context: None,
-        image: None,
     };
     unsafe { SLSGetWindowBounds(animation_connection, window_id.0, &mut proxy.frame) };
 
@@ -137,24 +134,22 @@ pub(crate) fn build_window_proxy_from_a_capture_of_the_window(
             1,
             (1 << 11) | (1 << 8),
         ))
-    };
-    if let Some(image_array) = image_array {
-        proxy.image = match unsafe { cfarray_borrow_value_at_index::<CGImage>(&image_array, 0) } {
-            Some(image) => {
-                if alpha == 1.0f32 {
-                    Some(unsafe { CFRetained::retain(NonNull::from(image)) })
-                } else {
-                    copy_image_undoing_premultiplied_alpha_and_making_it_opaque(image)
-                }
-            }
-            None => None,
-        };
-        drop(image_array);
+    }?;
+    let captured_image = unsafe { cfarray_borrow_value_at_index::<CGImage>(&image_array, 0) }?;
+    let captured_image = if alpha == 1.0f32 {
+        unsafe { CFRetained::retain(NonNull::from(captured_image)) }
     } else {
-        proxy.image = None;
-    }
+        copy_image_undoing_premultiplied_alpha_and_making_it_opaque(captured_image)?
+    };
+    drop(image_array);
 
-    create_window_proxy_showing_its_captured_image(animation_connection, alpha, &mut proxy);
+    create_window_proxy_showing_its_captured_image(
+        animation_connection,
+        alpha,
+        &mut proxy,
+        &captured_image,
+    );
+    drop(captured_image);
     if proxy.id == 0 {
         destroy_window_proxy(animation_connection, proxy);
         return None;

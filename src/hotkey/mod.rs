@@ -4,4 +4,5 @@ pub mod key;
 pub mod keyboard_tap_state;
 pub mod lone_modifier;
 pub mod lone_modifier_tap;
+pub mod shell_command_spawner;
 pub mod table;

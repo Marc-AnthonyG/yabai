@@ -249,7 +249,6 @@ mod tests {
             level: 0,
             sub_level: 0,
             context: None,
-            image: None,
         }
     }
 

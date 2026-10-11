@@ -7,7 +7,7 @@ use crate::command::values::AbsoluteOrRelativeChange;
 use crate::layout::settings::ViewLayout;
 use crate::layout::tree::WindowNodeSplit;
 
-#[derive(Args, Serialize, Deserialize, Debug)]
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub(crate) struct SpaceCommand {
     /// Act on this space instead of the focused one
     #[arg(short, long, global = true, value_name = "SPACE_SEL")]
@@ -16,7 +16,7 @@ pub(crate) struct SpaceCommand {
     pub(crate) action: SpaceAction,
 }
 
-#[derive(Subcommand, Serialize, Deserialize, Debug)]
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub(crate) enum SpaceAction {
     /// Focus a space where it is; relative selectors start from the acting space
     Focus {

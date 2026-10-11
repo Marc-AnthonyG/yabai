@@ -3,6 +3,7 @@ use libc::pid_t;
 
 unsafe extern "C" {
     pub fn csr_get_active_config(config: *mut u32) -> c_int;
+    fn malloc_zone_pressure_relief(zone: *mut libc::malloc_zone_t, goal: usize) -> usize;
 }
 
 pub const CSR_ALLOW_UNRESTRICTED_FS: u32 = 0x02;
@@ -39,4 +40,12 @@ pub fn is_process_being_debugged(process_id: pid_t) -> bool {
             .unwrap(),
     );
     (p_flag & P_TRACED) != 0
+}
+
+pub fn set_the_quality_of_service_class_of_this_thread(class: libc::qos_class_t) {
+    unsafe { libc::pthread_set_qos_class_self_np(class, 0) };
+}
+
+pub fn return_the_free_pages_of_every_malloc_zone_to_the_system() {
+    unsafe { malloc_zone_pressure_relief(core::ptr::null_mut(), 0) };
 }

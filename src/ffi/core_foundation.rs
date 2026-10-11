@@ -8,7 +8,8 @@ use std::sync::OnceLock;
 
 pub use objc2_core_foundation::{
     CFArray, CFBoolean, CFComparisonResult, CFData, CFDictionary, CFIndex, CFMachPort,
-    CFMutableData, CFNumber, CFNumberType, CFRange, CFRetained, CFRunLoopSource, CFString, CFType,
+    CFMutableData, CFNumber, CFNumberType, CFRange, CFRetained, CFRunLoopActivity,
+    CFRunLoopObserver, CFRunLoopObserverContext, CFRunLoopSource, CFString, CFType,
     CGAffineTransform, CGFloat, CGPoint, CGRect, CGSize, Type,
 };
 
@@ -16,9 +17,10 @@ pub use objc2_core_foundation::{
     CFArrayCreateMutableCopy, CFArrayGetCount, CFArrayGetValueAtIndex, CFArraySortValues,
     CFDataCreateMutable, CFDataGetMutableBytePtr, CFDataIncreaseLength, CFDictionaryGetValue,
     CFEqual, CFMachPortCreateRunLoopSource, CFMachPortInvalidate, CFNumberGetType,
-    CFNumberGetValue, CFRunLoopAddSource, CFRunLoopGetCurrent, CFRunLoopGetMain,
-    CFRunLoopRemoveSource, CFRunLoopRun, CFRunLoopSourceInvalidate, CFUUIDCreateFromString,
-    CFUUIDCreateString, kCFRunLoopCommonModes, kCFRunLoopDefaultMode,
+    CFNumberGetValue, CFRunLoopAddObserver, CFRunLoopAddSource, CFRunLoopGetCurrent,
+    CFRunLoopGetMain, CFRunLoopObserverCreate, CFRunLoopRemoveSource, CFRunLoopRun,
+    CFRunLoopSourceInvalidate, CFUUIDCreateFromString, CFUUIDCreateString, kCFRunLoopCommonModes,
+    kCFRunLoopDefaultMode,
 };
 
 use crate::ffi::skylight::SLSWindowSetShadowProperties;

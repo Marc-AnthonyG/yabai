@@ -41,6 +41,8 @@ impl MouseMode {
 pub struct MouseTapState {
     pub handle: AtomicPtr<CFMachPort>,
     pub runloop_source: AtomicPtr<CFRunLoopSource>,
+    pub dock_swipe_and_pointer_move_listener_handle: AtomicPtr<CFMachPort>,
+    pub dock_swipe_and_pointer_move_listener_runloop_source: AtomicPtr<CFRunLoopSource>,
     pub consume_mouse_click: AtomicBool,
     pub drag_detected: AtomicBool,
     pub consumed_event: AtomicPtr<CGEvent>,
@@ -69,6 +71,10 @@ impl MouseTapState {
         MouseTapState {
             handle: AtomicPtr::new(std::ptr::null_mut()),
             runloop_source: AtomicPtr::new(std::ptr::null_mut()),
+            dock_swipe_and_pointer_move_listener_handle: AtomicPtr::new(std::ptr::null_mut()),
+            dock_swipe_and_pointer_move_listener_runloop_source: AtomicPtr::new(
+                std::ptr::null_mut(),
+            ),
             consume_mouse_click: AtomicBool::new(false),
             drag_detected: AtomicBool::new(false),
             consumed_event: AtomicPtr::new(std::ptr::null_mut()),

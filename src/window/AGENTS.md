@@ -22,7 +22,8 @@ new frames through proxy windows.
   sets the real frames through AX and sets the request in motion. The CVDisplayLink thread moves
   every proxy once per frame. One long-lived completion thread notifies JankyBorders, waits its
   20 ms, swaps finished proxies out and releases them, merging every job already queued into one
-  batch. The SkyLight connection and the completion thread start with the first animation and
+  batch, and after a batch that released proxies returns the free pages of every malloc zone to
+  the system. The SkyLight connection and the completion thread start with the first animation and
   last as long as the animator; a display link exists only while some window is moving.
 - One mutex guards every window's animation phase and the current display link. It is never held
   across anything that can block or call back: no socket, sleep, AX call, SkyLight commit or
@@ -47,12 +48,20 @@ new frames through proxy windows.
   last callback, so that `Arc` is never dropped under a running callback. That is why the link
   handle is `Send`; a proxy crosses threads because its CoreGraphics context is created and drawn
   on one builder thread and afterwards only released, on the completion thread.
+- A proxy window takes its capture's color space before its context is created, so drawing the
+  capture into it converts nothing and CoreGraphics keeps no converted copy of it in its image
+  cache; a window context otherwise starts in sRGB while captures come in the display's color
+  space. A translucent window's capture is made opaque in a copy that keeps the capture's color
+  space and pixel layout, for the same reason. The capture is released as soon as it is drawn.
 - A proxy takes its real window's alpha when it is built and refreshes it at most every 1/30 s
   while it moves, so an opacity fade that runs during the animation still ends right without a
   window-server query per window per frame.
 - Rule matching and reapplication take the rules they work on out of the window manager and put
   them back afterwards; code reached in between sees an empty rule list, or a default rule in the
   slot of the rule being reapplied.
+- Whether a window connection belongs to JankyBorders is asked of WindowServer and the kernel
+  once per connection and remembered in the window manager, which forgets them all once it
+  holds 64, so a pointer move under focus follows mouse costs a single hit test.
 - Bytes other programs read are fixed: the synthesized focus event records and their offsets,
   the packed sub-level Mach message (its size is asserted and its message id differs on Tahoe) and the JankyBorders
   notification, whose size is asserted at compile time and whose service name and event numbers

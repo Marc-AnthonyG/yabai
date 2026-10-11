@@ -3,6 +3,7 @@ use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, OnceLock};
 
 use crate::command::DaemonCommand;
+use crate::command::yabai_command_of_a_hotkey::YabaiCommandOfAHotkey;
 use crate::ffi::accessibility::AXUIElement;
 use crate::ffi::core_foundation::CFRetainedAssumedSendAndSync;
 use crate::ffi::core_graphics::CGEvent;
@@ -73,7 +74,7 @@ pub(crate) enum Event {
     },
     HotkeyPressed {
         chord: Chord,
-        yabai_command_arguments: Vec<String>,
+        yabai_command: YabaiCommandOfAHotkey,
     },
 }
 

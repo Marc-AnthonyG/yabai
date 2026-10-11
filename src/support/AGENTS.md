@@ -19,6 +19,8 @@ several modules share.
   is `NodeId` 0.
 - The macOS version flags are written once at start-up, when the workspace observer is created,
   and only read afterwards.
+- Waiting for a child spawned elsewhere to exit watches its exit on a kqueue too; a child that
+  is already gone fails the watch and the wait returns at once.
 - The spawner reads a child's exit status even while the process ignores SIGCHLD, when the
   system reaps children itself and `waitpid` only fails with `ECHILD`. It spawns the program
   suspended, watches its exit on a kqueue with `NOTE_EXITSTATUS`, then resumes it, so the exit

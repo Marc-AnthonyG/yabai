@@ -22,7 +22,8 @@ new frames through proxy windows.
   sets the real frames through AX and sets the request in motion. The CVDisplayLink thread moves
   every proxy once per frame. One long-lived completion thread notifies JankyBorders, waits its
   20 ms, swaps finished proxies out and releases them, merging every job already queued into one
-  batch. The SkyLight connection and the completion thread start with the first animation and
+  batch, and after a batch that released proxies returns the free pages of every malloc zone to
+  the system. The SkyLight connection and the completion thread start with the first animation and
   last as long as the animator; a display link exists only while some window is moving.
 - One mutex guards every window's animation phase and the current display link. It is never held
   across anything that can block or call back: no socket, sleep, AX call, SkyLight commit or

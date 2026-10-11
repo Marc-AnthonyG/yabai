@@ -24,6 +24,17 @@ pub fn run_program_and_read_its_exit_status_even_while_child_exits_are_ignored(
     exit_status
 }
 
+pub fn wait_until_the_spawned_program_exits(process_id: u32) {
+    let event_queue = unsafe { libc::kqueue() };
+    if event_queue == -1 {
+        return;
+    }
+    if start_watching_for_the_exit_of_the_program(event_queue, process_id as libc::pid_t) {
+        let _ = wait_for_the_exit_status_of_the_watched_program(event_queue);
+    }
+    unsafe { libc::close(event_queue) };
+}
+
 fn spawn_program_suspended(
     program_path: &Path,
     arguments_after_the_program_path: &[&str],
@@ -158,10 +169,13 @@ fn reap_the_exited_program_unless_the_system_already_did(process_id: libc::pid_t
 #[cfg(test)]
 mod tests {
     use std::path::Path;
+    use std::process::Command;
+    use std::time::{Duration, Instant};
 
     use super::{
         SpawnedProgramOutput,
         run_program_and_read_its_exit_status_even_while_child_exits_are_ignored,
+        wait_until_the_spawned_program_exits,
     };
 
     fn exit_status_of_shell_command(shell_command: &str) -> Option<i32> {
@@ -214,5 +228,30 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn waiting_for_a_spawned_program_returns_once_it_has_exited() {
+        let mut program = Command::new("/bin/sh")
+            .args(["-c", "sleep 0.2"])
+            .spawn()
+            .unwrap();
+        let started_waiting_at = Instant::now();
+
+        wait_until_the_spawned_program_exits(program.id());
+
+        assert!(started_waiting_at.elapsed() >= Duration::from_millis(150));
+        assert!(!matches!(program.try_wait(), Ok(None)));
+    }
+
+    #[test]
+    fn waiting_for_a_program_that_already_exited_returns_at_once() {
+        let mut program = Command::new("/usr/bin/true").spawn().unwrap();
+        let _ = program.wait();
+        let started_waiting_at = Instant::now();
+
+        wait_until_the_spawned_program_exits(program.id());
+
+        assert!(started_waiting_at.elapsed() < Duration::from_secs(1));
     }
 }

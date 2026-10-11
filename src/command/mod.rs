@@ -164,6 +164,7 @@ mod tests {
 
     use super::{
         CommandLine, DaemonCommand, LaunchdServiceAction, ScriptingAdditionAction, TopLevelCommand,
+        parse_daemon_command, refusal_of_clap_error_without_usage,
     };
     use crate::cli::screen_recording_permission_report::REPORT_SCREEN_RECORDING_PERMISSION_THROUGH_THE_EXIT_STATUS_OPTION;
 
@@ -273,8 +274,32 @@ mod tests {
             &["window", "-w", "stack.3", "resize", "top-left", "-10", "0"],
             &["window", "focus"],
             &["scratchpad", "assign", "terminal", "-w", "mouse"],
+            &[
+                "hotkey",
+                "add",
+                "cmd+alt-h",
+                "--label",
+                "focus-west",
+                "--description",
+                "Focus west",
+                "--",
+                "window",
+                "focus",
+                "west",
+            ],
+            &[
+                "hotkey",
+                "add",
+                "rcmd",
+                "--shell",
+                "yabai input-source cycle",
+            ],
+            &["hotkey", "remove", "--all"],
+            &["hotkey", "list"],
+            &["input-source", "select", "com.apple.keylayout.US"],
+            &["input-source", "cycle"],
         ] {
-            let command = super::parse_daemon_command(arguments).unwrap();
+            let command = parse_daemon_command(arguments).unwrap();
             let command_as_json = serde_json::to_string(&command).unwrap();
 
             let command_read_back: DaemonCommand = serde_json::from_str(&command_as_json).unwrap();
@@ -285,5 +310,22 @@ mod tests {
                 "{arguments:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_command_line_that_is_not_sent_to_the_window_manager_is_refused_as_a_daemon_command() {
+        assert!(parse_daemon_command(&["service", "start"]).is_err());
+        assert!(parse_daemon_command(&["-v"]).is_err());
+        assert!(parse_daemon_command::<&str>(&[]).is_err());
+    }
+
+    #[test]
+    fn a_clap_refusal_keeps_its_first_paragraph_without_the_error_prefix_or_the_usage() {
+        let error = parse_daemon_command(&["window", "--frobnicate"]).unwrap_err();
+
+        assert_eq!(
+            refusal_of_clap_error_without_usage(&error),
+            "unexpected argument '--frobnicate' found"
+        );
     }
 }

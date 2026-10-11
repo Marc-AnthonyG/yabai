@@ -48,6 +48,11 @@ new frames through proxy windows.
   last callback, so that `Arc` is never dropped under a running callback. That is why the link
   handle is `Send`; a proxy crosses threads because its CoreGraphics context is created and drawn
   on one builder thread and afterwards only released, on the completion thread.
+- A proxy window takes its capture's color space before its context is created, so drawing the
+  capture into it converts nothing and CoreGraphics keeps no converted copy of it in its image
+  cache; a window context otherwise starts in sRGB while captures come in the display's color
+  space. A translucent window's capture is made opaque in a copy that keeps the capture's color
+  space and pixel layout, for the same reason. The capture is released as soon as it is drawn.
 - A proxy takes its real window's alpha when it is built and refreshes it at most every 1/30 s
   while it moves, so an opacity fade that runs during the animation still ends right without a
   window-server query per window per frame.

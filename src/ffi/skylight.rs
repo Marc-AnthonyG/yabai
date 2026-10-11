@@ -3,7 +3,7 @@ use libc::pid_t;
 use objc2_core_foundation::{
     CFArray, CFDictionary, CFString, CFType, CGAffineTransform, CGPoint, CGRect,
 };
-use objc2_core_graphics::{CGContext, CGError};
+use objc2_core_graphics::{CGColorSpace, CGContext, CGError};
 
 use crate::ffi::carbon_process::ProcessSerialNumber;
 
@@ -71,6 +71,11 @@ unsafe extern "C" {
         shape: *const CFType,
     ) -> CGError;
     pub fn SLSSetWindowOpacity(connection_id: c_int, window_id: u32, opaque: bool) -> CGError;
+    pub fn SLSSetWindowColorSpace(
+        connection_id: c_int,
+        window_id: u32,
+        color_space: Option<&CGColorSpace>,
+    ) -> CGError;
     pub fn SLSOrderWindow(
         connection_id: c_int,
         window_id: u32,

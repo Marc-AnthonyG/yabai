@@ -5,7 +5,8 @@ use core::ffi::c_void;
 use crate::ffi::core_foundation::{CFRetained, CGPoint, CGRect, CGSize};
 use crate::ffi::core_graphics::{
     CGBitmapContextCreate, CGBitmapContextCreateImage, CGBitmapInfo, CGColorSpaceCreateDeviceRGB,
-    CGContextDrawImage, CGImage, CGImageAlphaInfo, CGImageGetHeight, CGImageGetWidth,
+    CGContextDrawImage, CGImage, CGImageAlphaInfo, CGImageGetColorSpace, CGImageGetHeight,
+    CGImageGetWidth,
 };
 
 pub fn copy_image_undoing_premultiplied_alpha_and_making_it_opaque(
@@ -16,7 +17,7 @@ pub fn copy_image_undoing_premultiplied_alpha_and_making_it_opaque(
     let pitch = width * 4;
     let mut data: Vec<u8> = vec![0; height * pitch];
 
-    let color_space = CGColorSpaceCreateDeviceRGB();
+    let color_space = CGImageGetColorSpace(Some(image)).or_else(|| CGColorSpaceCreateDeviceRGB());
     let context = unsafe {
         CGBitmapContextCreate(
             data.as_mut_ptr().cast::<c_void>(),
@@ -25,7 +26,7 @@ pub fn copy_image_undoing_premultiplied_alpha_and_making_it_opaque(
             8,
             pitch,
             color_space.as_deref(),
-            CGBitmapInfo::ByteOrder32Big.0 | CGImageAlphaInfo::PremultipliedLast.0,
+            CGBitmapInfo::ByteOrder32Little.0 | CGImageAlphaInfo::PremultipliedFirst.0,
         )
     };
     drop(color_space);
@@ -90,29 +91,45 @@ unsafe fn undo_premultiplied_alpha_of_four_pixels_and_make_them_opaque(pixel: *m
         let mask_ff = _mm_set1_epi32(0xff);
 
         let source = _mm_loadu_si128(pixel.cast::<__m128i>());
-        let mut red = _mm_cvtepi32_ps(_mm_and_si128(source, mask_ff));
-        let mut green = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32::<8>(source), mask_ff));
-        let mut blue = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32::<16>(source), mask_ff));
+        let mut channel_in_the_lowest_byte = _mm_cvtepi32_ps(_mm_and_si128(source, mask_ff));
+        let mut channel_in_the_second_byte =
+            _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32::<8>(source), mask_ff));
+        let mut channel_in_the_third_byte =
+            _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32::<16>(source), mask_ff));
         let mut alpha = _mm_cvtepi32_ps(_mm_and_si128(_mm_srli_epi32::<24>(source), mask_ff));
         let mask = _mm_castps_si128(_mm_cmpgt_ps(alpha, zero));
 
-        red = _mm_mul_ps(one255, _mm_div_ps(red, alpha));
-        green = _mm_mul_ps(one255, _mm_div_ps(green, alpha));
-        blue = _mm_mul_ps(one255, _mm_div_ps(blue, alpha));
+        channel_in_the_lowest_byte =
+            _mm_mul_ps(one255, _mm_div_ps(channel_in_the_lowest_byte, alpha));
+        channel_in_the_second_byte =
+            _mm_mul_ps(one255, _mm_div_ps(channel_in_the_second_byte, alpha));
+        channel_in_the_third_byte =
+            _mm_mul_ps(one255, _mm_div_ps(channel_in_the_third_byte, alpha));
 
         alpha = one255;
 
-        red = _mm_mul_ps(inv255, _mm_mul_ps(red, alpha));
-        green = _mm_mul_ps(inv255, _mm_mul_ps(green, alpha));
-        blue = _mm_mul_ps(inv255, _mm_mul_ps(blue, alpha));
+        channel_in_the_lowest_byte =
+            _mm_mul_ps(inv255, _mm_mul_ps(channel_in_the_lowest_byte, alpha));
+        channel_in_the_second_byte =
+            _mm_mul_ps(inv255, _mm_mul_ps(channel_in_the_second_byte, alpha));
+        channel_in_the_third_byte =
+            _mm_mul_ps(inv255, _mm_mul_ps(channel_in_the_third_byte, alpha));
 
-        let source_red = _mm_cvtps_epi32(red);
-        let source_green = _mm_slli_epi32::<8>(_mm_cvtps_epi32(green));
-        let source_blue = _mm_slli_epi32::<16>(_mm_cvtps_epi32(blue));
+        let source_channel_in_the_lowest_byte = _mm_cvtps_epi32(channel_in_the_lowest_byte);
+        let source_channel_in_the_second_byte =
+            _mm_slli_epi32::<8>(_mm_cvtps_epi32(channel_in_the_second_byte));
+        let source_channel_in_the_third_byte =
+            _mm_slli_epi32::<16>(_mm_cvtps_epi32(channel_in_the_third_byte));
         let source_alpha = _mm_slli_epi32::<24>(_mm_cvtps_epi32(alpha));
 
         let color = _mm_or_si128(
-            _mm_or_si128(_mm_or_si128(source_red, source_green), source_blue),
+            _mm_or_si128(
+                _mm_or_si128(
+                    source_channel_in_the_lowest_byte,
+                    source_channel_in_the_second_byte,
+                ),
+                source_channel_in_the_third_byte,
+            ),
             source_alpha,
         );
         let masked_color = _mm_or_si128(_mm_and_si128(mask, color), _mm_andnot_si128(mask, source));
@@ -136,12 +153,12 @@ unsafe fn undo_premultiplied_alpha_of_four_pixels_and_make_them_opaque(pixel: *m
         let mask_ff = vdupq_n_s32(0xff);
 
         let source = vld1q_s32(pixel.cast::<i32>());
-        let mut red = vcvtq_f32_s32(vandq_s32(source, mask_ff));
-        let mut green = vcvtq_f32_s32(vandq_s32(
+        let mut channel_in_the_lowest_byte = vcvtq_f32_s32(vandq_s32(source, mask_ff));
+        let mut channel_in_the_second_byte = vcvtq_f32_s32(vandq_s32(
             vreinterpretq_s32_u32(vshlq_u32(vreinterpretq_u32_s32(source), vdupq_n_s32(-8))),
             mask_ff,
         ));
-        let mut blue = vcvtq_f32_s32(vandq_s32(
+        let mut channel_in_the_third_byte = vcvtq_f32_s32(vandq_s32(
             vreinterpretq_s32_u32(vshlq_u32(vreinterpretq_u32_s32(source), vdupq_n_s32(-16))),
             mask_ff,
         ));
@@ -151,23 +168,35 @@ unsafe fn undo_premultiplied_alpha_of_four_pixels_and_make_them_opaque(pixel: *m
         ));
         let mask = vreinterpretq_s32_u32(vcgtq_f32(alpha, zero));
 
-        red = vmulq_f32(one255, vdivq_f32(red, alpha));
-        green = vmulq_f32(one255, vdivq_f32(green, alpha));
-        blue = vmulq_f32(one255, vdivq_f32(blue, alpha));
+        channel_in_the_lowest_byte =
+            vmulq_f32(one255, vdivq_f32(channel_in_the_lowest_byte, alpha));
+        channel_in_the_second_byte =
+            vmulq_f32(one255, vdivq_f32(channel_in_the_second_byte, alpha));
+        channel_in_the_third_byte = vmulq_f32(one255, vdivq_f32(channel_in_the_third_byte, alpha));
 
         alpha = one255;
 
-        red = vmulq_f32(inv255, vmulq_f32(red, alpha));
-        green = vmulq_f32(inv255, vmulq_f32(green, alpha));
-        blue = vmulq_f32(inv255, vmulq_f32(blue, alpha));
+        channel_in_the_lowest_byte =
+            vmulq_f32(inv255, vmulq_f32(channel_in_the_lowest_byte, alpha));
+        channel_in_the_second_byte =
+            vmulq_f32(inv255, vmulq_f32(channel_in_the_second_byte, alpha));
+        channel_in_the_third_byte = vmulq_f32(inv255, vmulq_f32(channel_in_the_third_byte, alpha));
 
-        let source_red = vcvtnq_s32_f32(red);
-        let source_green = vshlq_s32(vcvtnq_s32_f32(green), vdupq_n_s32(8));
-        let source_blue = vshlq_s32(vcvtnq_s32_f32(blue), vdupq_n_s32(16));
+        let source_channel_in_the_lowest_byte = vcvtnq_s32_f32(channel_in_the_lowest_byte);
+        let source_channel_in_the_second_byte =
+            vshlq_s32(vcvtnq_s32_f32(channel_in_the_second_byte), vdupq_n_s32(8));
+        let source_channel_in_the_third_byte =
+            vshlq_s32(vcvtnq_s32_f32(channel_in_the_third_byte), vdupq_n_s32(16));
         let source_alpha = vshlq_s32(vcvtnq_s32_f32(alpha), vdupq_n_s32(24));
 
         let color = vorrq_s32(
-            vorrq_s32(vorrq_s32(source_red, source_green), source_blue),
+            vorrq_s32(
+                vorrq_s32(
+                    source_channel_in_the_lowest_byte,
+                    source_channel_in_the_second_byte,
+                ),
+                source_channel_in_the_third_byte,
+            ),
             source_alpha,
         );
         let masked_color = vorrq_s32(vandq_s32(color, mask), vbicq_s32(source, mask));

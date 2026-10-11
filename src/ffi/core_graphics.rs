@@ -17,7 +17,7 @@ pub use objc2_core_graphics::{
     CGEventSetDoubleValueField, CGEventSetIntegerValueField, CGEventTapCreate, CGEventTapEnable,
     CGEventTapIsEnabled, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement,
     CGEventTapPostEvent, CGEventTapProxy, CGEventType, CGGetActiveDisplayList, CGImage,
-    CGImageAlphaInfo, CGImageGetHeight, CGImageGetWidth, CGMainDisplayID,
+    CGImageAlphaInfo, CGImageGetColorSpace, CGImageGetHeight, CGImageGetWidth, CGMainDisplayID,
     CGPathCreateWithRoundedRect, CGPathDrawingMode, CGPointEqualToPoint,
     CGPreflightScreenCaptureAccess, CGRectContainsPoint, CGRectContainsRect, CGRectEqualToRect,
     CGRectGetMidX, CGRectGetMidY, CGRequestScreenCaptureAccess,

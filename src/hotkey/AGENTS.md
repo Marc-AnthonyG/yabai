@@ -3,8 +3,8 @@
 Keyboard shortcuts the daemon answers itself: the chord vocabulary (side-agnostic modifiers, keys
 named by their ANSI virtual keycode, lone modifiers told apart by side) and the canonical spelling
 a chord prints in, a hotkey's action (a yabai command kept as its arguments, or a shell command),
-the table of hotkeys the keyboard tap matches, and the state the tap keeps to tell a lone
-modifier tap from a modifier held for a chord.
+the table of hotkeys the keyboard tap matches, the state the tap keeps to tell a lone
+modifier tap from a modifier held for a chord, and the thread that starts shell actions.
 
 ## Notes
 
@@ -14,6 +14,11 @@ modifier tap from a modifier held for a chord.
 - A new hotkey replaces every hotkey with the same chord and every one with the same non-empty
   label, and takes the place of the first one it replaces, so running the config file again
   keeps the listing order. Removal keeps the order of the others.
+- Shell actions start on their own `yabai-shell-hotkey-spawner` thread, fed by a channel, never
+  on the tap thread, which would hold every following key until the process had started, and
+  not through the event loop, so they still start while it is busy. A yabai command runs again
+  on every key repeat; a shell command runs once per press, since holding a key that opens a
+  panel would otherwise close it again.
 - Keys match by virtual keycode, never by character, so a hotkey stays on the same physical key
   whatever layout is selected. Alt, shift, cmd and ctrl are compared exactly, either side
   satisfying each; caps lock is ignored; fn is compared only when the chord names it, because

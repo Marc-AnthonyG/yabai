@@ -25,7 +25,8 @@ pub(crate) enum HotkeyCommand {
     /// never while secure input is on, as it is in a password field.
     ///
     /// A hotkey whose chord is already bound, or whose label another hotkey has, replaces that
-    /// hotkey. The pressed key is swallowed and runs the action again while it repeats; its
+    /// hotkey. The pressed key is swallowed, and so is its repeat while it is held; a yabai
+    /// command runs again on each repeat, a shell command only once per press. The key's
     /// release, and every other key, reach the focused application.
     ///
     /// When the window manager could not create its keyboard tap, usually because yabai is not
@@ -76,7 +77,7 @@ struct HotkeyDefinitionAsWritten {
     /// What the hotkey does, for `hotkey list` and the cheatsheets built from it
     #[arg(long, value_name = "TEXT")]
     description: Option<String>,
-    /// The shell command to run through /usr/bin/env sh -c, without waiting for it
+    /// The shell command to run through /bin/sh -c, without waiting for it
     #[arg(long, value_name = "COMMAND", value_parser = NonEmptyStringValueParser::new())]
     shell: Option<String>,
     /// The yabai command to run, written as on the command line after `yabai`

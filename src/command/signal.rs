@@ -7,7 +7,7 @@ use crate::signal::definition::SignalType;
 
 #[derive(Subcommand, Serialize, Deserialize, Debug)]
 pub(crate) enum SignalCommand {
-    /// Run a shell command (through /usr/bin/env sh -c) after every EVENT
+    /// Run a shell command (through /bin/sh -c) after every EVENT
     Add(SignalDefinition),
     /// Remove a signal
     Remove {

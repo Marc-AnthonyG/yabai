@@ -16,10 +16,12 @@ to the event loop.
   keyboard tap runs on its own `yabai-keyboard-tap` thread with its own run loop, so a main
   thread waiting on an application's AX answer never holds up typing.
 - The keyboard tap callback stays short: it reads the hotkey table, swallows the key down of a
-  hotkey, spawns a shell action itself, so shell hotkeys keep working while the event loop is
-  busy, and posts a typed action to the event loop. It lets everything this process posted
-  through untouched, and never swallows a flags change. Failing to start it is a line on
-  stderr and the window manager keeps running without hotkeys.
+  hotkey, hands a shell action to the hotkey spawner thread, so shell hotkeys keep working while
+  the event loop is busy and the next key never waits for a process to start, and posts a typed
+  action to the event loop. A repeated key down of a shell hotkey is swallowed without running
+  it again. It lets everything this process posted through untouched, and never swallows a
+  flags change. Failing to start it is a line on stderr and the window manager keeps running
+  without hotkeys.
 - The tap thread records in the tap's state whether the tap is still starting, running or
   failed to start. The config file's `hotkey add` lines can arrive before the thread has created
   the tap, so only a failure makes `hotkey add` fail; the hotkey is stored either way.

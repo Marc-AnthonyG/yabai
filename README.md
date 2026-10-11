@@ -76,7 +76,7 @@ yabai hotkey list
 - A lone modifier (`lcmd`, `rcmd`, `lalt`, `ralt`, `lctrl`, `rctrl`, `lshift`, `rshift`) runs its action when it is tapped on its own within a second, and never while secure input is on in a password field.
 - Adding a chord that is already bound, or a label another hotkey has, replaces that hotkey, so the config file can run again; `yabai hotkey remove --all` at its top also drops the shortcuts it no longer adds.
 - `yabai hotkey list` prints every hotkey as JSON, with its chord, description and action, for cheatsheets and menus.
-- A yabai command runs inside the window manager without starting a process; a shell command is started at once, even while the window manager is busy. Shell commands inherit the environment of the window manager, whose `PATH` is the one `yabai service install` recorded.
+- A yabai command runs inside the window manager without starting a process; a shell command is started at once through `/bin/sh -c`, even while the window manager is busy. Holding a hotkey runs its yabai command again as the key repeats, but its shell command only once. Shell commands inherit the environment of the window manager, whose `PATH` is the one `yabai service install` recorded.
 - Hotkeys rely on the Accessibility permission yabai already holds; without it the keyboard tap cannot be created and `yabai hotkey add` fails. Apple Events a shell command sends, through `osascript` for instance, come from yabai, so macOS asks to allow them for yabai.
 - `yabai input-source cycle` selects the next enabled keyboard layout or input mode, and `yabai input-source select com.apple.keylayout.US` a given one.
 

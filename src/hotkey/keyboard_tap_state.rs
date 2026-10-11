@@ -32,13 +32,17 @@ pub(crate) struct KeyboardTapState {
     status: AtomicU8,
 }
 
-pub(crate) static KEYBOARD_TAP_STATE: KeyboardTapState = KeyboardTapState {
-    handle: AtomicPtr::new(std::ptr::null_mut()),
-    lone_modifier_tap_detector: LoneModifierTapDetector::new(),
-    status: AtomicU8::new(KeyboardTapStatus::StillStarting as u8),
-};
+pub(crate) static KEYBOARD_TAP_STATE: KeyboardTapState = KeyboardTapState::new();
 
 impl KeyboardTapState {
+    pub(crate) const fn new() -> KeyboardTapState {
+        KeyboardTapState {
+            handle: AtomicPtr::new(std::ptr::null_mut()),
+            lone_modifier_tap_detector: LoneModifierTapDetector::new(),
+            status: AtomicU8::new(KeyboardTapStatus::StillStarting as u8),
+        }
+    }
+
     pub(crate) fn status(&self) -> KeyboardTapStatus {
         KeyboardTapStatus::of_discriminant(self.status.load(Ordering::Acquire))
     }

@@ -1,8 +1,8 @@
 # event
 
-The event loop: the typed events that main-thread callbacks and the message socket post, the
-channel that carries them to the event-loop thread, and the loop that hands each one to its
-handler together with the state that thread owns.
+The event loop: the typed events that main-thread callbacks, the keyboard tap and the message
+socket post, the channel that carries them to the event-loop thread, and the loop that hands each
+one to its handler together with the state that thread owns.
 
 ## Notes
 

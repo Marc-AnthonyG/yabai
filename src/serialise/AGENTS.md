@@ -2,7 +2,7 @@
 
 The JSON yabai prints: snapshots of a display, a space and a window (tracked or untracked), the
 field selection a query applies to them, the effective configuration `config get` prints, and the
-rule and signal listings.
+rule, signal and hotkey listings.
 
 ## Notes
 
@@ -17,5 +17,7 @@ rule and signal listings.
   one, with defaults wherever only AX or the window table could answer.
 - A rule or a signal prints the flags `rule add` or `signal add` would take to make it again,
   with a negated pattern under its `_not` key, plus its listing index.
+- A hotkey prints its listing index, its label and description (empty when unset), its chord in
+  the canonical spelling and its action as `{"yabai": [arguments]}` or `{"shell": command}`.
 - Everything here runs on the event-loop thread and takes the managers it reads as explicit
   parameters.

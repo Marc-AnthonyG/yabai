@@ -6,6 +6,7 @@ use crate::command::DaemonCommand;
 use crate::ffi::accessibility::AXUIElement;
 use crate::ffi::core_foundation::CFRetainedAssumedSendAndSync;
 use crate::ffi::core_graphics::CGEvent;
+use crate::hotkey::chord::Chord;
 use crate::mouse::tap::MouseModifier;
 use crate::process::model::Process;
 use crate::support::color::RgbaColor;
@@ -69,6 +70,10 @@ pub(crate) enum Event {
     DaemonCommand {
         command: DaemonCommand,
         reply_to: UnixStream,
+    },
+    HotkeyPressed {
+        chord: Chord,
+        yabai_command_arguments: Vec<String>,
     },
 }
 

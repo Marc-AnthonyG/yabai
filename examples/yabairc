@@ -45,4 +45,93 @@ yabai config set                                    \
     --mouse-action2                resize           \
     --mouse-drop-action            swap
 
+# keyboard shortcuts
+#
+# A hotkey runs a yabai command, written after `--` as it would be after `yabai`, or a shell
+# command given with --shell. CHORD is [MODIFIER [+ MODIFIER]... -] KEY, keys are named after
+# their place on an ANSI keyboard, and a lone modifier (lcmd, rcmd, lalt, ralt, lctrl, rctrl,
+# lshift, rshift) runs its action when it is tapped on its own. Adding a chord again replaces
+# it, so this file can run again; removing every hotkey first also drops the ones it no longer
+# adds. `yabai hotkey add --help` describes every chord, and `yabai hotkey list` prints them.
+#
+# yabai hotkey remove --all
+
+# focus window
+# yabai hotkey add 'alt - h' --description 'Focus the window to the west' -- window focus west
+
+# swap managed window
+# yabai hotkey add 'shift + alt - h' --description 'Swap with the window to the north' -- window swap north
+
+# move managed window
+# yabai hotkey add 'shift + cmd - h' --description 'Warp the window east' -- window warp east
+
+# balance size of windows
+# yabai hotkey add 'shift + alt - 0' --description 'Balance the windows of the space' -- space balance
+
+# make floating window fill screen
+# yabai hotkey add 'shift + alt - up' --description 'Fill the screen' -- window grid 1:1:0:0:1:1
+
+# make floating window fill left-half of screen
+# yabai hotkey add 'shift + alt - left' --description 'Fill the left half of the screen' -- window grid 1:2:0:0:1:1
+
+# create desktop, move window and follow focus - uses jq for parsing json (brew install jq)
+# yabai hotkey add 'shift + cmd - n' --description 'Move the window to a new space' --shell '
+#     yabai space create &&
+#     index="$(yabai query spaces --display | jq "map(select(.is_native_fullscreen == false))[-1].index")" &&
+#     yabai window send-to-space "${index}" &&
+#     yabai space focus "${index}"'
+
+# fast focus desktop
+# yabai hotkey add 'cmd + alt - x' --description 'Focus the recent space' -- space focus recent
+# yabai hotkey add 'cmd + alt - 1' --description 'Focus space 1' -- space focus 1
+
+# send window to desktop and follow focus
+# yabai hotkey add 'shift + cmd - z' --description 'Send the window to the next space and follow it' \
+#     --shell 'yabai window send-to-space next && yabai space focus next'
+# yabai hotkey add 'shift + cmd - 2' --description 'Send the window to space 2 and follow it' \
+#     --shell 'yabai window send-to-space 2 && yabai space focus 2'
+
+# focus monitor
+# yabai hotkey add 'ctrl + alt - z' --description 'Focus the previous display' -- display focus prev
+# yabai hotkey add 'ctrl + alt - 3' --description 'Focus display 3' -- display focus 3
+
+# send window to monitor and follow focus
+# yabai hotkey add 'ctrl + cmd - c' --description 'Send the window to the next display and follow it' \
+#     --shell 'yabai window send-to-display next && yabai display focus next'
+# yabai hotkey add 'ctrl + cmd - 1' --description 'Send the window to display 1 and follow it' \
+#     --shell 'yabai window send-to-display 1 && yabai display focus 1'
+
+# move floating window
+# yabai hotkey add 'shift + ctrl - a' --description 'Move the window left' -- window move by -20 0
+# yabai hotkey add 'shift + ctrl - s' --description 'Move the window down' -- window move by 0 20
+
+# increase window size
+# yabai hotkey add 'shift + alt - a' --description 'Grow the window to the left' -- window resize left -20 0
+# yabai hotkey add 'shift + alt - w' --description 'Grow the window upwards' -- window resize top 0 -20
+
+# decrease window size
+# yabai hotkey add 'shift + cmd - s' --description 'Shrink the window from the bottom' -- window resize bottom 0 -20
+# yabai hotkey add 'shift + cmd - w' --description 'Shrink the window from the top' -- window resize top 0 20
+
+# set insertion point in focused container
+# yabai hotkey add 'ctrl + alt - h' --description 'Insert the next window to the west' -- window insert west
+
+# toggle window zoom
+# yabai hotkey add 'alt - d' --description 'Zoom the window to its parent' -- window toggle zoom-parent
+# yabai hotkey add 'alt - f' --description 'Zoom the window to fill the space' -- window toggle zoom-fullscreen
+
+# toggle window split type
+# yabai hotkey add 'alt - e' --description 'Toggle the split' -- window toggle split
+
+# float / unfloat window and center on screen
+# yabai hotkey add 'alt - t' --description 'Float the window in the centre, or tile it again' \
+#     --shell 'yabai window toggle float; yabai window grid 4:4:1:1:2:2'
+
+# toggle sticky(+float), picture-in-picture
+# yabai hotkey add 'alt - p' --description 'Keep the window on top on every space' \
+#     --shell 'yabai window toggle sticky; yabai window toggle pip'
+
+# switch to the next keyboard layout when the right command key is tapped on its own
+# yabai hotkey add rcmd --description 'Switch to the next keyboard layout' -- input-source cycle
+
 echo "yabai configuration loaded.."

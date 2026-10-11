@@ -16,6 +16,7 @@ use crate::ffi::core_graphics::{
     CGEventTapPostEvent, CGEventTapProxy, CGEventType, kCGEventTapOptionDefault, kCGHIDEventTap,
     kCGHeadInsertEventTap,
 };
+use crate::hotkey::keyboard_tap_state::KEYBOARD_TAP_STATE;
 use crate::mouse::tap::{
     MOUSE_TAP_STATE, MouseModifier, MouseTapState, is_point_on_a_visible_group_header,
 };
@@ -88,6 +89,9 @@ pub(crate) unsafe extern "C-unwind" fn handle_mouse_event_tap_callback(
             }
         }
         CGEventType::LeftMouseDown | CGEventType::RightMouseDown => {
+            KEYBOARD_TAP_STATE
+                .lone_modifier_tap_detector
+                .forget_the_armed_lone_modifier();
             let event_modifier = mouse_modifier_from_core_graphics_event_flags(
                 CGEventGetFlags(Some(unsafe { event.as_ref() })).0 as u32,
             );

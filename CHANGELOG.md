@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- **yabai answers keyboard shortcuts itself**, so skhd is no longer needed. `yabai hotkey add <CHORD> [--label <LABEL>] [--description <TEXT>] (--shell <COMMAND> | -- <YABAI COMMAND ARGUMENTS>...)` binds a chord such as `'alt + cmd - h'` to a yabai command, run inside the window manager, or to a shell command, started from the keyboard tap at once even while the window manager is busy. `yabai hotkey remove <INDEX|LABEL>`, `yabai hotkey remove --all` and `yabai hotkey list` (JSON with each hotkey's index, label, chord, description and action) complete it.
+  - Keys match by their place on an ANSI keyboard, whatever layout is selected. Alt, shift, cmd and ctrl must match exactly, on either side of the keyboard; caps lock is ignored and fn only counts when the chord names it, so `alt - f2` matches. A held chord repeats, the matched key down is swallowed and its key up passes through.
+  - A lone modifier, `lcmd`, `rcmd`, `lalt`, `ralt`, `lctrl`, `rctrl`, `lshift` or `rshift`, runs its action when it is pressed and released within a second with nothing in between, and never while secure input is on.
+  - A hotkey with a chord already bound, or with the label of another hotkey, replaces it.
+  - The keyboard tap runs on its own thread; when it cannot be created, yabai says so on stderr and keeps managing windows, and `yabai hotkey add` still adds the hotkey but fails.
+- `yabai input-source cycle` selects the next enabled keyboard layout or input mode, and `yabai input-source select <ID>` the one with that id, failing when it is not installed, not enabled or cannot be selected.
+
 ### Changed
 - **The command line is new, and scripts written for `yabai -m` must be rewritten.** Every command is `yabai <domain> <action> [arguments]`, parsed by clap, with generated help for every command (`yabai --help`, `yabai window focus --help`) and a man page generated from the same tree:
   - `yabai service install|uninstall|start|restart|stop` and `yabai scripting-addition load|uninstall` (alias `sa`) replace `--install-service` … `--stop-service`, `--load-sa` and `--uninstall-sa`. A sudoers entry must name `yabai scripting-addition load`.

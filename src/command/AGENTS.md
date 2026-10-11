@@ -17,6 +17,10 @@ manager, which crosses the socket as JSON.
   has to agree with itself.
 - Values are checked while parsing, so a bad value is a usage error before anything is sent.
   Selectors are only parsed here; the daemon resolves them against live state.
+- `hotkey add` takes the yabai command a hotkey runs as raw arguments after `--`, checked by
+  parsing them as a whole command line in its own `FromArgMatches`. Nesting `DaemonCommand` in
+  the clap tree instead would recurse without end when clap builds or checks the tree and when
+  the man page walks it.
 - The acting display, space or window is a global `-d`, `-s` or `-w` option, so it may follow
   the action. A display or space label is refused when the selector of its kind would read it as
   anything else.

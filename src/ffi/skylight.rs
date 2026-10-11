@@ -26,6 +26,7 @@ unsafe extern "C" {
         event: u32,
         context: *mut c_void,
     ) -> CGError;
+    pub fn SLSIsSecureEventInputSet() -> bool;
     pub fn SLSGetWindowBounds(connection_id: c_int, window_id: u32, frame: *mut CGRect) -> CGError;
     pub fn SLSGetWindowLevel(connection_id: c_int, window_id: u32, level: *mut c_int) -> CGError;
     pub fn SLSGetWindowSubLevel(connection_id: c_int, window_id: u32) -> c_int;

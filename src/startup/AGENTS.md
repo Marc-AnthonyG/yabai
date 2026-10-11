@@ -23,7 +23,9 @@ and running the user's config file once the message socket listens.
   and lock paths are formatted from `$USER`, which is how a client finds the daemon.
 - A missing requirement (running as root, displays without separate spaces) exits with
   `EXIT_SUCCESS` so launchd does not restart the daemon; every other start-up failure exits with
-  `EXIT_FAILURE`. Missing Accessibility access is not an exit: it is waited for.
+  `EXIT_FAILURE`. Missing Accessibility access is not an exit: it is waited for. Nor is a
+  keyboard tap that cannot be created: it starts on its own thread right after the mouse tap,
+  and the window manager runs without hotkeys.
 - Every missing permission is asked for at once, right after the root check and before anything
   waits, so the system dialogs appear together: the Accessibility prompt when untrusted, and a
   Screen Recording request when it is not granted and System Integrity Protection is relaxed

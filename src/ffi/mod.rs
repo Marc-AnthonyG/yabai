@@ -15,5 +15,6 @@ pub mod mach_port;
 pub mod macho;
 pub mod skylight;
 pub mod skylight_dynamic;
+pub mod text_input_sources;
 
 pub type CFStringOwned = core_foundation::CFRetainedAssumedSendAndSync<core_foundation::CFString>;

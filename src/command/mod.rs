@@ -1,5 +1,7 @@
 pub mod config;
 pub mod display;
+pub mod hotkey;
+pub mod input_source;
 pub mod labels;
 #[cfg(test)]
 mod manual_page;
@@ -14,11 +16,14 @@ pub mod window;
 
 use std::path::PathBuf;
 
+use clap::error::ErrorKind;
 use clap::{Parser, Subcommand};
 use serde::{Deserialize, Serialize};
 
 use crate::command::config::ConfigCommand;
 use crate::command::display::DisplayCommand;
+use crate::command::hotkey::HotkeyCommand;
+use crate::command::input_source::InputSourceCommand;
 use crate::command::query::QueryCommand;
 use crate::command::rule::RuleCommand;
 use crate::command::scratchpad::ScratchpadCommand;
@@ -117,16 +122,40 @@ pub(crate) enum DaemonCommand {
     /// Add, remove or list the shell commands run after events
     #[command(subcommand)]
     Signal(SignalCommand),
+    /// Add, remove or list the keyboard shortcuts the window manager answers
+    #[command(subcommand)]
+    Hotkey(HotkeyCommand),
+    /// Switch the keyboard layout or input mode
+    #[command(subcommand)]
+    InputSource(InputSourceCommand),
 }
 
-#[cfg(test)]
-pub(crate) fn parse_daemon_command(arguments: &[&str]) -> Result<DaemonCommand, clap::Error> {
-    let command_line =
-        CommandLine::try_parse_from(std::iter::once("yabai").chain(arguments.iter().copied()))?;
+pub(crate) fn parse_daemon_command<Argument: AsRef<str>>(
+    arguments: &[Argument],
+) -> Result<DaemonCommand, clap::Error> {
+    let command_line = CommandLine::try_parse_from(
+        std::iter::once("yabai").chain(arguments.iter().map(AsRef::as_ref)),
+    )?;
     match command_line.command {
         Some(TopLevelCommand::SentToTheRunningWindowManager(command)) => Ok(command),
-        _ => panic!("{arguments:?} should parse as a command sent to the window manager"),
+        _ => Err(clap::Error::raw(
+            ErrorKind::InvalidSubcommand,
+            "the command is not one the running window manager runs",
+        )),
     }
+}
+
+pub(crate) fn refusal_of_clap_error_without_usage(error: &clap::Error) -> String {
+    let rendered_error = error.render().to_string();
+    let refusal = rendered_error
+        .split("\n\n")
+        .next()
+        .unwrap_or_default()
+        .trim();
+    refusal
+        .strip_prefix("error: ")
+        .unwrap_or(refusal)
+        .to_owned()
 }
 
 #[cfg(test)]
@@ -135,6 +164,7 @@ mod tests {
 
     use super::{
         CommandLine, DaemonCommand, LaunchdServiceAction, ScriptingAdditionAction, TopLevelCommand,
+        parse_daemon_command, refusal_of_clap_error_without_usage,
     };
     use crate::cli::screen_recording_permission_report::REPORT_SCREEN_RECORDING_PERMISSION_THROUGH_THE_EXIT_STATUS_OPTION;
 
@@ -244,8 +274,32 @@ mod tests {
             &["window", "-w", "stack.3", "resize", "top-left", "-10", "0"],
             &["window", "focus"],
             &["scratchpad", "assign", "terminal", "-w", "mouse"],
+            &[
+                "hotkey",
+                "add",
+                "cmd+alt-h",
+                "--label",
+                "focus-west",
+                "--description",
+                "Focus west",
+                "--",
+                "window",
+                "focus",
+                "west",
+            ],
+            &[
+                "hotkey",
+                "add",
+                "rcmd",
+                "--shell",
+                "yabai input-source cycle",
+            ],
+            &["hotkey", "remove", "--all"],
+            &["hotkey", "list"],
+            &["input-source", "select", "com.apple.keylayout.US"],
+            &["input-source", "cycle"],
         ] {
-            let command = super::parse_daemon_command(arguments).unwrap();
+            let command = parse_daemon_command(arguments).unwrap();
             let command_as_json = serde_json::to_string(&command).unwrap();
 
             let command_read_back: DaemonCommand = serde_json::from_str(&command_as_json).unwrap();
@@ -256,5 +310,22 @@ mod tests {
                 "{arguments:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_command_line_that_is_not_sent_to_the_window_manager_is_refused_as_a_daemon_command() {
+        assert!(parse_daemon_command(&["service", "start"]).is_err());
+        assert!(parse_daemon_command(&["-v"]).is_err());
+        assert!(parse_daemon_command::<&str>(&[]).is_err());
+    }
+
+    #[test]
+    fn a_clap_refusal_keeps_its_first_paragraph_without_the_error_prefix_or_the_usage() {
+        let error = parse_daemon_command(&["window", "--frobnicate"]).unwrap_err();
+
+        assert_eq!(
+            refusal_of_clap_error_without_usage(&error),
+            "unexpected argument '--frobnicate' found"
+        );
     }
 }

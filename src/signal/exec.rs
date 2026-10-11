@@ -1,9 +1,8 @@
-use std::process::Command;
-
 use crate::command::values::command_line_spelling_of;
 use crate::signal::definition::{SIGNAL_TYPE_COUNT, Signal, SignalPropertyRequirement, SignalType};
 use crate::signal::queue::PendingSignal;
 use crate::support::regex::is_subject_rejected_by_optional_pattern;
+use crate::support::shell_command::spawn_shell_running_the_command_without_waiting_for_it;
 
 fn is_application_of_pending_signal_rejected_by_signal(
     event_signal: &PendingSignal,
@@ -68,25 +67,6 @@ pub(crate) fn is_signal_filtered_out_for_pending_signal(
     }
 }
 
-fn shell_running_the_command_of_signal_with_the_variables_of_pending_signal(
-    signal: &Signal,
-    event_signal: &PendingSignal,
-) -> Command {
-    let mut shell = Command::new("/usr/bin/env");
-    shell.args(["sh", "-c"]);
-    if let Some(command) = signal.command.as_deref() {
-        shell.arg(command);
-    }
-    shell.envs(
-        event_signal
-            .arguments
-            .iter()
-            .flatten()
-            .map(|(name, value)| (name, value)),
-    );
-    shell
-}
-
 pub(crate) fn run_subscriber_commands_of_pending_signals_without_waiting_for_them(
     signal_event: &[Vec<Signal>; SIGNAL_TYPE_COUNT],
     signal_storage: &mut Vec<PendingSignal>,
@@ -104,11 +84,17 @@ pub(crate) fn run_subscriber_commands_of_pending_signals_without_waiting_for_the
             if is_signal_filtered_out_for_pending_signal(&event_signal, signal) {
                 continue;
             }
-            let shell = shell_running_the_command_of_signal_with_the_variables_of_pending_signal(
-                signal,
-                &event_signal,
-            )
-            .spawn();
+            let Some(command) = signal.command.as_deref() else {
+                continue;
+            };
+            let shell = spawn_shell_running_the_command_without_waiting_for_it(
+                command,
+                event_signal
+                    .arguments
+                    .iter()
+                    .flatten()
+                    .map(|(name, value)| (name, value)),
+            );
             if let Err(error) = shell {
                 crate::debug!(
                     "{}: could not run the command of a {} subscriber: {}\n",

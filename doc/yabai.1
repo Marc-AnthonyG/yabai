@@ -1685,6 +1685,64 @@ The signal to remove, by index from 0 or by label
 .SS "yabai signal list"
 .PP
 Print every signal as a JSON array
+.SS "yabai hotkey"
+.PP
+Add, remove or list the keyboard shortcuts the window manager answers
+.SS "yabai hotkey add"
+.PP
+\fByabai hotkey add\fR <CHORD> [\-\-label <LABEL>] [\-\-description <TEXT>] (\-\-shell <COMMAND> | \-\- <YABAI COMMAND ARGUMENTS>...)
+.PP
+Run a yabai command, or a shell command, whenever CHORD is pressed
+.PP
+CHORD is [MODIFIER [+ MODIFIER]... \-] KEY, or a lone modifier. MODIFIER is alt, shift, cmd, ctrl or fn, on either side of the keyboard; every other one of alt, shift, cmd and ctrl must be up, caps lock does not count, and fn only counts when the chord names it. KEY is a\-z, 0\-9, return, tab, space, escape, backspace, delete (forward delete), f1\-f20, left, right, up, down, home, end, pageup, pagedown, minus, equal, leftbracket, rightbracket, semicolon, quote, comma, period, slash, backslash or grave, named after the key at that place on an ANSI keyboard whatever the layout.
+.PP
+A lone modifier, lcmd, rcmd, lalt, ralt, lctrl, rctrl, lshift or rshift, runs the action when that key is pressed and released within a second with nothing else in between, and never while secure input is on, as it is in a password field.
+.PP
+A hotkey whose chord is already bound, or whose label another hotkey has, replaces that hotkey. The pressed key is swallowed and runs the action again while it repeats; its release, and every other key, reach the focused application.
+.PP
+When the window manager could not create its keyboard tap, usually because yabai is not allowed under Accessibility, the hotkey is still added but the command fails, since no hotkey can fire.
+.PP
+.TP
+\fB\-\-label\fR \fI<LABEL>\fR
+A later hotkey with the same label replaces this one
+.TP
+\fB\-\-description\fR \fI<TEXT>\fR
+What the hotkey does, for `hotkey list` and the cheatsheets built from it
+.TP
+\fB\-\-shell\fR \fI<COMMAND>\fR
+The shell command to run through /usr/bin/env sh \-c, without waiting for it
+.TP
+<\fICHORD\fR>
+The keys that run the action: [MODIFIER [+ MODIFIER]... \-] KEY, or a lone modifier
+.TP
+[\fIYABAI COMMAND ARGUMENTS\fR]
+The yabai command to run, written as on the command line after `yabai`
+.SS "yabai hotkey remove"
+.PP
+\fByabai hotkey remove\fR (<HOTKEY> | \-\-all)
+.PP
+Remove a hotkey, or every hotkey
+.PP
+.TP
+\fB\-\-all\fR
+Remove every hotkey
+.TP
+[\fIHOTKEY\fR]
+The hotkey to remove, by index from 0 or by label
+.SS "yabai hotkey list"
+.PP
+Print every hotkey as a JSON array, in the order they were added, a hotkey that replaced others taking the place of the first of them
+.SS "yabai input-source"
+.PP
+Switch the keyboard layout or input mode
+.SS "yabai input-source cycle"
+.PP
+Select the next enabled keyboard layout or input mode, wrapping around; with two of them, it toggles between them
+.SS "yabai input-source select"
+.PP
+\fByabai input\-source select\fR <\fIID\fR> 
+.PP
+Select the keyboard layout or input mode ID, such as com.apple.keylayout.Canadian\-CSA
 .fi
 .SH SELECTORS
 .nf
@@ -1696,7 +1754,8 @@ Print every signal as a JSON array
                smallest, sibling, first\-nephew, second\-nephew, uncle, first\-cousin,
                second\-cousin, stack.prev, stack.next, stack.first, stack.last, stack.recent,
                stack.POSITION from 1, or a window id
-  RULE, SIGNAL an index from 0 in the order of `list`, or a label
+  RULE, SIGNAL, HOTKEY
+               an index from 0 in the order of `list`, or a label
 
   Directions, prev, next and the tree and stack relatives start from the acting display,
   space or window: the one \-d, \-s or \-w names, or else the focused one. A label is any text
@@ -1708,8 +1767,10 @@ Print every signal as a JSON array
   `query` prints JSON with snake_case keys: an array for displays, spaces and windows, one
   object for display, space and window. `\-\-fields` keeps the keys it names, and `\-\-help` of
   each query lists them. `rule list` and `signal list` print arrays whose keys mirror the flags
-  of `add`. `config get` prints every setting as one object, or the bare value of one setting
-  spelled as `config set` takes it.
+  of `add`; `hotkey list` prints each hotkey's index, label, chord, description and action, an
+  object holding either `yabai`, the arguments of a yabai command, or `shell`. `config get`
+  prints every setting as one object, or the bare value of one setting spelled as `config set`
+  takes it.
 
 .fi
 .SH "EXIT STATUS"

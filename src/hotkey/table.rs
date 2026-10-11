@@ -90,6 +90,15 @@ impl HotkeyTable {
             .iter()
             .find(|hotkey| hotkey.chord == Chord::LoneModifierTap(lone_modifier))
     }
+
+    pub(crate) fn lone_modifiers_with_a_hotkey(&self) -> impl Iterator<Item = LoneModifier> + '_ {
+        self.hotkeys_in_listing_order
+            .iter()
+            .filter_map(|hotkey| match hotkey.chord {
+                Chord::LoneModifierTap(lone_modifier) => Some(lone_modifier),
+                Chord::KeyWithModifiers { .. } => None,
+            })
+    }
 }
 
 #[cfg(test)]
@@ -383,5 +392,21 @@ mod tests {
             table.hotkey_of_lone_modifier_tap(LoneModifier::LeftCommand),
             None
         );
+    }
+
+    #[test]
+    fn the_lone_modifiers_with_a_hotkey_are_those_a_lone_modifier_chord_binds() {
+        let table = table_of([
+            hotkey("alt - h", "", "focus"),
+            hotkey("rcmd", "", "cycle"),
+            hotkey("shift + cmd - k", "", "swap"),
+            hotkey("lshift", "", "caps"),
+        ]);
+
+        assert_eq!(
+            table.lone_modifiers_with_a_hotkey().collect::<Vec<_>>(),
+            [LoneModifier::RightCommand, LoneModifier::LeftShift]
+        );
+        assert_eq!(HotkeyTable::new().lone_modifiers_with_a_hotkey().count(), 0);
     }
 }

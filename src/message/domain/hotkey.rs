@@ -14,8 +14,9 @@ pub(crate) fn run_hotkey_command(
     match command {
         HotkeyCommand::Add(definition) => {
             let hotkey = hotkey_of_definition(definition);
-            lock_the_hotkey_table(hotkey_table)
-                .add_replacing_any_with_the_same_chord_or_label(hotkey);
+            change_the_hotkey_table(hotkey_table, keyboard_tap_state, |hotkey_table| {
+                hotkey_table.add_replacing_any_with_the_same_chord_or_label(hotkey)
+            });
             if keyboard_tap_state.status() == KeyboardTapStatus::FailedToStart {
                 return Err(String::from(
                     "the keyboard tap could not be created, so hotkeys will not fire; check \
@@ -25,14 +26,22 @@ pub(crate) fn run_hotkey_command(
             Ok(String::new())
         }
         HotkeyCommand::Remove { all: true, .. } => {
-            lock_the_hotkey_table(hotkey_table).remove_every_hotkey();
+            change_the_hotkey_table(
+                hotkey_table,
+                keyboard_tap_state,
+                HotkeyTable::remove_every_hotkey,
+            );
             Ok(String::new())
         }
         HotkeyCommand::Remove {
             hotkey: Some(IndexOrLabelSelector::Index(index)),
             ..
         } => {
-            if !lock_the_hotkey_table(hotkey_table).remove_at_listing_index(index as usize) {
+            let was_removed =
+                change_the_hotkey_table(hotkey_table, keyboard_tap_state, |hotkey_table| {
+                    hotkey_table.remove_at_listing_index(index as usize)
+                });
+            if !was_removed {
                 return Err(format!("hotkey with index '{index}' not found."));
             }
             Ok(String::new())
@@ -41,7 +50,11 @@ pub(crate) fn run_hotkey_command(
             hotkey: Some(IndexOrLabelSelector::Label(label)),
             ..
         } => {
-            if !lock_the_hotkey_table(hotkey_table).remove_with_label(&label) {
+            let was_removed =
+                change_the_hotkey_table(hotkey_table, keyboard_tap_state, |hotkey_table| {
+                    hotkey_table.remove_with_label(&label)
+                });
+            if !was_removed {
                 return Err(format!("hotkey with label '{label}' not found."));
             }
             Ok(String::new())
@@ -56,6 +69,19 @@ pub(crate) fn run_hotkey_command(
             Ok(every_hotkey_as_pretty_json(&every_hotkey_in_listing_order) + "\n")
         }
     }
+}
+
+fn change_the_hotkey_table<Outcome>(
+    hotkey_table: &Mutex<HotkeyTable>,
+    keyboard_tap_state: &KeyboardTapState,
+    change: impl FnOnce(&mut HotkeyTable) -> Outcome,
+) -> Outcome {
+    let mut hotkey_table = lock_the_hotkey_table(hotkey_table);
+    let outcome = change(&mut hotkey_table);
+    keyboard_tap_state
+        .lone_modifier_tap_detector
+        .arm_only_for_the_lone_modifiers_with_a_hotkey(hotkey_table.lone_modifiers_with_a_hotkey());
+    outcome
 }
 
 fn lock_the_hotkey_table(hotkey_table: &Mutex<HotkeyTable>) -> MutexGuard<'_, HotkeyTable> {
@@ -80,6 +106,8 @@ mod tests {
     use crate::command::{DaemonCommand, parse_daemon_command};
     use crate::hotkey::action::HotkeyAction;
     use crate::hotkey::keyboard_tap_state::{KeyboardTapState, KeyboardTapStatus};
+    use crate::hotkey::lone_modifier::LoneModifier;
+    use crate::hotkey::lone_modifier_tap::KeyboardTapEventSeenByTheLoneModifierTapDetector;
     use crate::hotkey::table::HotkeyTable;
 
     fn hotkey_command_of(arguments: &[&str]) -> HotkeyCommand {
@@ -301,5 +329,62 @@ mod tests {
         assert!(listing.ends_with("]\n"), "{listing:?}");
         let listing: serde_json::Value = serde_json::from_str(&listing).unwrap();
         assert_eq!(listing[0]["chord"], "alt - h");
+    }
+
+    fn right_command_tap_seen_by(keyboard_tap_state: &KeyboardTapState) -> Option<LoneModifier> {
+        const RIGHT_COMMAND_KEYCODE: u16 = 54;
+        const RIGHT_COMMAND_HELD_EVENT_FLAGS: u64 = 0x10_0000 | 0x10;
+        const PRESSED_AT_NANOSECONDS: u64 = 5_000_000_000;
+        const RELEASED_A_TENTH_OF_A_SECOND_LATER: u64 = PRESSED_AT_NANOSECONDS + 100_000_000;
+
+        let detector = &keyboard_tap_state.lone_modifier_tap_detector;
+        detector.lone_modifier_tapped_by(
+            KeyboardTapEventSeenByTheLoneModifierTapDetector::FlagsChanged {
+                flags_changed_keycode: RIGHT_COMMAND_KEYCODE,
+                event_flags: RIGHT_COMMAND_HELD_EVENT_FLAGS,
+                now_in_nanoseconds: PRESSED_AT_NANOSECONDS,
+            },
+        );
+        detector.lone_modifier_tapped_by(
+            KeyboardTapEventSeenByTheLoneModifierTapDetector::FlagsChanged {
+                flags_changed_keycode: RIGHT_COMMAND_KEYCODE,
+                event_flags: 0,
+                now_in_nanoseconds: RELEASED_A_TENTH_OF_A_SECOND_LATER,
+            },
+        )
+    }
+
+    #[test]
+    fn a_lone_modifier_is_tapped_only_while_a_hotkey_binds_it() {
+        let hotkey_table = Mutex::new(HotkeyTable::new());
+        let keyboard_tap_state = keyboard_tap_state_with_status(KeyboardTapStatus::Running);
+
+        run_every_hotkey_command(
+            &[&["add", "alt - h", "--", "window", "focus", "west"]],
+            &hotkey_table,
+            &keyboard_tap_state,
+        );
+        assert_eq!(right_command_tap_seen_by(&keyboard_tap_state), None);
+
+        run_every_hotkey_command(
+            &[&[
+                "add",
+                "rcmd",
+                "--label",
+                "cycle",
+                "--",
+                "input-source",
+                "cycle",
+            ]],
+            &hotkey_table,
+            &keyboard_tap_state,
+        );
+        assert_eq!(
+            right_command_tap_seen_by(&keyboard_tap_state),
+            Some(LoneModifier::RightCommand)
+        );
+
+        run_every_hotkey_command(&[&["remove", "cycle"]], &hotkey_table, &keyboard_tap_state);
+        assert_eq!(right_command_tap_seen_by(&keyboard_tap_state), None);
     }
 }

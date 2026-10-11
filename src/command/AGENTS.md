@@ -20,7 +20,9 @@ manager, which crosses the socket as JSON.
 - `hotkey add` takes the yabai command a hotkey runs as raw arguments after `--`, checked by
   parsing them as a whole command line in its own `FromArgMatches`. Nesting `DaemonCommand` in
   the clap tree instead would recurse without end when clap builds or checks the tree and when
-  the man page walks it.
+  the man page walks it. The parsed command is kept beside its arguments, which are all it
+  serializes to, so the daemon parses them once more when it decodes the request and never on
+  a press. Every command type derives `Clone` for that: each press runs its own copy.
 - The acting display, space or window is a global `-d`, `-s` or `-w` option, so it may follow
   the action. A display or space label is refused when the selector of its kind would read it as
   anything else.

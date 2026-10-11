@@ -12,7 +12,7 @@ use crate::support::direction::{
 use crate::support::layer::WindowStackingSubLayer;
 use crate::support::resize_handle::ResizeHandle;
 
-#[derive(Args, Serialize, Deserialize, Debug)]
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub(crate) struct WindowCommand {
     /// Act on this window instead of the focused one
     #[arg(short, long, global = true, value_name = "WINDOW_SEL")]
@@ -21,7 +21,7 @@ pub(crate) struct WindowCommand {
     pub(crate) action: WindowAction,
 }
 
-#[derive(Subcommand, Serialize, Deserialize, Debug)]
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub(crate) enum WindowAction {
     /// Focus a window [default: the acting window]
     Focus {

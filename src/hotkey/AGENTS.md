@@ -2,7 +2,8 @@
 
 Keyboard shortcuts the daemon answers itself: the chord vocabulary (side-agnostic modifiers, keys
 named by their ANSI virtual keycode, lone modifiers told apart by side) and the canonical spelling
-a chord prints in, a hotkey's action (a yabai command kept as its arguments, or a shell command),
+a chord prints in, a hotkey's action (a yabai command kept parsed beside its arguments, or a
+shell command),
 the table of hotkeys the keyboard tap matches, the state the tap keeps to tell a lone
 modifier tap from a modifier held for a chord, and the thread that starts shell actions.
 
@@ -25,9 +26,11 @@ modifier tap from a modifier held for a chord, and the thread that starts shell 
   satisfying each; caps lock is ignored; fn is compared only when the chord names it, because
   the function keys and arrows always carry the fn flag. A chord that names fn wins over the
   same chord without it.
-- A typed action is stored as the arguments it was written with and parsed again on every
-  press, because `DaemonCommand` is not `Clone`. The client checked that the arguments parse,
-  and refused a `hotkey` command among them, when the hotkey was added.
+- A typed action is parsed once, when the hotkey is added, and kept behind an `Arc` beside the
+  arguments it was written with: a press clones the `Arc` under the table lock and the event
+  loop runs a clone of the parsed command, so no press builds clap's command tree. The
+  arguments are what `hotkey list` prints and what crosses the socket; the daemon parses them
+  again as it decodes the request.
 - The lone modifier detector arms on the flags change of that physical key with the key's
   device-dependent bit set, anything else the keyboard tap sees disarms it but the momentum
   scrolling that carries on after the fingers left the trackpad, and the release of the same

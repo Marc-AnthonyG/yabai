@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::command::selectors::WindowSelector;
 
-#[derive(Subcommand, Serialize, Deserialize, Debug)]
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub(crate) enum ScratchpadCommand {
     /// Make a window the scratchpad NAME; it floats from then on
     Assign {

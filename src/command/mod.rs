@@ -13,6 +13,7 @@ pub mod signal;
 pub mod space;
 pub mod values;
 pub mod window;
+pub mod yabai_command_of_a_hotkey;
 
 use std::path::PathBuf;
 
@@ -96,7 +97,7 @@ pub(crate) enum ScriptingAdditionAction {
     Uninstall,
 }
 
-#[derive(Subcommand, Serialize, Deserialize, Debug)]
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub(crate) enum DaemonCommand {
     /// Change or print the settings of the window manager
     #[command(subcommand)]

@@ -4,11 +4,11 @@ use clap::{ArgGroup, ArgMatches, Args, Command, FromArgMatches, Subcommand};
 use serde::{Deserialize, Serialize};
 
 use crate::command::selectors::IndexOrLabelSelector;
-use crate::command::{DaemonCommand, parse_daemon_command, refusal_of_clap_error_without_usage};
+use crate::command::yabai_command_of_a_hotkey::YabaiCommandOfAHotkey;
 use crate::hotkey::action::HotkeyAction;
 use crate::hotkey::chord::Chord;
 
-#[derive(Subcommand, Serialize, Deserialize, Debug)]
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub(crate) enum HotkeyCommand {
     /// Run a yabai command, or a shell command, whenever CHORD is pressed
     ///
@@ -53,7 +53,7 @@ pub(crate) enum HotkeyCommand {
     List,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
 pub(crate) struct HotkeyDefinition {
     pub(crate) chord: Chord,
     pub(crate) label: Option<String>,
@@ -96,7 +96,9 @@ impl TryFrom<HotkeyDefinitionAsWritten> for HotkeyDefinition {
                 HotkeyAction::Shell(shell_command)
             }
             (None, yabai_command_arguments) if !yabai_command_arguments.is_empty() => {
-                HotkeyAction::Yabai(yabai_command_a_hotkey_may_run(yabai_command_arguments)?)
+                HotkeyAction::Yabai(YabaiCommandOfAHotkey::parsed_from_its_arguments(
+                    yabai_command_arguments,
+                )?)
             }
             _ => {
                 return Err(String::from(
@@ -110,22 +112,6 @@ impl TryFrom<HotkeyDefinitionAsWritten> for HotkeyDefinition {
             description: written.description,
             action,
         })
-    }
-}
-
-fn yabai_command_a_hotkey_may_run(
-    yabai_command_arguments: Vec<String>,
-) -> Result<Vec<String>, String> {
-    match parse_daemon_command(&yabai_command_arguments) {
-        Ok(DaemonCommand::Hotkey(_)) => Err(String::from(
-            "a hotkey cannot run a hotkey command; run it from a shell action instead",
-        )),
-        Ok(_) => Ok(yabai_command_arguments),
-        Err(error) => Err(format!(
-            "`{}` is not a yabai command: {}",
-            yabai_command_arguments.join(" "),
-            refusal_of_clap_error_without_usage(&error)
-        )),
     }
 }
 
@@ -157,6 +143,7 @@ mod tests {
 
     use super::{HotkeyCommand, HotkeyDefinition};
     use crate::command::selectors::IndexOrLabelSelector;
+    use crate::command::yabai_command_of_a_hotkey::YabaiCommandOfAHotkey;
     use crate::command::{CommandLine, DaemonCommand, TopLevelCommand};
     use crate::hotkey::action::HotkeyAction;
     use crate::hotkey::chord::Chord;
@@ -212,11 +199,14 @@ mod tests {
         );
         assert_eq!(
             definition.action,
-            HotkeyAction::Yabai(vec![
-                String::from("window"),
-                String::from("focus"),
-                String::from("west"),
-            ])
+            HotkeyAction::Yabai(
+                YabaiCommandOfAHotkey::parsed_from_its_arguments(vec![
+                    String::from("window"),
+                    String::from("focus"),
+                    String::from("west"),
+                ])
+                .unwrap()
+            )
         );
     }
 

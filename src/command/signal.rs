@@ -5,7 +5,7 @@ use crate::command::selectors::IndexOrLabelSelector;
 use crate::command::values::{OnOrOff, parse_regular_expression_that_compiles};
 use crate::signal::definition::SignalType;
 
-#[derive(Subcommand, Serialize, Deserialize, Debug)]
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub(crate) enum SignalCommand {
     /// Run a shell command (through /bin/sh -c) after every EVENT
     Add(SignalDefinition),
@@ -19,7 +19,7 @@ pub(crate) enum SignalCommand {
     List,
 }
 
-#[derive(Args, Serialize, Deserialize, Debug)]
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub(crate) struct SignalDefinition {
     /// The event that runs the action
     pub(crate) event: SignalType,

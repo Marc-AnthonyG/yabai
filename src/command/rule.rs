@@ -7,7 +7,7 @@ use crate::command::values::{
 };
 use crate::support::layer::WindowStackingSubLayer;
 
-#[derive(Subcommand, Serialize, Deserialize, Debug)]
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub(crate) enum RuleCommand {
     /// Add a rule for the windows that open from now on
     #[command(arg_required_else_help = true)]
@@ -37,7 +37,7 @@ pub(crate) enum RuleCommand {
     List,
 }
 
-#[derive(Args, Serialize, Deserialize, Debug, Default)]
+#[derive(Args, Clone, Serialize, Deserialize, Debug, Default)]
 #[command(group(
     ArgGroup::new("where_the_window_is_sent")
         .args(["display", "space"])

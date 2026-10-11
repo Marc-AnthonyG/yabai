@@ -1,4 +1,4 @@
-use crate::command::{parse_daemon_command, refusal_of_clap_error_without_usage};
+use crate::command::yabai_command_of_a_hotkey::YabaiCommandOfAHotkey;
 use crate::display::manager::DisplayManager;
 use crate::hotkey::chord::Chord;
 use crate::message::dispatch::run_daemon_command;
@@ -11,7 +11,7 @@ use crate::window::manager::WindowManager;
 
 pub(crate) fn handle_hotkey_pressed_event(
     chord: Chord,
-    yabai_command_arguments: Vec<String>,
+    yabai_command: YabaiCommandOfAHotkey,
     signal_event: &mut [Vec<Signal>; SIGNAL_TYPE_COUNT],
     process_manager: &mut ProcessManager,
     display_manager: &mut DisplayManager,
@@ -22,22 +22,11 @@ pub(crate) fn handle_hotkey_pressed_event(
 ) {
     crate::debug!(
         "handle_hotkey_pressed_event: {chord}: {}\n",
-        yabai_command_arguments.join(" ")
+        yabai_command.arguments_as_written().join(" ")
     );
 
-    let command = match parse_daemon_command(&yabai_command_arguments) {
-        Ok(command) => command,
-        Err(error) => {
-            crate::warn!(
-                "yabai: hotkey '{chord}': {}\n",
-                refusal_of_clap_error_without_usage(&error)
-            );
-            return;
-        }
-    };
-
     let reply = run_daemon_command(
-        command,
+        yabai_command.command_to_run(),
         signal_event,
         process_manager,
         display_manager,

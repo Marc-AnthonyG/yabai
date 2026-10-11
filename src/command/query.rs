@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::command::selectors::{DisplaySelector, SpaceSelector, WindowSelector};
 use crate::command::values::deserialize_a_present_field_as_some;
 
-#[derive(Subcommand, Serialize, Deserialize, Debug)]
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub(crate) enum QueryCommand {
     /// Print every display, or the one holding a space or a window, as a JSON array
     Displays {
@@ -53,7 +53,7 @@ pub(crate) enum QueryCommand {
     },
 }
 
-#[derive(Args, Serialize, Deserialize, Debug)]
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub(crate) struct FieldSelection<FieldName>
 where
     FieldName: ValueEnum + Clone + Send + Sync + 'static,
@@ -63,7 +63,7 @@ where
     pub(crate) fields: Vec<FieldName>,
 }
 
-#[derive(Args, Serialize, Deserialize, Debug)]
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
 #[group(multiple = false)]
 pub(crate) struct DisplaysQueryFilter {
     /// Only the display holding this space [default: the focused space]
@@ -84,7 +84,7 @@ pub(crate) struct DisplaysQueryFilter {
     pub(crate) window: Option<Option<WindowSelector>>,
 }
 
-#[derive(Args, Serialize, Deserialize, Debug)]
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
 #[group(multiple = false)]
 pub(crate) struct SpacesQueryFilter {
     /// Only the spaces of this display [default: the one showing the active menu bar]
@@ -105,7 +105,7 @@ pub(crate) struct SpacesQueryFilter {
     pub(crate) window: Option<Option<WindowSelector>>,
 }
 
-#[derive(Args, Serialize, Deserialize, Debug)]
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
 #[group(multiple = false)]
 pub(crate) struct WindowsQueryFilter {
     /// Only the windows on this display [default: the one showing the active menu bar]

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::command::labels::parse_display_label_that_no_display_selector_reads_otherwise;
 use crate::command::selectors::{DisplaySelector, SpaceSelector};
 
-#[derive(Args, Serialize, Deserialize, Debug)]
+#[derive(Args, Clone, Serialize, Deserialize, Debug)]
 pub(crate) struct DisplayCommand {
     /// Act on this display instead of the one showing the active menu bar
     #[arg(short, long, global = true, value_name = "DISPLAY_SEL")]
@@ -13,7 +13,7 @@ pub(crate) struct DisplayCommand {
     pub(crate) action: DisplayAction,
 }
 
-#[derive(Subcommand, Serialize, Deserialize, Debug)]
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub(crate) enum DisplayAction {
     /// Focus another display; relative selectors start from the acting display
     Focus {

@@ -2,7 +2,7 @@ use clap::Subcommand;
 use clap::builder::NonEmptyStringValueParser;
 use serde::{Deserialize, Serialize};
 
-#[derive(Subcommand, Serialize, Deserialize, Debug)]
+#[derive(Subcommand, Clone, Serialize, Deserialize, Debug)]
 pub(crate) enum InputSourceCommand {
     /// Select the next enabled keyboard layout or input mode, wrapping around; with two of them,
     /// it toggles between them

@@ -460,10 +460,10 @@ pub(crate) fn run_event_loop_flushing_signals_after_each_event(
                     ),
                     Event::HotkeyPressed {
                         chord,
-                        yabai_command_arguments,
+                        yabai_command,
                     } => handle_hotkey_pressed_event(
                         chord,
-                        yabai_command_arguments,
+                        yabai_command,
                         signal_event,
                         process_manager,
                         display_manager,

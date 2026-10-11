@@ -230,12 +230,10 @@ fn run_hotkey_action_without_waiting_for_it(chord: Chord, action: HotkeyAction) 
                 shell_command,
             })
         }
-        HotkeyAction::Yabai(yabai_command_arguments) => {
-            post_event_to_event_loop(Event::HotkeyPressed {
-                chord,
-                yabai_command_arguments,
-            })
-        }
+        HotkeyAction::Yabai(yabai_command) => post_event_to_event_loop(Event::HotkeyPressed {
+            chord,
+            yabai_command,
+        }),
     }
 }
 

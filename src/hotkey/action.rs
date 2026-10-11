@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 
+use crate::command::yabai_command_of_a_hotkey::YabaiCommandOfAHotkey;
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum HotkeyAction {
-    Yabai(Vec<String>),
+    Yabai(YabaiCommandOfAHotkey),
     Shell(String),
 }
 
@@ -25,11 +27,21 @@ impl HotkeyAction {
 #[cfg(test)]
 mod tests {
     use super::{HotkeyAction, KeyDownOfAHotkey};
+    use crate::command::yabai_command_of_a_hotkey::YabaiCommandOfAHotkey;
+
+    fn yabai_action_running(arguments: &[&str]) -> HotkeyAction {
+        HotkeyAction::Yabai(
+            YabaiCommandOfAHotkey::parsed_from_its_arguments(
+                arguments.iter().copied().map(String::from).collect(),
+            )
+            .unwrap(),
+        )
+    }
 
     #[test]
     fn every_action_runs_when_its_key_is_pressed() {
         for action in [
-            HotkeyAction::Yabai(vec![String::from("window"), String::from("focus")]),
+            yabai_action_running(&["window", "focus"]),
             HotkeyAction::Shell(String::from("open -na Terminal")),
         ] {
             assert!(action.runs_on(KeyDownOfAHotkey::Pressed), "{action:?}");
@@ -39,8 +51,7 @@ mod tests {
     #[test]
     fn a_yabai_command_runs_again_while_its_key_repeats_but_a_shell_command_does_not() {
         assert!(
-            HotkeyAction::Yabai(vec![String::from("window"), String::from("focus")])
-                .runs_on(KeyDownOfAHotkey::RepeatedWhileHeld)
+            yabai_action_running(&["window", "focus"]).runs_on(KeyDownOfAHotkey::RepeatedWhileHeld)
         );
         assert!(
             !HotkeyAction::Shell(String::from("open -na Terminal"))

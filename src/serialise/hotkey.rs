@@ -35,6 +35,7 @@ fn snapshot_of_hotkey(index: usize, hotkey: &Hotkey) -> HotkeySnapshot {
 #[cfg(test)]
 mod tests {
     use super::every_hotkey_as_pretty_json;
+    use crate::command::yabai_command_of_a_hotkey::YabaiCommandOfAHotkey;
     use crate::hotkey::action::HotkeyAction;
     use crate::hotkey::table::{Hotkey, HotkeyTable};
 
@@ -45,11 +46,14 @@ mod tests {
             chord: "cmd+alt-h".parse().unwrap(),
             label: String::from("focus-west"),
             description: String::from("Focus the window to the west"),
-            action: HotkeyAction::Yabai(vec![
-                String::from("window"),
-                String::from("focus"),
-                String::from("west"),
-            ]),
+            action: HotkeyAction::Yabai(
+                YabaiCommandOfAHotkey::parsed_from_its_arguments(vec![
+                    String::from("window"),
+                    String::from("focus"),
+                    String::from("west"),
+                ])
+                .unwrap(),
+            ),
         });
         hotkey_table.add_replacing_any_with_the_same_chord_or_label(Hotkey {
             chord: "rcmd".parse().unwrap(),

@@ -1,6 +1,9 @@
 use std::sync::OnceLock;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
+use libc::qos_class_t;
+
+use crate::ffi::libsystem::set_the_quality_of_service_class_of_this_thread;
 use crate::hotkey::chord::Chord;
 use crate::support::shell_command::spawn_shell_running_the_command_without_waiting_for_it;
 
@@ -34,6 +37,7 @@ pub(crate) fn hand_the_shell_command_to_the_spawner_thread(
 fn spawn_each_shell_command_handed_over_for_as_long_as_the_daemon_runs(
     receiver: Receiver<ShellCommandOfAPressedHotkey>,
 ) {
+    set_the_quality_of_service_class_of_this_thread(qos_class_t::QOS_CLASS_USER_INITIATED);
     for ShellCommandOfAPressedHotkey {
         chord,
         shell_command,

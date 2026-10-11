@@ -40,3 +40,7 @@ pub fn is_process_being_debugged(process_id: pid_t) -> bool {
     );
     (p_flag & P_TRACED) != 0
 }
+
+pub fn set_the_quality_of_service_class_of_this_thread(class: libc::qos_class_t) {
+    unsafe { libc::pthread_set_qos_class_self_np(class, 0) };
+}

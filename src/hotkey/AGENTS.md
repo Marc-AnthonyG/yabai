@@ -16,7 +16,8 @@ modifier tap from a modifier held for a chord, and the thread that starts shell 
   keeps the listing order. Removal keeps the order of the others.
 - Shell actions start on their own `yabai-shell-hotkey-spawner` thread, fed by a channel, never
   on the tap thread, which would hold every following key until the process had started, and
-  not through the event loop, so they still start while it is busy. A yabai command runs again
+  not through the event loop, so they still start while it is busy. The thread runs at the
+  user-initiated quality of service: a press waits for its result, but no key waits on it. A yabai command runs again
   on every key repeat; a shell command runs once per press, since holding a key that opens a
   panel would otherwise close it again.
 - Keys match by virtual keycode, never by character, so a hotkey stays on the same physical key

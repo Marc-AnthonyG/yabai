@@ -5,6 +5,8 @@ use core::ptr::{NonNull, null_mut};
 use std::sync::PoisonError;
 use std::sync::atomic::Ordering;
 
+use libc::qos_class_t;
+
 use crate::event::queue::{Event, post_event_to_event_loop};
 use crate::ffi::carbon_core::read_system_clock_in_nanoseconds;
 use crate::ffi::core_foundation::{
@@ -16,6 +18,7 @@ use crate::ffi::core_graphics::{
     CGEventTapCreate, CGEventTapEnable, CGEventTapIsEnabled, CGEventTapProxy, CGEventType,
     kCGEventTapOptionDefault, kCGHIDEventTap, kCGHeadInsertEventTap,
 };
+use crate::ffi::libsystem::set_the_quality_of_service_class_of_this_thread;
 use crate::ffi::skylight::SLSIsSecureEventInputSet;
 use crate::hotkey::action::{HotkeyAction, KeyDownOfAHotkey};
 use crate::hotkey::chord::{Chord, HotkeyModifiers};
@@ -72,6 +75,7 @@ fn map_the_shared_memory_secure_event_input_is_read_from_on_the_main_thread() {
 }
 
 fn run_the_keyboard_event_tap_on_this_thread_for_as_long_as_the_daemon_runs() {
+    set_the_quality_of_service_class_of_this_thread(qos_class_t::QOS_CLASS_USER_INTERACTIVE);
     if let Err(failure) = create_the_keyboard_event_tap_and_schedule_it_on_this_thread() {
         KEYBOARD_TAP_STATE.record_status(KeyboardTapStatus::FailedToStart);
         crate::warn!("yabai: {failure}, so hotkeys will not work\n");

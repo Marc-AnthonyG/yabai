@@ -13,8 +13,9 @@ to the event loop.
 - Every callback here runs on the main thread, from the main run loop or AppKit's notification
   delivery, with two exceptions. Registering the key-value observer with the initial option
   calls it back synchronously on whichever thread registers, the event-loop thread included. The
-  keyboard tap runs on its own `yabai-keyboard-tap` thread with its own run loop, so a main
-  thread waiting on an application's AX answer never holds up typing. That thread raises itself
+  keyboard tap, the tap that disarms a lone modifier and the observer that switches it run on
+  their own `yabai-keyboard-tap` thread with its own run loop, so a main thread waiting on an
+  application's AX answer never holds up typing. That thread raises itself
   to the user-interactive quality of service, since every key waits on it, while the rest of the
   daemon stays at the default priority.
 - The keyboard tap callback stays short: it reads the hotkey table, swallows the key down of a
@@ -37,6 +38,12 @@ to the event loop.
   no click or scroll waits on yabai otherwise. Being active and on the same run loop, it sees a
   click before the release that follows it. It never swallows anything; macOS disabling it
   forgets the armed lone modifier, and it stays off until the next one is armed.
+- The mouse has two taps on the main run loop. The active one carries only the clicks and
+  drags it may swallow or repost for mouse-modifier drags and group headers, and is created
+  once at start-up. Pointer moves never wait on yabai: they arrive through a listen-only tap,
+  together with the Dock swipe gestures focus follows mouse checks, and that tap is re-created
+  with or without pointer moves whenever the focus-follows-mouse mode is set. Drags stay on
+  the active tap because a mouse up must see the drag that came before it.
 - `CGEventTapEnable` is a synchronous round trip to WindowServer, so the disarming tap is never
   switched from inside a tap callback, where the event being handled would wait for it. A
   before-waiting observer on the tap thread's run loop switches it once the callbacks have

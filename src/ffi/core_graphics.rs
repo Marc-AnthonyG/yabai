@@ -42,6 +42,7 @@ pub const kCGHIDEventTap: CGEventTapLocation = CGEventTapLocation::HIDEventTap;
 pub const kCGSessionEventTap: CGEventTapLocation = CGEventTapLocation::SessionEventTap;
 pub const kCGHeadInsertEventTap: CGEventTapPlacement = CGEventTapPlacement::HeadInsertEventTap;
 pub const kCGEventTapOptionDefault: CGEventTapOptions = CGEventTapOptions::Default;
+pub const kCGEventTapOptionListenOnly: CGEventTapOptions = CGEventTapOptions::ListenOnly;
 
 #[link(name = "CoreGraphics", kind = "framework")]
 unsafe extern "C" {

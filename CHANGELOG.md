@@ -25,6 +25,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - `-v` turns on verbose output and `-V` prints the version, now `yabai 7.1.25`.
 - Exit status: 0 on success, 1 when the window manager reports a failure or a local action fails, 2 on a usage error, 3 when no window manager answers. A client refuses to drive a window manager of another version; run `yabai service restart` after upgrading.
 - Query output, `config get`, `rule list` and `signal list` print pretty JSON with snake_case keys (`has_focus`, `is_minimized`), numbers in their shortest form, unsigned ids and `null` for an unset label or scratchpad.
+- Focus follows mouse hears pointer moves through a listen-only event tap, so moving the pointer never waits on yabai, and remembers which window connections belong to JankyBorders instead of asking the window server on every move.
 - Signal commands run through `/bin/sh -c` instead of `/usr/bin/env sh -c`, which searched `PATH` for `sh` first.
 - Rule and signal patterns use the [Rust regex crate syntax](https://docs.rs/regex/latest/regex/#syntax) instead of POSIX extended regular expressions, and a pattern that does not compile is refused before it is sent.
 - The window animation easing curves are the [easings.net](https://easings.net) formulas from the simple-easing crate and may differ slightly from the previous ones.

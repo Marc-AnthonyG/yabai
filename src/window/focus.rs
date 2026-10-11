@@ -15,10 +15,7 @@ use crate::layout::group_header::refresh_the_group_headers_of_view;
 use crate::layout::insertion::clear_every_pending_insertion_point_other_than_the_window;
 use crate::layout::tree::leaf_holding_window;
 use crate::mouse::drag::MouseDragState;
-use crate::notifications::mouse::{
-    MOUSE_EVENT_MASK_FOR_FOCUS_FOLLOWS_MOUSE, MOUSE_EVENT_MASK_WITHOUT_MOUSE_MOVED,
-    start_mouse_event_tap, stop_mouse_event_tap,
-};
+use crate::notifications::mouse::listen_to_dock_swipes_and_to_pointer_moves_only_if_they_are_wanted;
 use crate::space::manager::SpaceManager;
 use crate::state::process_wide::SKYLIGHT_CONNECTION_ID;
 use crate::support::handles::{ProcessId, SpaceId, WindowId};
@@ -40,13 +37,9 @@ pub(crate) fn set_focus_follows_mouse_mode(
     window_manager: &mut WindowManager,
     mode: FocusFollowsMouseMode,
 ) {
-    stop_mouse_event_tap();
-
-    if mode == FocusFollowsMouseMode::Disabled {
-        start_mouse_event_tap(MOUSE_EVENT_MASK_WITHOUT_MOUSE_MOVED);
-    } else {
-        start_mouse_event_tap(MOUSE_EVENT_MASK_FOR_FOCUS_FOLLOWS_MOUSE);
-    }
+    listen_to_dock_swipes_and_to_pointer_moves_only_if_they_are_wanted(
+        mode != FocusFollowsMouseMode::Disabled,
+    );
 
     window_manager.focus_follows_mouse_mode = mode;
 }

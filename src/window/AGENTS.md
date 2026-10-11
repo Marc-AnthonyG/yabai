@@ -53,6 +53,9 @@ new frames through proxy windows.
 - Rule matching and reapplication take the rules they work on out of the window manager and put
   them back afterwards; code reached in between sees an empty rule list, or a default rule in the
   slot of the rule being reapplied.
+- Whether a window connection belongs to JankyBorders is asked of WindowServer and the kernel
+  once per connection and remembered in the window manager, which forgets them all once it
+  holds 64, so a pointer move under focus follows mouse costs a single hit test.
 - Bytes other programs read are fixed: the synthesized focus event records and their offsets,
   the packed sub-level Mach message (its size is asserted and its message id differs on Tahoe) and the JankyBorders
   notification, whose size is asserted at compile time and whose service name and event numbers

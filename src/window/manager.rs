@@ -21,6 +21,7 @@ use crate::support::color::{RgbaColor, rgba_color_from_packed_argb};
 use crate::support::easing::AnimationEasingType;
 use crate::support::handles::{NodeId, ProcessId, SpaceId, WindowId};
 use crate::window::animator::WindowAnimator;
+use crate::window::janky_borders_ownership_of_window_connections::JankyBordersOwnershipOfWindowConnections;
 use crate::window::model::{
     Window, WindowFlag, WindowRuleFlag, is_window_a_standard_floating_or_dialog_window,
     is_window_a_standard_window, is_window_at_normal_window_level, is_window_movable,
@@ -122,6 +123,8 @@ pub(crate) struct WindowManager {
     pub(crate) scratchpad_window: Vec<Scratchpad>,
     pub(crate) group_header_style: GroupHeaderStyle,
     pub(crate) group_headers_are_hidden_during_mission_control: bool,
+    pub(crate) janky_borders_ownership_of_window_connections:
+        JankyBordersOwnershipOfWindowConnections,
 }
 
 pub(crate) fn is_window_eligible_for_management(
@@ -384,5 +387,7 @@ pub(crate) fn create_window_manager_tracking_nothing_with_its_initial_settings()
         scratchpad_window: Vec::new(),
         group_header_style: group_header_style_with_its_initial_settings(),
         group_headers_are_hidden_during_mission_control: false,
+        janky_borders_ownership_of_window_connections:
+            JankyBordersOwnershipOfWindowConnections::default(),
     }
 }

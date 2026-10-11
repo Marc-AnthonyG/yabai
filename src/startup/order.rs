@@ -26,7 +26,7 @@ use crate::mouse::drag::MouseDragState;
 use crate::mouse::tap::MouseMode;
 use crate::notifications::keyboard::start_keyboard_event_tap_on_its_own_thread;
 use crate::notifications::mission_control::start_observing_mission_control_through_the_dock;
-use crate::notifications::mouse::{MOUSE_EVENT_MASK_WITHOUT_MOUSE_MOVED, start_mouse_event_tap};
+use crate::notifications::mouse::start_mouse_event_taps;
 use crate::notifications::skylight_connection::handle_skylight_connection_notification_callback;
 use crate::notifications::window::request_skylight_notifications_for_windows_that_need_them;
 use crate::notifications::workspace::detect_macos_version_and_start_observing_workspace_notifications;
@@ -44,6 +44,7 @@ use crate::support::macos_version::{
 };
 use crate::window::animator::WindowAnimator;
 use crate::window::discovery::start_tracking_running_applications_and_their_windows;
+use crate::window::janky_borders_ownership_of_window_connections::JankyBordersOwnershipOfWindowConnections;
 use crate::window::manager::{
     FocusFollowsMouseMode, ShadowRemovalMode, WindowManager, WindowOriginDisplayMode,
     initialize_window_manager,
@@ -103,6 +104,8 @@ pub(crate) fn start_the_daemon_and_enter_the_main_run_loop() {
             scratchpad_window: Vec::new(),
             group_header_style: group_header_style_with_its_initial_settings(),
             group_headers_are_hidden_during_mission_control: false,
+            janky_borders_ownership_of_window_connections:
+                JankyBordersOwnershipOfWindowConnections::default(),
         },
         space_manager: SpaceManager {
             view: BTreeMap::new(),
@@ -157,7 +160,7 @@ pub(crate) fn start_the_daemon_and_enter_the_main_run_loop() {
         error!("yabai: could not start display manager! abort..\n");
     }
 
-    if !start_mouse_event_tap(MOUSE_EVENT_MASK_WITHOUT_MOUSE_MOVED) {
+    if !start_mouse_event_taps() {
         error!("yabai: could not start mouse handler! abort..\n");
     }
 

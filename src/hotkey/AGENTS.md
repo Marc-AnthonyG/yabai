@@ -42,6 +42,7 @@ modifier tap from a modifier held for a chord, and the thread that starts shell 
   tap. The tap state also holds the handle of the tap that carries those disarming events and
   whether it was last enabled, which only the tap thread reads. The flags-changed keycodes and device-dependent bits
   are the platform's values and must not change.
-- The mouse tap also disarms the detector on every mouse down it handles, from the main thread:
-  it swallows mouse-modifier clicks, and once focus-follows-mouse re-creates it after the
-  keyboard tap it sits ahead of it, so the keyboard tap may never see that mouse down.
+- The mouse tap swallows mouse-modifier clicks, yet it never needs to disarm the detector: it
+  is created once, at start-up, before the keyboard tap thread creates its taps, so the tap
+  that carries the disarming events sits ahead of it and sees every mouse down first. Nothing
+  may re-create the active mouse tap later, or that order would be lost.

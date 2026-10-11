@@ -27,10 +27,21 @@ to the event loop.
 - The tap thread records in the tap's state whether the tap is still starting, running or
   failed to start. The config file's `hotkey add` lines can arrive before the thread has created
   the tap, so only a failure makes `hotkey add` fail; the hotkey is stored either way.
-- Both taps sit where hardware events enter, at the HID level, head inserted. WindowServer
+- Every tap sits where hardware events enter, at the HID level, head inserted. WindowServer
   handles symbolic hotkeys such as cmd - tab and cmd - ` before a session-level tap sees them,
   so a keyboard tap there never saw their key down, and releasing the right command key after
   cmd - tab looked like a lone tap of it.
+- The always-on keyboard tap asks for key downs and flags changes only. The mouse downs,
+  scrolls and media keys (NX_SYSDEFINED) that cancel a lone modifier tap go to a second active
+  tap on the same thread, created disabled and enabled only while a lone modifier is armed, so
+  no click or scroll waits on yabai otherwise. Being active and on the same run loop, it sees a
+  click before the release that follows it. It never swallows anything; macOS disabling it
+  forgets the armed lone modifier, and it stays off until the next one is armed.
+- `CGEventTapEnable` is a synchronous round trip to WindowServer, so the disarming tap is never
+  switched from inside a tap callback, where the event being handled would wait for it. A
+  before-waiting observer on the tap thread's run loop switches it once the callbacks have
+  answered their events, and only when whether a lone modifier is armed has changed since it
+  last did.
 - Under secure input, taps stop receiving key downs but still see flags changes, so a flags
   change while SkyLight reports secure input disarms the lone modifier detector: a modifier
   pressed then is never armed, and one released then is never a tap. That flag lives in shared

@@ -30,18 +30,11 @@ use crate::hotkey::shell_command_spawner::{
     start_the_thread_that_spawns_shell_hotkeys,
 };
 use crate::hotkey::table::HOTKEYS_THE_KEYBOARD_TAP_MATCHES;
+use crate::notifications::lone_modifier_disarming_tap::create_the_disarming_tap_disabled_and_schedule_it_on_this_thread;
 use crate::state::process_wide::DAEMON_PROCESS_ID;
 
-const SYSTEM_DEFINED_EVENT_TYPE_OF_MEDIA_KEYS_NX_SYSDEFINED: u32 = 14;
-
-const KEYBOARD_EVENT_MASK_FOR_HOTKEYS_AND_LONE_MODIFIER_TAPS: CGEventMask = (1
-    << CGEventType::KeyDown.0)
-    | (1 << CGEventType::FlagsChanged.0)
-    | (1 << CGEventType::LeftMouseDown.0)
-    | (1 << CGEventType::RightMouseDown.0)
-    | (1 << CGEventType::OtherMouseDown.0)
-    | (1 << CGEventType::ScrollWheel.0)
-    | (1 << SYSTEM_DEFINED_EVENT_TYPE_OF_MEDIA_KEYS_NX_SYSDEFINED);
+const KEYBOARD_EVENT_MASK_FOR_HOTKEYS_AND_LONE_MODIFIER_TAPS: CGEventMask =
+    (1 << CGEventType::KeyDown.0) | (1 << CGEventType::FlagsChanged.0);
 
 const EVENT_FLAG_OF_EACH_HOTKEY_MODIFIER: [(CGEventFlags, HotkeyModifiers); 5] = [
     (CGEventFlags::MaskAlternate, HotkeyModifiers::ALT),
@@ -80,6 +73,14 @@ fn run_the_keyboard_event_tap_on_this_thread_for_as_long_as_the_daemon_runs() {
         KEYBOARD_TAP_STATE.record_status(KeyboardTapStatus::FailedToStart);
         crate::warn!("yabai: {failure}, so hotkeys will not work\n");
         return;
+    }
+    if let Err(failure) =
+        create_the_disarming_tap_disabled_and_schedule_it_on_this_thread(&KEYBOARD_TAP_STATE)
+    {
+        crate::warn!(
+            "yabai: {failure}, so a click, a scroll or a media key will not cancel a lone \
+             modifier tap\n"
+        );
     }
     KEYBOARD_TAP_STATE.record_status(KeyboardTapStatus::Running);
     CFRunLoopRun();
@@ -172,9 +173,6 @@ fn keyboard_tap_event_as_the_lone_modifier_tap_detector_sees_it(
                 now_in_nanoseconds: read_system_clock_in_nanoseconds(),
             }
         }
-        CGEventType::ScrollWheel if is_momentum_scrolling_the_user_no_longer_drives(event) => {
-            KeyboardTapEventSeenByTheLoneModifierTapDetector::MomentumScrollingTheUserNoLongerDrives
-        }
         _ => KeyboardTapEventSeenByTheLoneModifierTapDetector::AnyOtherEvent,
     }
 }
@@ -258,11 +256,7 @@ fn key_down_as_pressed_or_repeated_while_held(event: &CGEvent) -> KeyDownOfAHotk
     }
 }
 
-fn is_momentum_scrolling_the_user_no_longer_drives(event: &CGEvent) -> bool {
-    CGEventGetIntegerValueField(Some(event), CGEventField::ScrollWheelEventMomentumPhase) != 0
-}
-
-fn was_posted_by_this_process(event: &CGEvent) -> bool {
+pub(crate) fn was_posted_by_this_process(event: &CGEvent) -> bool {
     let process_id_of_the_poster =
         CGEventGetIntegerValueField(Some(event), CGEventField::EventSourceUnixProcessID);
     DAEMON_PROCESS_ID

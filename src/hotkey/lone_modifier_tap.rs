@@ -105,6 +105,10 @@ impl LoneModifierTapDetector {
             .store(NO_LONE_MODIFIER_IS_ARMED, Ordering::Relaxed);
     }
 
+    pub(crate) fn is_a_lone_modifier_armed(&self) -> bool {
+        self.armed_lone_modifier.load(Ordering::Relaxed) != NO_LONE_MODIFIER_IS_ARMED
+    }
+
     fn has_a_hotkey(&self, lone_modifier: LoneModifier) -> bool {
         self.bit_of_each_lone_modifier_with_a_hotkey
             .load(Ordering::Relaxed)
@@ -475,5 +479,26 @@ mod tests {
             release_right_command_at(&detector, A_QUARTER_SECOND_LATER),
             None
         );
+    }
+
+    #[test]
+    fn a_lone_modifier_is_armed_from_its_press_until_its_release_or_anything_that_disarms_it() {
+        let detector = detector_arming_for_every_lone_modifier();
+        assert!(!detector.is_a_lone_modifier_armed());
+
+        press_right_command_at(&detector, PRESSED_AT_NANOSECONDS);
+        assert!(detector.is_a_lone_modifier_armed());
+        release_right_command_at(&detector, A_QUARTER_SECOND_LATER);
+        assert!(!detector.is_a_lone_modifier_armed());
+
+        press_right_command_at(&detector, PRESSED_AT_NANOSECONDS);
+        detector.lone_modifier_tapped_by(
+            KeyboardTapEventSeenByTheLoneModifierTapDetector::MomentumScrollingTheUserNoLongerDrives,
+        );
+        assert!(detector.is_a_lone_modifier_armed());
+        detector.lone_modifier_tapped_by(
+            KeyboardTapEventSeenByTheLoneModifierTapDetector::AnyOtherEvent,
+        );
+        assert!(!detector.is_a_lone_modifier_armed());
     }
 }

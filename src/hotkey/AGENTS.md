@@ -37,8 +37,10 @@ modifier tap from a modifier held for a chord, and the thread that starts shell 
   device-dependent bit set, and only for a lone modifier some hotkey binds: the executor tells
   it which, as a bit set, under the table lock after every change, so a shift pressed while
   typing never arms it. Pressing any other lone modifier still disarms the armed one, so does
-  anything else the keyboard tap sees but the momentum scrolling that carries on after the
-  fingers left the trackpad, and the release of the same key within a second is a tap. The flags-changed keycodes and device-dependent bits
+  a key down, a mouse down, a media key or a scroll but the momentum scrolling that carries on
+  after the fingers left the trackpad, and the release of the same key within a second is a
+  tap. The tap state also holds the handle of the tap that carries those disarming events and
+  whether it was last enabled, which only the tap thread reads. The flags-changed keycodes and device-dependent bits
   are the platform's values and must not change.
 - The mouse tap also disarms the detector on every mouse down it handles, from the main thread:
   it swallows mouse-modifier clicks, and once focus-follows-mouse re-creates it after the

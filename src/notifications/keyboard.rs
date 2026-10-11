@@ -248,3 +248,68 @@ fn was_posted_by_this_process(event: &CGEvent) -> bool {
 fn is_secure_event_input_on() -> bool {
     unsafe { SLSIsSecureEventInputSet() }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::hotkey_modifiers_held_according_to_event_flags;
+    use crate::ffi::core_graphics::CGEventFlags;
+    use crate::hotkey::chord::HotkeyModifiers;
+
+    const LEFT_COMMAND_DEVICE_DEPENDENT_FLAG: u64 = 0x8;
+    const RIGHT_COMMAND_DEVICE_DEPENDENT_FLAG: u64 = 0x10;
+
+    #[test]
+    fn each_modifier_flag_reads_as_its_hotkey_modifier() {
+        assert_eq!(
+            hotkey_modifiers_held_according_to_event_flags(
+                CGEventFlags::MaskAlternate
+                    | CGEventFlags::MaskShift
+                    | CGEventFlags::MaskCommand
+                    | CGEventFlags::MaskControl
+                    | CGEventFlags::MaskSecondaryFn
+            ),
+            HotkeyModifiers::all()
+        );
+        assert_eq!(
+            hotkey_modifiers_held_according_to_event_flags(CGEventFlags::empty()),
+            HotkeyModifiers::empty()
+        );
+    }
+
+    #[test]
+    fn caps_lock_is_no_hotkey_modifier() {
+        assert_eq!(
+            hotkey_modifiers_held_according_to_event_flags(
+                CGEventFlags::MaskAlternate | CGEventFlags::MaskAlphaShift
+            ),
+            HotkeyModifiers::ALT
+        );
+    }
+
+    #[test]
+    fn the_numeric_pad_flag_arrow_keys_carry_is_no_hotkey_modifier() {
+        assert_eq!(
+            hotkey_modifiers_held_according_to_event_flags(
+                CGEventFlags::MaskControl
+                    | CGEventFlags::MaskNumericPad
+                    | CGEventFlags::MaskSecondaryFn
+            ),
+            HotkeyModifiers::CTRL | HotkeyModifiers::FN
+        );
+    }
+
+    #[test]
+    fn either_side_of_a_modifier_reads_as_the_same_hotkey_modifier() {
+        for device_dependent_flag in [
+            LEFT_COMMAND_DEVICE_DEPENDENT_FLAG,
+            RIGHT_COMMAND_DEVICE_DEPENDENT_FLAG,
+        ] {
+            assert_eq!(
+                hotkey_modifiers_held_according_to_event_flags(CGEventFlags(
+                    CGEventFlags::MaskCommand.0 | device_dependent_flag
+                )),
+                HotkeyModifiers::CMD
+            );
+        }
+    }
+}

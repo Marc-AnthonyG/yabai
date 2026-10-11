@@ -162,3 +162,187 @@ impl From<Chord> for String {
         chord.to_string()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Chord, HotkeyModifiers};
+    use crate::hotkey::key::HotkeyKey;
+    use crate::hotkey::lone_modifier::LoneModifier;
+
+    const KEYCODE_OF_H: u16 = 0x04;
+    const KEYCODE_OF_J: u16 = 0x26;
+    const KEYCODE_OF_F2: u16 = 0x78;
+
+    fn chord(text: &str) -> Chord {
+        text.parse()
+            .unwrap_or_else(|refusal| panic!("'{text}' should parse as a chord: {refusal}"))
+    }
+
+    fn refusal_of(text: &str) -> String {
+        text.parse::<Chord>()
+            .expect_err("the chord should be refused")
+    }
+
+    #[test]
+    fn chord_with_modifiers_in_any_order_and_spacing_prints_back_in_canonical_order() {
+        for spelling in [
+            "alt + cmd - h",
+            "cmd+alt-h",
+            "cmd + alt - h",
+            "alt+cmd -h",
+            "  cmd +alt-  h  ",
+        ] {
+            assert_eq!(chord(spelling), chord("alt + cmd - h"), "{spelling:?}");
+            assert_eq!(chord(spelling).to_string(), "alt + cmd - h", "{spelling:?}");
+        }
+    }
+
+    #[test]
+    fn every_modifier_prints_in_the_order_alt_shift_cmd_ctrl_fn() {
+        assert_eq!(
+            chord("fn+ctrl+cmd+shift+alt-a").to_string(),
+            "alt + shift + cmd + ctrl + fn - a"
+        );
+    }
+
+    #[test]
+    fn a_key_without_modifiers_is_a_chord_that_prints_as_the_bare_key_name() {
+        assert_eq!(
+            chord("space"),
+            Chord::KeyWithModifiers {
+                modifiers: HotkeyModifiers::empty(),
+                key: HotkeyKey::named("space").unwrap(),
+            }
+        );
+        assert_eq!(chord(" f2 ").to_string(), "f2");
+    }
+
+    #[test]
+    fn a_side_specific_modifier_on_its_own_is_a_lone_modifier_tap_that_prints_back_alike() {
+        assert_eq!(
+            chord("rcmd"),
+            Chord::LoneModifierTap(LoneModifier::RightCommand)
+        );
+        for name in [
+            "lcmd", "rcmd", "lalt", "ralt", "lctrl", "rctrl", "lshift", "rshift",
+        ] {
+            assert_eq!(chord(name).to_string(), name);
+        }
+    }
+
+    #[test]
+    fn an_unknown_key_is_refused_naming_it() {
+        assert!(refusal_of("alt - hh").starts_with("'hh' is not a key;"));
+        assert!(refusal_of("hh").starts_with("'hh' is not a key;"));
+    }
+
+    #[test]
+    fn a_modifier_named_twice_is_refused() {
+        assert_eq!(
+            refusal_of("alt + alt - h"),
+            "'alt + alt - h' names alt twice"
+        );
+        assert_eq!(
+            refusal_of("cmd+alt+cmd-h"),
+            "'cmd+alt+cmd-h' names cmd twice"
+        );
+    }
+
+    #[test]
+    fn a_side_specific_modifier_inside_a_key_chord_is_refused() {
+        assert!(refusal_of("rcmd - h").starts_with("'rcmd' is not a modifier;"));
+        assert!(refusal_of("alt + lshift - h").starts_with("'lshift' is not a modifier;"));
+    }
+
+    #[test]
+    fn a_chord_with_nothing_after_its_dash_is_refused_for_lacking_a_key() {
+        assert_eq!(
+            refusal_of("alt -"),
+            "a chord needs a key after its modifiers"
+        );
+        assert_eq!(
+            refusal_of("alt + cmd - "),
+            "a chord needs a key after its modifiers"
+        );
+    }
+
+    #[test]
+    fn a_side_agnostic_modifier_on_its_own_is_refused_rather_than_taken_as_a_lone_modifier() {
+        for name in ["cmd", "alt", "ctrl", "shift", "fn"] {
+            assert!(
+                refusal_of(name).starts_with(&format!("'{name}' is a modifier without a key")),
+                "{name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_plus_or_a_dash_with_no_modifier_beside_it_is_refused() {
+        for spelling in ["- h", "alt + - h", "+ alt - h", "alt ++ cmd - h"] {
+            assert!(
+                refusal_of(spelling).contains("names no modifier"),
+                "{spelling:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_empty_chord_is_refused() {
+        assert_eq!(refusal_of(""), "a chord cannot be empty");
+        assert_eq!(refusal_of("   "), "a chord cannot be empty");
+    }
+
+    #[test]
+    fn a_chord_crosses_json_as_its_canonical_spelling_and_is_checked_when_read_back() {
+        assert_eq!(
+            serde_json::to_string(&chord("cmd+alt-h")).unwrap(),
+            "\"alt + cmd - h\""
+        );
+        assert_eq!(
+            serde_json::from_str::<Chord>("\"cmd+alt-h\"").unwrap(),
+            chord("alt + cmd - h")
+        );
+        assert!(serde_json::from_str::<Chord>("\"alt - hh\"").is_err());
+    }
+
+    #[test]
+    fn a_chord_fires_only_while_exactly_its_modifiers_are_held() {
+        let alt_h = chord("alt - h");
+
+        assert!(alt_h.is_pressed_by(KEYCODE_OF_H, HotkeyModifiers::ALT));
+        assert!(!alt_h.is_pressed_by(KEYCODE_OF_H, HotkeyModifiers::ALT | HotkeyModifiers::SHIFT));
+        assert!(!alt_h.is_pressed_by(KEYCODE_OF_H, HotkeyModifiers::empty()));
+        assert!(!alt_h.is_pressed_by(KEYCODE_OF_H, HotkeyModifiers::CMD));
+        assert!(!alt_h.is_pressed_by(KEYCODE_OF_J, HotkeyModifiers::ALT));
+    }
+
+    #[test]
+    fn a_chord_that_does_not_name_fn_fires_whether_or_not_fn_is_held() {
+        let alt_f2 = chord("alt - f2");
+
+        assert!(alt_f2.is_pressed_by(KEYCODE_OF_F2, HotkeyModifiers::ALT | HotkeyModifiers::FN));
+        assert!(alt_f2.is_pressed_by(KEYCODE_OF_F2, HotkeyModifiers::ALT));
+    }
+
+    #[test]
+    fn a_chord_that_names_fn_fires_only_while_fn_is_held() {
+        let fn_alt_f2 = chord("fn + alt - f2");
+
+        assert!(fn_alt_f2.is_pressed_by(KEYCODE_OF_F2, HotkeyModifiers::ALT | HotkeyModifiers::FN));
+        assert!(!fn_alt_f2.is_pressed_by(KEYCODE_OF_F2, HotkeyModifiers::ALT));
+        assert!(fn_alt_f2.names_fn());
+        assert!(!chord("alt - f2").names_fn());
+    }
+
+    #[test]
+    fn a_lone_modifier_tap_is_never_pressed_by_a_key_down() {
+        const FLAGS_CHANGED_KEYCODE_OF_RIGHT_COMMAND: u16 = 54;
+        let right_command_tap = chord("rcmd");
+
+        assert!(
+            !right_command_tap
+                .is_pressed_by(FLAGS_CHANGED_KEYCODE_OF_RIGHT_COMMAND, HotkeyModifiers::CMD)
+        );
+        assert!(!right_command_tap.names_fn());
+    }
+}

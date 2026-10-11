@@ -109,3 +109,75 @@ impl HotkeyKey {
         KEY_NAMES_AND_THEIR_ANSI_VIRTUAL_KEYCODES[self.index_in_the_key_table].1
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use super::{EVERY_KEY_NAME_IN_SHORT, HotkeyKey, KEY_NAMES_AND_THEIR_ANSI_VIRTUAL_KEYCODES};
+
+    #[test]
+    fn every_key_name_finds_the_key_that_prints_back_as_that_name() {
+        for (name, ansi_virtual_keycode) in KEY_NAMES_AND_THEIR_ANSI_VIRTUAL_KEYCODES {
+            let key = HotkeyKey::named(name).unwrap();
+
+            assert_eq!(key.name(), name);
+            assert_eq!(key.ansi_virtual_keycode(), ansi_virtual_keycode, "{name:?}");
+        }
+    }
+
+    #[test]
+    fn no_two_key_names_share_a_physical_key() {
+        let mut keycodes_seen = HashSet::new();
+        for (name, ansi_virtual_keycode) in KEY_NAMES_AND_THEIR_ANSI_VIRTUAL_KEYCODES {
+            assert!(keycodes_seen.insert(ansi_virtual_keycode), "{name:?}");
+        }
+    }
+
+    #[test]
+    fn keys_are_named_after_their_place_on_an_ansi_keyboard() {
+        for (name, expected_ansi_virtual_keycode) in [
+            ("a", 0x00),
+            ("h", 0x04),
+            ("0", 0x1D),
+            ("return", 0x24),
+            ("backspace", 0x33),
+            ("delete", 0x75),
+            ("f2", 0x78),
+            ("left", 0x7B),
+            ("grave", 0x32),
+        ] {
+            assert_eq!(
+                HotkeyKey::named(name).unwrap().ansi_virtual_keycode(),
+                expected_ansi_virtual_keycode,
+                "{name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_name_outside_the_key_table_is_no_key() {
+        assert_eq!(HotkeyKey::named("hh"), None);
+        assert_eq!(HotkeyKey::named("f21"), None);
+        assert_eq!(HotkeyKey::named(""), None);
+    }
+
+    #[test]
+    fn the_key_list_refusals_print_names_every_key_outside_its_ranges() {
+        let is_covered_by_a_range = |name: &str| {
+            name.len() == 1
+                || name
+                    .strip_prefix('f')
+                    .is_some_and(|number| number.parse::<u8>().is_ok())
+        };
+        let names_listed: Vec<&str> = EVERY_KEY_NAME_IN_SHORT
+            .split(", ")
+            .flat_map(|listed| listed.split(" or "))
+            .collect();
+        for (name, _) in KEY_NAMES_AND_THEIR_ANSI_VIRTUAL_KEYCODES {
+            if !is_covered_by_a_range(name) {
+                assert!(names_listed.contains(&name), "{name:?}");
+            }
+        }
+    }
+}

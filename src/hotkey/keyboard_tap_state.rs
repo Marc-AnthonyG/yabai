@@ -51,3 +51,27 @@ impl KeyboardTapState {
         self.status.store(status as u8, Ordering::Release);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{EVERY_KEYBOARD_TAP_STATUS, KeyboardTapState, KeyboardTapStatus};
+
+    #[test]
+    fn a_keyboard_tap_is_still_starting_until_its_thread_records_otherwise() {
+        assert_eq!(
+            KeyboardTapState::new().status(),
+            KeyboardTapStatus::StillStarting
+        );
+    }
+
+    #[test]
+    fn the_keyboard_tap_status_reads_back_as_the_last_one_recorded() {
+        let keyboard_tap_state = KeyboardTapState::new();
+
+        for status in EVERY_KEYBOARD_TAP_STATUS {
+            keyboard_tap_state.record_status(status);
+
+            assert_eq!(keyboard_tap_state.status(), status);
+        }
+    }
+}

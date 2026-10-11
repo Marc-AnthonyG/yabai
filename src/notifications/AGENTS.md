@@ -15,9 +15,9 @@ to the event loop.
   calls it back synchronously on whichever thread registers, the event-loop thread included. The
   keyboard tap, the tap that disarms a lone modifier and the observer that switches it run on
   their own `yabai-keyboard-tap` thread with its own run loop, so a main thread waiting on an
-  application's AX answer never holds up typing. That thread raises itself
-  to the user-interactive quality of service, since every key waits on it, while the rest of the
-  daemon stays at the default priority.
+  application's AX answer never holds up typing. That thread raises itself to the
+  user-interactive quality of service, since every key waits on it, while the rest of the daemon
+  stays at the default priority.
 - The keyboard tap callback stays short: it reads the hotkey table, swallows the key down of a
   hotkey, hands a shell action to the hotkey spawner thread, so shell hotkeys keep working while
   the event loop is busy and the next key never waits for a process to start, and posts a typed

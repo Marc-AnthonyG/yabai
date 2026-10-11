@@ -1,11 +1,11 @@
 # hotkey
 
-Keyboard shortcuts the daemon answers itself: the chord vocabulary (side-agnostic modifiers, keys
-named by their ANSI virtual keycode, lone modifiers told apart by side) and the canonical spelling
-a chord prints in, a hotkey's action (a yabai command kept parsed beside its arguments, or a
-shell command),
-the table of hotkeys the keyboard tap matches, the state the tap keeps to tell a lone
-modifier tap from a modifier held for a chord, and the thread that starts shell actions.
+Keyboard shortcuts the daemon answers itself: the chord vocabulary (side-agnostic modifiers,
+keys named by their ANSI virtual keycode, lone modifiers told apart by side) and the canonical
+spelling a chord prints in, a hotkey's action (a yabai command kept parsed beside its arguments,
+or a shell command), the table of hotkeys the keyboard tap matches, the state the tap keeps to
+tell a lone modifier tap from a modifier held for a chord, and the thread that starts shell
+actions.
 
 ## Notes
 
@@ -18,11 +18,11 @@ modifier tap from a modifier held for a chord, and the thread that starts shell 
   label, and takes the place of the first one it replaces, so running the config file again
   keeps the listing order. Removal keeps the order of the others.
 - Shell actions start on their own `yabai-shell-hotkey-spawner` thread, fed by a channel, never
-  on the tap thread, which would hold every following key until the process had started, and
-  not through the event loop, so they still start while it is busy. The thread runs at the
-  user-initiated quality of service: a press waits for its result, but no key waits on it. A yabai command runs again
-  on every key repeat; a shell command runs once per press, since holding a key that opens a
-  panel would otherwise close it again.
+  on the tap thread, which would hold every following key until the process had started, and not
+  through the event loop, so they still start while it is busy. The thread runs at the
+  user-initiated quality of service: a press waits for its result, but no key waits on it. A
+  yabai command runs again on every key repeat; a shell command runs once per press, since
+  holding a key that opens a panel would otherwise close it again.
 - Keys match by virtual keycode, never by character, so a hotkey stays on the same physical key
   whatever layout is selected. Alt, shift, cmd and ctrl are compared exactly, either side
   satisfying each; caps lock is ignored; fn is compared only when the chord names it, because
@@ -36,12 +36,12 @@ modifier tap from a modifier held for a chord, and the thread that starts shell 
 - The lone modifier detector arms on the flags change of that physical key with the key's
   device-dependent bit set, and only for a lone modifier some hotkey binds: the executor tells
   it which, as a bit set, under the table lock after every change, so a shift pressed while
-  typing never arms it. Pressing any other lone modifier still disarms the armed one, so does
-  a key down, a mouse down, a media key or a scroll but the momentum scrolling that carries on
-  after the fingers left the trackpad, and the release of the same key within a second is a
-  tap. The tap state also holds the handle of the tap that carries those disarming events and
-  whether it was last enabled, which only the tap thread reads. The flags-changed keycodes and device-dependent bits
-  are the platform's values and must not change.
+  typing never arms it. Pressing any other lone modifier still disarms the armed one, so does a
+  key down, a mouse down, a media key or a scroll but the momentum scrolling that carries on
+  after the fingers left the trackpad, and the release of the same key within a second is a tap.
+  The tap state also holds the handle of the tap that carries those disarming events and whether
+  it was last enabled, which only the tap thread reads. The flags-changed keycodes and
+  device-dependent bits are the platform's values and must not change.
 - The mouse tap swallows mouse-modifier clicks, yet it never needs to disarm the detector: it
   is created once, at start-up, before the keyboard tap thread creates its taps, so the tap
   that carries the disarming events sits ahead of it and sees every mouse down first. Nothing

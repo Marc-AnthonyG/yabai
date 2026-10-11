@@ -1,4 +1,4 @@
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use crate::command::hotkey::{HotkeyCommand, HotkeyDefinition};
 use crate::command::selectors::IndexOrLabelSelector;
@@ -11,11 +11,11 @@ pub(crate) fn run_hotkey_command(
     hotkey_table: &Mutex<HotkeyTable>,
     keyboard_tap_state: &KeyboardTapState,
 ) -> Result<String, String> {
-    let mut hotkey_table = hotkey_table.lock().unwrap_or_else(PoisonError::into_inner);
     match command {
         HotkeyCommand::Add(definition) => {
-            hotkey_table
-                .add_replacing_any_with_the_same_chord_or_label(hotkey_of_definition(definition));
+            let hotkey = hotkey_of_definition(definition);
+            lock_the_hotkey_table(hotkey_table)
+                .add_replacing_any_with_the_same_chord_or_label(hotkey);
             if keyboard_tap_state.status() == KeyboardTapStatus::FailedToStart {
                 return Err(String::from(
                     "the keyboard tap could not be created, so hotkeys will not fire; check \
@@ -25,14 +25,14 @@ pub(crate) fn run_hotkey_command(
             Ok(String::new())
         }
         HotkeyCommand::Remove { all: true, .. } => {
-            hotkey_table.remove_every_hotkey();
+            lock_the_hotkey_table(hotkey_table).remove_every_hotkey();
             Ok(String::new())
         }
         HotkeyCommand::Remove {
             hotkey: Some(IndexOrLabelSelector::Index(index)),
             ..
         } => {
-            if !hotkey_table.remove_at_listing_index(index as usize) {
+            if !lock_the_hotkey_table(hotkey_table).remove_at_listing_index(index as usize) {
                 return Err(format!("hotkey with index '{index}' not found."));
             }
             Ok(String::new())
@@ -41,7 +41,7 @@ pub(crate) fn run_hotkey_command(
             hotkey: Some(IndexOrLabelSelector::Label(label)),
             ..
         } => {
-            if !hotkey_table.remove_with_label(&label) {
+            if !lock_the_hotkey_table(hotkey_table).remove_with_label(&label) {
                 return Err(format!("hotkey with label '{label}' not found."));
             }
             Ok(String::new())
@@ -49,8 +49,17 @@ pub(crate) fn run_hotkey_command(
         HotkeyCommand::Remove { hotkey: None, .. } => Err(String::from(
             "name the hotkey to remove, or remove every hotkey with --all.",
         )),
-        HotkeyCommand::List => Ok(every_hotkey_as_pretty_json(&hotkey_table) + "\n"),
+        HotkeyCommand::List => {
+            let every_hotkey_in_listing_order = lock_the_hotkey_table(hotkey_table)
+                .hotkeys_in_listing_order()
+                .to_vec();
+            Ok(every_hotkey_as_pretty_json(&every_hotkey_in_listing_order) + "\n")
+        }
     }
+}
+
+fn lock_the_hotkey_table(hotkey_table: &Mutex<HotkeyTable>) -> MutexGuard<'_, HotkeyTable> {
+    hotkey_table.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 fn hotkey_of_definition(definition: HotkeyDefinition) -> Hotkey {

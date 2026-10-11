@@ -11,7 +11,9 @@ modifier tap from a modifier held for a chord, and the thread that starts shell 
 
 - The table is a static behind a mutex. The `hotkey` executor changes it on the event-loop
   thread and the keyboard tap reads it on its own thread; neither holds the lock across a call,
-  and the tap copies the matched action out before it runs it.
+  and the tap copies the matched action out before it runs it. The executor holds the lock for
+  the change alone, and `hotkey list` copies the hotkeys out and serializes the copy after
+  releasing it, so a key down never waits behind a listing.
 - A new hotkey replaces every hotkey with the same chord and every one with the same non-empty
   label, and takes the place of the first one it replaces, so running the config file again
   keeps the listing order. Removal keeps the order of the others.
